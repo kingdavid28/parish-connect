@@ -23,7 +23,7 @@
 
   .viewport-bg {
     @apply relative min-h-screen;
-    background-image: url('/background-viewport.png');
+    background-image: url('/parish-connect/background-viewport.png');
     background-size: cover;
     background-position: center;
     background-repeat: no-repeat;
