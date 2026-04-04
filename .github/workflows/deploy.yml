@@ -38,6 +38,7 @@ jobs:
           password: ${{ secrets.HOSTINGER_FTP_PASSWORD }}
           local-dir: ./dist/
           server-dir: ./public_html/parish-connect/
+          state-name: .ftp-deploy-sync-state-frontend.json
           dangerous-clean-slate: false
           exclude: |
             **/.git*
@@ -51,11 +52,13 @@ jobs:
           password: ${{ secrets.HOSTINGER_FTP_PASSWORD }}
           local-dir: ./api/
           server-dir: ./public_html/parish-connect/api/
+          state-name: .ftp-deploy-sync-state-api.json
           dangerous-clean-slate: false
           exclude: |
             **/.git*
             **/node_modules/**
             **/.env.example
+            **/.env
       
       - name: Deployment Notification
         if: always()
