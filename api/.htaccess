@@ -1,9 +1,13 @@
 Options -Indexes
 
-# Pass Authorization header to PHP
+# Pass Authorization header to PHP (multiple methods for shared hosting compatibility)
 SetEnvIf Authorization "(.*)" HTTP_AUTHORIZATION=$1
 
 RewriteEngine On
+
+# Forward Authorization header via RewriteRule (required on many shared hosts)
+RewriteCond %{HTTP:Authorization} .+
+RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
 
 # Protect sensitive files and folders
 RewriteRule ^\.env$ - [F]

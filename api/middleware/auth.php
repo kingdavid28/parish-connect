@@ -19,9 +19,14 @@ function getAuthUser(): ?array {
         $authHeader = $headers['Authorization'] ?? $headers['authorization'] ?? '';
     }
     
-    // Fallback to $_SERVER for FastCGI environments (e.g., Hostinger)
+    // Fallback to $_SERVER for FastCGI / shared hosting environments (e.g., Hostinger)
     if (!$authHeader && isset($_SERVER['HTTP_AUTHORIZATION'])) {
         $authHeader = $_SERVER['HTTP_AUTHORIZATION'];
+    }
+
+    // Some Apache + mod_rewrite setups prefix with REDIRECT_
+    if (!$authHeader && isset($_SERVER['REDIRECT_HTTP_AUTHORIZATION'])) {
+        $authHeader = $_SERVER['REDIRECT_HTTP_AUTHORIZATION'];
     }
 
     if (!str_starts_with($authHeader, 'Bearer ')) {
