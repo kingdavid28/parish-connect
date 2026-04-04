@@ -47,69 +47,6 @@ interface Post {
   is_approved: boolean;
 }
 
-const MOCK_POSTS: Post[] = [
-  {
-    id: "1",
-    author: {
-      id: "3",
-      name: "John Sullivan",
-      avatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=400",
-    },
-    content: "Celebrating 38 years since my baptism at St. Mary's! Grateful for this faith community that has shaped my journey. 🙏",
-    type: "baptism_anniversary",
-    timestamp: new Date(Date.now() - 2 * 60 * 60 * 1000),
-    likes: 24,
-    comments: 8,
-    metadata: {
-      baptismYear: 1986,
-    },
-  },
-  {
-    id: "2",
-    author: {
-      id: "1",
-      name: "Father Michael O'Connor",
-      avatar: "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=400",
-    },
-    content: "Reminder: Parish Spring Festival is this Saturday! Join us for food, music, and fellowship. All families welcome. See you there!",
-    type: "parish_event",
-    timestamp: new Date(Date.now() - 5 * 60 * 60 * 1000),
-    likes: 56,
-    comments: 12,
-    metadata: {
-      eventDate: "April 5, 2026",
-      location: "Parish Hall",
-    },
-  },
-  {
-    id: "3",
-    author: {
-      id: "4",
-      name: "Sarah Chen",
-      avatar: "https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=400",
-    },
-    content: "I'm researching my family's connection to St. Mary's. My great-grandmother Maria Chen was baptized here in 1920. Does anyone have records or stories from that era? Would love to collaborate!",
-    type: "research",
-    timestamp: new Date(Date.now() - 8 * 60 * 60 * 1000),
-    likes: 18,
-    comments: 15,
-  },
-  {
-    id: "4",
-    author: {
-      id: "2",
-      name: "Maria Rodriguez",
-      avatar: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=400",
-    },
-    content: "What a beautiful Mass this morning! The choir was exceptional. Feeling blessed to be part of this community.",
-    type: "community",
-    timestamp: new Date(Date.now() - 12 * 60 * 60 * 1000),
-    likes: 42,
-    comments: 6,
-  },
-];
-
-
 export default function Feed() {
   const { user, hasPermission } = useAuth();
   const [posts, setPosts] = useState<Post[]>([]);
