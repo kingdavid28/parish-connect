@@ -10,8 +10,19 @@ use Firebase\JWT\ExpiredException;
 use Firebase\JWT\SignatureInvalidException;
 
 function getAuthUser(): ?array {
-    $headers = getallheaders();
-    $authHeader = $headers['Authorization'] ?? $headers['authorization'] ?? '';
+    // Try to get Authorization header from multiple sources for compatibility
+    $authHeader = '';
+    
+    // First try getallheaders() (works in most setups)
+    if (function_exists('getallheaders')) {
+        $headers = getallheaders();
+        $authHeader = $headers['Authorization'] ?? $headers['authorization'] ?? '';
+    }
+    
+    // Fallback to $_SERVER for FastCGI environments (e.g., Hostinger)
+    if (!$authHeader && isset($_SERVER['HTTP_AUTHORIZATION'])) {
+        $authHeader = $_SERVER['HTTP_AUTHORIZATION'];
+    }
 
     if (!str_starts_with($authHeader, 'Bearer ')) {
         return null;

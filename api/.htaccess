@@ -1,5 +1,8 @@
 Options -Indexes
 
+# Pass Authorization header to PHP
+SetEnvIf Authorization "(.*)" HTTP_AUTHORIZATION=$1
+
 RewriteEngine On
 
 # Protect sensitive files and folders
