@@ -113,7 +113,7 @@ $action   = isset($segments[2]) && $segments[2] !== '' ? $segments[2] : null;
 
 // ─── Health Check ─────────────────────────────────────────────────────────────
 if ($resource === 'health') {
-    jsonResponse(['success' => true, 'message' => 'Parish Connect API is running']);
+    jsonResponse(['success' => true, 'message' => 'Parish Connect API is running', 'version' => '2.0.1']);
 }
 
 // ─── Auth Debug (TEMPORARY - remove after fixing) ─────────────────────────────
