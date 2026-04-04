@@ -36,8 +36,8 @@ jobs:
           server: ${{ secrets.HOSTINGER_FTP_SERVER }}
           username: ${{ secrets.HOSTINGER_FTP_USER }}
           password: ${{ secrets.HOSTINGER_FTP_PASSWORD }}
-          local-dir: ./dist
-          server-dir: ./public_html/parish-connect
+          local-dir: ./dist/
+          server-dir: ./public_html/parish-connect/
           dangerous-clean-slate: false
           exclude: |
             **/.git*
