@@ -101,7 +101,7 @@ export default function AdminManagement() {
     try {
       setIsLoadingUsers(true);
       setError(null);
-      const token = localStorage.getItem('token');
+      const token = localStorage.getItem('parish_token');
       const response = await fetch(`${API_BASE_URL}/users`, {
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -144,7 +144,7 @@ export default function AdminManagement() {
 
     try {
       setIsSubmitting(true);
-      const token = localStorage.getItem('token');
+      const token = localStorage.getItem('parish_token');
       const response = await fetch(`${API_BASE_URL}/users`, {
         method: "POST",
         headers: {
@@ -177,7 +177,7 @@ export default function AdminManagement() {
     
     try {
       setIsSubmitting(true);
-      const token = localStorage.getItem('token');
+      const token = localStorage.getItem('parish_token');
       const response = await fetch(`${API_BASE_URL}/users/${userToDelete.id}`, {
         method: "DELETE",
         headers: { 

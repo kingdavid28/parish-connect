@@ -75,7 +75,7 @@ export default function ParishRecords() {
   useEffect(() => {
     const fetchRecords = async () => {
       try {
-        const token = localStorage.getItem('token');
+        const token = localStorage.getItem('parish_token');
         const response = await fetch(`${API_BASE_URL}/records`, {
           headers: {
             'Authorization': `Bearer ${token}`,

@@ -65,7 +65,7 @@ export default function Feed() {
   const fetchPosts = async () => {
     try {
       setLoading(true);
-      const token = localStorage.getItem('token');
+      const token = localStorage.getItem('parish_token');
       const response = await fetch(`${API_BASE_URL}/posts`, {
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -92,7 +92,7 @@ export default function Feed() {
 
   const handleLike = async (postId: string) => {
     try {
-      const token = localStorage.getItem('token');
+      const token = localStorage.getItem('parish_token');
       const response = await fetch(`${API_BASE_URL}/posts/${postId}/like`, {
         method: 'POST',
         headers: {
@@ -120,7 +120,7 @@ export default function Feed() {
     if (!newPostContent.trim()) return;
 
     try {
-      const token = localStorage.getItem('token');
+      const token = localStorage.getItem('parish_token');
       const response = await fetch(`${API_BASE_URL}/posts`, {
         method: 'POST',
         headers: {
@@ -148,7 +148,7 @@ export default function Feed() {
 
   const handleDeletePost = async (postId: string) => {
     try {
-      const token = localStorage.getItem('token');
+      const token = localStorage.getItem('parish_token');
       const response = await fetch(`${API_BASE_URL}/posts/${postId}`, {
         method: 'DELETE',
         headers: {

@@ -47,7 +47,7 @@ export default function Profile() {
     const fetchProfile = async () => {
       try {
         setLoading(true);
-        const token = localStorage.getItem('token');
+        const token = localStorage.getItem('parish_token');
         const userId = id || currentUser?.id;
         
         if (!userId) {
