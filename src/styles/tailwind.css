@@ -23,11 +23,12 @@
 
   .viewport-bg {
     @apply relative min-h-screen;
-    background-image: url('./background-viewport.png');
+    background-image: url('/background-viewport.png');
     background-size: cover;
     background-position: center;
     background-repeat: no-repeat;
     background-attachment: fixed;
+    background-color: #f8f9fa;
   }
 
   /* Mobile: Disable parallax effect for better performance */
