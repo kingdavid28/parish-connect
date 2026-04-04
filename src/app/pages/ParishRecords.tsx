@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useAuth, Permission } from "../context/AuthContext";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Input } from "../components/ui/input";
@@ -42,108 +42,82 @@ import {
   Plus,
   Edit,
   Trash2,
+  Loader,
 } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
 
 interface BaptismRecord {
   id: string;
-  fullName: string;
-  baptismDate: string;
-  birthDate: string;
-  parents: {
-    father: string;
-    mother: string;
-  };
-  godparents: {
-    godfather: string;
-    godmother: string;
-  };
+  full_name: string;
+  baptism_date: string;
+  birth_date: string;
+  father_name?: string;
+  mother_name?: string;
+  godfather_name?: string;
+  godmother_name?: string;
   priest: string;
   location: string;
-  recordNumber: string;
+  record_number: string;
   verified: boolean;
 }
 
-const MOCK_RECORDS: BaptismRecord[] = [
-  {
-    id: "1",
-    fullName: "Maria Elena Rodriguez",
-    baptismDate: "1985-06-12",
-    birthDate: "1985-05-24",
-    parents: {
-      father: "Carlos Rodriguez",
-      mother: "Elena Martinez",
-    },
-    godparents: {
-      godfather: "Juan Rodriguez",
-      godmother: "Sofia Martinez",
-    },
-    priest: "Father Thomas Walsh",
-    location: "St. Mary's Catholic Church",
-    recordNumber: "BR-1985-156",
-    verified: true,
-  },
-  {
-    id: "2",
-    fullName: "John Patrick Sullivan",
-    baptismDate: "1986-03-15",
-    birthDate: "1986-02-28",
-    parents: {
-      father: "Patrick Sullivan",
-      mother: "Mary O'Brien",
-    },
-    godparents: {
-      godfather: "Michael Sullivan",
-      godmother: "Catherine O'Brien",
-    },
-    priest: "Father Thomas Walsh",
-    location: "St. Mary's Catholic Church",
-    recordNumber: "BR-1986-089",
-    verified: true,
-  },
-  {
-    id: "3",
-    fullName: "Sarah Ming Chen",
-    baptismDate: "1992-08-22",
-    birthDate: "1992-08-01",
-    parents: {
-      father: "David Chen",
-      mother: "Lisa Wong",
-    },
-    godparents: {
-      godfather: "James Chen",
-      godmother: "Michelle Lee",
-    },
-    priest: "Father Michael O'Connor",
-    location: "St. Mary's Catholic Church",
-    recordNumber: "BR-1992-234",
-    verified: true,
-  },
-];
-
 export default function ParishRecords() {
   const { isAdmin, hasPermission } = useAuth();
+  const [records, setRecords] = useState<BaptismRecord[]>([]);
+  const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [yearFilter, setYearFilter] = useState("all");
   const [selectedRecord, setSelectedRecord] = useState<BaptismRecord | null>(null);
 
-  const filteredRecords = MOCK_RECORDS.filter((record) => {
+  const API_BASE_URL = '/parish-connect/api';
+
+  useEffect(() => {
+    const fetchRecords = async () => {
+      try {
+        const token = localStorage.getItem('token');
+        const response = await fetch(`${API_BASE_URL}/records`, {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          }
+        });
+
+        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+        const data = await response.json();
+        setRecords(data.data || data || []);
+      } catch (error) {
+        console.error('Failed to fetch records:', error);
+        toast.error('Failed to load records');
+        setRecords([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchRecords();
+  }, []);
+
+  const filteredRecords = records.filter((record) => {
     const matchesSearch =
-      record.fullName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      record.parents.father.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      record.parents.mother.toLowerCase().includes(searchQuery.toLowerCase());
+      record.full_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (record.father_name?.toLowerCase().includes(searchQuery.toLowerCase())) ||
+      (record.mother_name?.toLowerCase().includes(searchQuery.toLowerCase())) ||
+      (record.record_number?.toLowerCase().includes(searchQuery.toLowerCase()));
 
     const matchesYear =
       yearFilter === "all" ||
-      new Date(record.baptismDate).getFullYear().toString() === yearFilter;
+      new Date(record.baptism_date).getFullYear().toString() === yearFilter;
 
     return matchesSearch && matchesYear;
   });
 
-  const years = ["all", ...Array.from(new Set(MOCK_RECORDS.map((r) => 
-    new Date(r.baptismDate).getFullYear().toString()
-  )))];
+  const years = ["all", ...Array.from(new Set(records.map((r) => 
+    new Date(r.baptism_date).getFullYear().toString()
+  )))].sort((a, b) => {
+    if (a === 'all') return -1;
+    return parseInt(b) - parseInt(a);
+  });
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-6">
@@ -178,7 +152,16 @@ export default function ParishRecords() {
           </TabsList>
 
           <TabsContent value="baptism" className="space-y-4">
+            {/* Loading State */}
+            {loading && (
+              <div className="flex justify-center items-center py-12">
+                <Loader className="h-6 w-6 animate-spin" />
+              </div>
+            )}
+
             {/* Search and Filters */}
+            {!loading && (
+            <>
             <Card>
               <CardContent className="pt-6">
                 <div className="flex flex-col md:flex-row gap-4">
@@ -238,16 +221,16 @@ export default function ParishRecords() {
                       {filteredRecords.map((record) => (
                         <TableRow key={record.id}>
                           <TableCell className="font-mono text-sm">
-                            {record.recordNumber}
+                            {record.record_number}
                           </TableCell>
                           <TableCell className="font-medium">
-                            {record.fullName}
+                            {record.full_name}
                           </TableCell>
                           <TableCell>
-                            {format(new Date(record.baptismDate), "MMM d, yyyy")}
+                            {format(new Date(record.baptism_date), "MMM d, yyyy")}
                           </TableCell>
                           <TableCell className="text-sm text-gray-600">
-                            {record.parents.father} & {record.parents.mother}
+                            {record.father_name} & {record.mother_name}
                           </TableCell>
                           <TableCell>
                             {record.verified ? (
@@ -274,7 +257,7 @@ export default function ParishRecords() {
                                 <DialogHeader>
                                   <DialogTitle>Baptism Record Details</DialogTitle>
                                   <DialogDescription>
-                                    Record #{record.recordNumber}
+                                    Record #{record.record_number}
                                   </DialogDescription>
                                 </DialogHeader>
                                 {selectedRecord && (
@@ -288,18 +271,18 @@ export default function ParishRecords() {
                                       <div className="grid grid-cols-2 gap-4 text-sm">
                                         <div>
                                           <span className="text-gray-600">Full Name:</span>
-                                          <p className="font-medium">{selectedRecord.fullName}</p>
+                                          <p className="font-medium">{selectedRecord.full_name}</p>
                                         </div>
                                         <div>
                                           <span className="text-gray-600">Birth Date:</span>
                                           <p className="font-medium">
-                                            {format(new Date(selectedRecord.birthDate), "MMMM d, yyyy")}
+                                            {format(new Date(selectedRecord.birth_date), "MMMM d, yyyy")}
                                           </p>
                                         </div>
                                         <div>
                                           <span className="text-gray-600">Baptism Date:</span>
                                           <p className="font-medium">
-                                            {format(new Date(selectedRecord.baptismDate), "MMMM d, yyyy")}
+                                            {format(new Date(selectedRecord.baptism_date), "MMMM d, yyyy")}
                                           </p>
                                         </div>
                                         <div>
@@ -318,11 +301,11 @@ export default function ParishRecords() {
                                       <div className="grid grid-cols-2 gap-4 text-sm">
                                         <div>
                                           <span className="text-gray-600">Father:</span>
-                                          <p className="font-medium">{selectedRecord.parents.father}</p>
+                                          <p className="font-medium">{selectedRecord.father_name || "N/A"}</p>
                                         </div>
                                         <div>
                                           <span className="text-gray-600">Mother:</span>
-                                          <p className="font-medium">{selectedRecord.parents.mother}</p>
+                                          <p className="font-medium">{selectedRecord.mother_name || "N/A"}</p>
                                         </div>
                                       </div>
                                     </div>
@@ -333,11 +316,11 @@ export default function ParishRecords() {
                                       <div className="grid grid-cols-2 gap-4 text-sm">
                                         <div>
                                           <span className="text-gray-600">Godfather:</span>
-                                          <p className="font-medium">{selectedRecord.godparents.godfather}</p>
+                                          <p className="font-medium">{selectedRecord.godfather_name || "N/A"}</p>
                                         </div>
                                         <div>
                                           <span className="text-gray-600">Godmother:</span>
-                                          <p className="font-medium">{selectedRecord.godparents.godmother}</p>
+                                          <p className="font-medium">{selectedRecord.godmother_name || "N/A"}</p>
                                         </div>
                                       </div>
                                     </div>
@@ -396,6 +379,8 @@ export default function ParishRecords() {
                 )}
               </CardContent>
             </Card>
+            </>
+            )}
 
             {/* Privacy Notice */}
             <Card className="bg-blue-50 border-blue-200">
