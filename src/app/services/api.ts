@@ -37,10 +37,10 @@ type RequestInterceptor = (config: RequestInit) => RequestInit | Promise<Request
 type ResponseInterceptor = (response: Response) => Response | Promise<Response>;
 
 class ApiClient {
-  private baseURL: string;
-  private timeout: number;
-  private requestInterceptors: RequestInterceptor[] = [];
-  private responseInterceptors: ResponseInterceptor[] = [];
+  private readonly baseURL: string;
+  private readonly timeout: number;
+  private readonly requestInterceptors: RequestInterceptor[] = [];
+  private readonly responseInterceptors: ResponseInterceptor[] = [];
 
   constructor(baseURL: string, timeout: number) {
     this.baseURL = baseURL;
@@ -207,7 +207,7 @@ apiClient.addResponseInterceptor((response) => {
   if (response.status === 401) {
     localStorage.removeItem("parish_token");
     sessionStorage.removeItem("parish_token");
-    window.location.replace("/login");
+    globalThis.location.replace("/login");
   }
   return response;
 });

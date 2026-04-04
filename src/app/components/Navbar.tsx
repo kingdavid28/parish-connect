@@ -40,7 +40,7 @@ import {
 import { toast } from "sonner";
 
 export default function Navbar() {
-  const { user, logout, isAuthenticated, isSuperAdmin, isAdmin } = useAuth();
+  const { user, logout, isAuthenticated, isAdmin } = useAuth();
   const location = useLocation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [showLogoutDialog, setShowLogoutDialog] = useState(false);
@@ -86,8 +86,8 @@ export default function Navbar() {
       }
     };
 
-    window.addEventListener('keydown', handleKeyPress);
-    return () => window.removeEventListener('keydown', handleKeyPress);
+    globalThis.addEventListener('keydown', handleKeyPress);
+    return () => globalThis.removeEventListener('keydown', handleKeyPress);
   }, []);
 
   if (!isAuthenticated) {
