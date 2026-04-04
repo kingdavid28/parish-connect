@@ -204,11 +204,8 @@ apiClient.addRequestInterceptor((config) => {
 
 // Add response interceptor for 401 handling
 apiClient.addResponseInterceptor((response) => {
-  if (response.status === 401) {
-    localStorage.removeItem("parish_token");
-    sessionStorage.removeItem("parish_token");
-    globalThis.location.replace("/login");
-  }
+  // Don't wipe token here — let AuthContext handle auth state.
+  // The interceptor just returns the response so callers can handle 401 themselves.
   return response;
 });
 
