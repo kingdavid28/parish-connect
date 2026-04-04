@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useAuth, Permission } from "../context/AuthContext";
 import { Card, CardContent, CardHeader } from "../components/ui/card";
 import { Avatar, AvatarImage, AvatarFallback } from "../components/ui/avatar";
@@ -27,28 +27,24 @@ import {
   BookOpen,
   Users,
   Trash2,
+  Loader,
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
 
 interface Post {
   id: string;
-  author: {
-    id: string;
-    name: string;
-    avatar: string;
-  };
+  user_id: string;
+  author_name: string;
+  author_avatar: string;
+  author_role: string;
   content: string;
-  type: "community" | "baptism_anniversary" | "parish_event" | "research";
-  timestamp: Date;
+  type: string;
+  created_at: string;
   likes: number;
   comments: number;
-  isLiked?: boolean;
-  metadata?: {
-    eventDate?: string;
-    location?: string;
-    baptismYear?: number;
-  };
+  is_liked: boolean;
+  is_approved: boolean;
 }
 
 const MOCK_POSTS: Post[] = [
@@ -113,61 +109,130 @@ const MOCK_POSTS: Post[] = [
   },
 ];
 
+
 export default function Feed() {
   const { user, hasPermission } = useAuth();
-  const [posts, setPosts] = useState<Post[]>(MOCK_POSTS);
+  const [posts, setPosts] = useState<Post[]>([]);
+  const [loading, setLoading] = useState(true);
   const [newPostContent, setNewPostContent] = useState("");
   const [activeTab, setActiveTab] = useState("all");
   const [postToDelete, setPostToDelete] = useState<string | null>(null);
+
+  const API_BASE_URL = '/parish-connect/api';
+
+  // Fetch posts from API
+  useEffect(() => {
+    fetchPosts();
+  }, []);
+
+  const fetchPosts = async () => {
+    try {
+      setLoading(true);
+      const token = localStorage.getItem('token');
+      const response = await fetch(`${API_BASE_URL}/posts`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+      const data = await response.json();
+      if (data.success) {
+        setPosts(data.data || []);
+      }
+    } catch (error) {
+      console.error('Error fetching posts:', error);
+      toast.error('Failed to load posts');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   // Check if user can delete any post (admin/superadmin) or only their own
   const canDeleteAnyPost = hasPermission(Permission.DELETE_ANY_POST);
 
   const canDeletePost = (post: Post) => {
-    return post.author.id === user?.id || canDeleteAnyPost;
+    return post.user_id === user?.id || canDeleteAnyPost;
   };
 
-  const handleLike = (postId: string) => {
-    setPosts(
-      posts.map((post) =>
-        post.id === postId
-          ? {
-              ...post,
-              likes: post.isLiked ? post.likes - 1 : post.likes + 1,
-              isLiked: !post.isLiked,
-            }
-          : post
-      )
-    );
+  const handleLike = async (postId: string) => {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`${API_BASE_URL}/posts/${postId}/like`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+      const data = await response.json();
+      if (data.success) {
+        // Update local state
+        setPosts(
+          posts.map((post) =>
+            post.id === postId
+              ? { ...post, likes: data.data.likes, is_liked: data.data.is_liked }
+              : post
+          )
+        );
+      }
+    } catch (error) {
+      console.error('Error liking post:', error);
+      toast.error('Failed to like post');
+    }
   };
 
-  const handleCreatePost = () => {
+  const handleCreatePost = async () => {
     if (!newPostContent.trim()) return;
 
-    const newPost: Post = {
-      id: Date.now().toString(),
-      author: {
-        id: user!.id,
-        name: user!.name,
-        avatar: user!.avatar || "",
-      },
-      content: newPostContent,
-      type: "community",
-      timestamp: new Date(),
-      likes: 0,
-      comments: 0,
-    };
-
-    setPosts([newPost, ...posts]);
-    setNewPostContent("");
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`${API_BASE_URL}/posts`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          content: newPostContent,
+          type: 'community',
+        }),
+      });
+      const data = await response.json();
+      if (data.success) {
+        setNewPostContent('');
+        toast.success('Post created successfully!');
+        fetchPosts(); // Refresh posts
+      } else {
+        toast.error(data.message || 'Failed to create post');
+      }
+    } catch (error) {
+      console.error('Error creating post:', error);
+      toast.error('Failed to create post');
+    }
   };
 
-  const handleDeletePost = (postId: string) => {
-    setPosts(posts.filter((post) => post.id !== postId));
-    toast.success("Post deleted successfully!");
+  const handleDeletePost = async (postId: string) => {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`${API_BASE_URL}/posts/${postId}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+      const data = await response.json();
+      if (data.success) {
+        setPosts(posts.filter((post) => post.id !== postId));
+        toast.success('Post deleted successfully!');
+        setPostToDelete(null);
+      } else {
+        toast.error(data.message || 'Failed to delete post');
+      }
+    } catch (error) {
+      console.error('Error deleting post:', error);
+      toast.error('Failed to delete post');
+    }
   };
 
-  const getPostIcon = (type: Post["type"]) => {
+  const getPostIcon = (type: string) => {
     switch (type) {
       case "baptism_anniversary":
         return <Cake className="h-4 w-4" />;
@@ -180,7 +245,7 @@ export default function Feed() {
     }
   };
 
-  const getPostTypeLabel = (type: Post["type"]) => {
+  const getPostTypeLabel = (type: string) => {
     switch (type) {
       case "baptism_anniversary":
         return "Baptism Anniversary";
@@ -244,8 +309,22 @@ export default function Feed() {
           </TabsList>
         </Tabs>
 
+        {/* Loading State */}
+        {loading && (
+          <div className="flex justify-center items-center py-12">
+            <Loader className="h-6 w-6 animate-spin" />
+          </div>
+        )}
+
         {/* Posts */}
         <div className="space-y-4">
+          {!loading && filteredPosts.length === 0 && (
+            <Card>
+              <CardContent className="py-12 text-center">
+                <p className="text-gray-500">No posts yet. Be the first to share!</p>
+              </CardContent>
+            </Card>
+          )}
           {filteredPosts.map((post) => (
             <Card key={post.id} className="hover:shadow-md transition-shadow">
               <CardHeader>
@@ -253,15 +332,15 @@ export default function Feed() {
                   <div className="flex items-center space-x-3">
                     <Avatar>
                       <AvatarImage
-                        src={post.author.avatar}
-                        alt={post.author.name}
+                        src={post.author_avatar}
+                        alt={post.author_name}
                       />
-                      <AvatarFallback>{post.author.name[0]}</AvatarFallback>
+                      <AvatarFallback>{post.author_name[0]}</AvatarFallback>
                     </Avatar>
                     <div>
-                      <p className="font-medium">{post.author.name}</p>
+                      <p className="font-medium">{post.author_name}</p>
                       <p className="text-sm text-gray-500">
-                        {formatDistanceToNow(post.timestamp, {
+                        {formatDistanceToNow(new Date(post.created_at), {
                           addSuffix: true,
                         })}
                       </p>
@@ -278,26 +357,6 @@ export default function Feed() {
                   {post.content}
                 </p>
 
-                {/* Metadata */}
-                {post.metadata && (
-                  <div className="mb-4 p-3 bg-blue-50 rounded-lg border border-blue-100">
-                    {post.metadata.eventDate && (
-                      <div className="flex items-center text-sm text-blue-900">
-                        <Calendar className="h-4 w-4 mr-2" />
-                        <span>
-                          {post.metadata.eventDate} • {post.metadata.location}
-                        </span>
-                      </div>
-                    )}
-                    {post.metadata.baptismYear && (
-                      <div className="flex items-center text-sm text-blue-900">
-                        <Cake className="h-4 w-4 mr-2" />
-                        <span>Baptized in {post.metadata.baptismYear}</span>
-                      </div>
-                    )}
-                  </div>
-                )}
-
                 {/* Actions */}
                 <div className="flex items-center justify-between pt-4 border-t">
                   <div className="flex items-center space-x-4">
@@ -305,11 +364,11 @@ export default function Feed() {
                       variant="ghost"
                       size="sm"
                       onClick={() => handleLike(post.id)}
-                      className={post.isLiked ? "text-red-500" : ""}
+                      className={post.is_liked ? "text-red-500" : ""}
                     >
                       <Heart
                         className={`h-5 w-5 mr-2 ${
-                          post.isLiked ? "fill-current" : ""
+                          post.is_liked ? "fill-current" : ""
                         }`}
                       />
                       {post.likes}
