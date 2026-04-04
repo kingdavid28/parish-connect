@@ -1,0 +1,95 @@
+@import 'tailwindcss' source(none);
+@source '../**/*.{js,ts,jsx,tsx}';
+
+@import 'tw-animate-css';
+
+/* ─────────────────────────────────────────────────────────────────────────── */
+/* Viewport Background Image — Best Practices Implementation                    */
+/* ─────────────────────────────────────────────────────────────────────────── */
+
+@layer components {
+  /**
+   * Viewport Background Utilities
+   * 
+   * Best practices applied:
+   * - CSS background-image (not <img> tag) for better performance
+   * - `background-size: cover` to fill the entire viewport
+   * - `background-position: center` for centered composition
+   * - `background-attachment: fixed` for parallax effect (desktop only)
+   * - `background-repeat: no-repeat` to prevent tiling
+   * - Responsive design (no parallax on mobile for better performance)
+   * - Proper z-index stacking for content layers
+   */
+
+  .viewport-bg {
+    @apply relative min-h-screen;
+    background-image: url('/background-viewport.png');
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    background-attachment: fixed;
+  }
+
+  /* Mobile: Disable parallax effect for better performance */
+  @media (max-width: 768px) {
+    .viewport-bg {
+      background-attachment: scroll;
+    }
+  }
+
+  /**
+   * Dark overlay for improved text readability
+   * Use this class when content needs contrast over the background image
+   * 
+   * Accepts opacity modifiers: overlay-dark-20, overlay-dark-40, overlay-dark-60
+   */
+  .viewport-overlay {
+    @apply absolute inset-0 bg-black/20;
+    z-index: 1;
+  }
+
+  .viewport-overlay-40 {
+    @apply absolute inset-0 bg-black/40;
+    z-index: 1;
+  }
+
+  .viewport-overlay-60 {
+    @apply absolute inset-0 bg-black/60;
+    z-index: 1;
+  }
+
+  /**
+   * Content wrapper for proper z-index stacking
+   * Place your content inside this to render above the background and overlay
+   */
+  .viewport-content {
+    @apply relative z-10;
+  }
+
+  /**
+   * Enhanced Card Component for viewport background
+   * Provides semi-transparent background with proper contrast
+   * 
+   * Best practices:
+   * - Backdrop blur for modern glass effect (iOS-style)
+   * - Semi-transparent white background
+   * - Subtle shadow for depth
+   * - Works on light or dark backgrounds
+   */
+  .card-glassmorphism {
+    @apply bg-white/85 backdrop-blur-sm shadow-lg rounded-lg border border-white/20;
+  }
+
+  .card-glassmorphism-dark {
+    @apply bg-gray-900/80 backdrop-blur-sm shadow-lg rounded-lg border border-gray-700/40;
+  }
+
+  /* Page containers with proper background visibility */
+  .page-container {
+    @apply max-w-7xl mx-auto px-4 py-6;
+  }
+
+  .page-container-sm {
+    @apply max-w-3xl mx-auto px-4 py-6;
+  }
+}

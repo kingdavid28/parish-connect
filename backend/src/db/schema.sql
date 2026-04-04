@@ -1,0 +1,120 @@
+-- Parish Connect Database Schema
+-- Compatible with MySQL 5.7+ and 8.0+
+-- Run this inside your Hostinger database (already selected in phpMyAdmin)
+
+-- Users table
+CREATE TABLE IF NOT EXISTS users (
+  id VARCHAR(36) PRIMARY KEY,
+  name VARCHAR(100) NOT NULL,
+  email VARCHAR(255) NOT NULL UNIQUE,
+  password_hash VARCHAR(255) NOT NULL,
+  role ENUM('superadmin', 'admin', 'parishioner') NOT NULL DEFAULT 'parishioner',
+  parish_id VARCHAR(100) NOT NULL DEFAULT 'st-marys',
+  avatar VARCHAR(500),
+  baptism_date DATE,
+  member_since DATE,
+  created_by VARCHAR(36),
+  last_login DATETIME,
+  is_active TINYINT(1) NOT NULL DEFAULT 1,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+);
+
+-- Posts table
+CREATE TABLE IF NOT EXISTS posts (
+  id VARCHAR(36) PRIMARY KEY,
+  user_id VARCHAR(36) NOT NULL,
+  content TEXT NOT NULL,
+  type ENUM('community', 'baptism_anniversary', 'parish_event', 'research') NOT NULL DEFAULT 'community',
+  event_date VARCHAR(100),
+  event_location VARCHAR(255),
+  baptism_year INT,
+  is_pinned TINYINT(1) DEFAULT 0,
+  is_approved TINYINT(1) DEFAULT 1,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+-- Post likes table
+CREATE TABLE IF NOT EXISTS post_likes (
+  post_id VARCHAR(36) NOT NULL,
+  user_id VARCHAR(36) NOT NULL,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (post_id, user_id),
+  FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+-- Comments table
+CREATE TABLE IF NOT EXISTS comments (
+  id VARCHAR(36) PRIMARY KEY,
+  post_id VARCHAR(36) NOT NULL,
+  user_id VARCHAR(36) NOT NULL,
+  content TEXT NOT NULL,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+-- Baptism records table
+CREATE TABLE IF NOT EXISTS baptism_records (
+  id VARCHAR(36) PRIMARY KEY,
+  full_name VARCHAR(200) NOT NULL,
+  baptism_date DATE NOT NULL,
+  birth_date DATE NOT NULL,
+  father_name VARCHAR(200) NOT NULL,
+  mother_name VARCHAR(200) NOT NULL,
+  godfather_name VARCHAR(200) NOT NULL,
+  godmother_name VARCHAR(200),
+  priest VARCHAR(200) NOT NULL,
+  location VARCHAR(255) NOT NULL DEFAULT 'St. Mary''s Catholic Church',
+  record_number VARCHAR(50) NOT NULL UNIQUE,
+  parish_id VARCHAR(100) NOT NULL DEFAULT 'st-marys',
+  verified TINYINT(1) DEFAULT 0,
+  notes TEXT,
+  created_by VARCHAR(36),
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+);
+
+-- Audit log table
+CREATE TABLE IF NOT EXISTS audit_logs (
+  id VARCHAR(36) PRIMARY KEY,
+  user_id VARCHAR(36),
+  action VARCHAR(100) NOT NULL,
+  target_type VARCHAR(50),
+  target_id VARCHAR(36),
+  details JSON,
+  ip_address VARCHAR(45),
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+);
+
+-- Indexes for performance
+CREATE INDEX idx_posts_user_id ON posts(user_id);
+CREATE INDEX idx_posts_created_at ON posts(created_at);
+CREATE INDEX idx_comments_post_id ON comments(post_id);
+CREATE INDEX idx_baptism_records_full_name ON baptism_records(full_name);
+CREATE INDEX idx_baptism_records_baptism_date ON baptism_records(baptism_date);
+CREATE INDEX idx_audit_logs_user_id ON audit_logs(user_id);
+CREATE INDEX idx_audit_logs_created_at ON audit_logs(created_at);
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- Seed: Super Admin account
+-- Password below is bcrypt hash of: Admin@1234
+-- CHANGE THE PASSWORD after first login via the app or re-hash a new one at:
+-- https://bcrypt-generator.com  (use 12 rounds)
+-- ─────────────────────────────────────────────────────────────────────────────
+INSERT IGNORE INTO users (id, name, email, password_hash, role, parish_id, member_since)
+VALUES (
+  'super-admin-001',
+  'Super Administrator',
+  'admin@yourparish.com',
+  '$2a$12$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi',
+  'superadmin',
+  'st-marys',
+  CURDATE()
+);
