@@ -116,6 +116,42 @@ if ($resource === 'health') {
     jsonResponse(['success' => true, 'message' => 'Parish Connect API is running']);
 }
 
+// ─── Auth Debug (TEMPORARY - remove after fixing) ─────────────────────────────
+if ($resource === 'auth-debug') {
+    require_once __DIR__ . '/vendor/autoload.php';
+    require_once __DIR__ . '/middleware/auth.php';
+
+    $headers = function_exists('getallheaders') ? getallheaders() : [];
+    $authHeader = $headers['Authorization'] ?? $headers['authorization']
+        ?? $_SERVER['HTTP_AUTHORIZATION']
+        ?? $_SERVER['REDIRECT_HTTP_AUTHORIZATION']
+        ?? '';
+
+    $tokenStr = str_starts_with($authHeader, 'Bearer ') ? substr($authHeader, 7) : '';
+    $decodeResult = 'no token';
+
+    if ($tokenStr) {
+        try {
+            $decoded = \Firebase\JWT\JWT::decode($tokenStr, new \Firebase\JWT\Key(JWT_SECRET, 'HS256'));
+            $decodeResult = 'SUCCESS - user: ' . ($decoded->id ?? 'unknown');
+        } catch (\Firebase\JWT\ExpiredException $e) {
+            $decodeResult = 'EXPIRED: ' . $e->getMessage();
+        } catch (\Firebase\JWT\SignatureInvalidException $e) {
+            $decodeResult = 'SIGNATURE INVALID: ' . $e->getMessage();
+        } catch (\Exception $e) {
+            $decodeResult = 'ERROR: ' . get_class($e) . ' - ' . $e->getMessage();
+        }
+    }
+
+    jsonResponse([
+        'success' => true,
+        'auth_header_found' => !empty($authHeader),
+        'token_present' => !empty($tokenStr),
+        'decode_result' => $decodeResult,
+        'jwt_secret_first8' => substr(JWT_SECRET, 0, 8) . '...',
+    ]);
+}
+
 // ─── Database Test (remove after confirming) ──────────────────────────────────
 if ($resource === 'db-test') {
     try {
