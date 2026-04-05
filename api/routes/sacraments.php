@@ -67,8 +67,14 @@ function searchSacraments(): void {
                 $params[] = '%' . $search . '%';
             }
             if ($birthday) {
-                $where  .= ' AND birthday = ?';
-                $params[] = $birthday;
+                // Birthday is stored as text like "September 24, 1995"
+                // Convert yyyy-MM-dd input to that format
+                $ts = strtotime($birthday);
+                if ($ts !== false) {
+                    $birthdayFormatted = date('F j, Y', $ts);
+                    $where  .= ' AND birthday = ?';
+                    $params[] = $birthdayFormatted;
+                }
             }
         }
 

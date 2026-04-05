@@ -124,7 +124,10 @@ function authRegister(): void {
         $sacStmt = $sacDb->prepare(
             'SELECT id, parents_name FROM sacraments WHERE LOWER(name) = LOWER(?) AND birthday = ? LIMIT 1'
         );
-        $sacStmt->execute([$name, $birthday]);
+        // Convert yyyy-MM-dd to "September 24, 1995" format to match DB
+        $ts = strtotime($birthday);
+        $birthdayFormatted = $ts !== false ? date('F j, Y', $ts) : $birthday;
+        $sacStmt->execute([$name, $birthdayFormatted]);
         $sacRecord = $sacStmt->fetch();
 
         if (!$sacRecord) {
