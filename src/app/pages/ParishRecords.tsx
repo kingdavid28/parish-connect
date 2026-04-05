@@ -36,7 +36,7 @@ const API = '/parish-connect/api';
 const getToken = () => localStorage.getItem('parish_token') || sessionStorage.getItem('parish_token');
 
 export default function ParishRecords() {
-  const { isAdmin } = useAuth();
+  const { isAdmin, isSuperAdmin } = useAuth();
   const [records, setRecords] = useState<SacramentRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
@@ -107,37 +107,50 @@ export default function ParishRecords() {
         </TabsList>
 
         <TabsContent value="baptism" className="space-y-4">
-          {/* Search */}
-          <Card>
-            <CardContent className="pt-6">
-              <div className="flex flex-col md:flex-row gap-4">
-                <div className="flex-1 relative">
-                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+          {/* Search - only for superadmins */}
+          {isSuperAdmin && (
+            <Card>
+              <CardContent className="pt-6">
+                <div className="flex flex-col md:flex-row gap-4">
+                  <div className="flex-1 relative">
+                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                    <Input
+                      placeholder="Search by name..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+                      className="pl-10"
+                    />
+                  </div>
                   <Input
-                    placeholder="Search by name..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-                    className="pl-10"
+                    type="date"
+                    value={birthdayFilter}
+                    onChange={(e) => setBirthdayFilter(e.target.value)}
+                    className="w-[200px]"
+                    placeholder="Birthday"
                   />
+                  <Button onClick={handleSearch}>
+                    <Search className="h-4 w-4 mr-2" />Search
+                  </Button>
                 </div>
-                <Input
-                  type="date"
-                  value={birthdayFilter}
-                  onChange={(e) => setBirthdayFilter(e.target.value)}
-                  className="w-[200px]"
-                  placeholder="Birthday"
-                />
-                <Button onClick={handleSearch}>
-                  <Search className="h-4 w-4 mr-2" />Search
-                </Button>
-              </div>
-              <div className="mt-4 flex items-center gap-2 text-sm text-gray-600">
-                <Shield className="h-4 w-4" />
-                <span>{total} record{total !== 1 ? 's' : ''} found</span>
-              </div>
-            </CardContent>
-          </Card>
+                <div className="mt-4 flex items-center gap-2 text-sm text-gray-600">
+                  <Shield className="h-4 w-4" />
+                  <span>{total} record{total !== 1 ? 's' : ''} found</span>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {!isSuperAdmin && (
+            <Card>
+              <CardContent className="pt-6">
+                <div className="flex items-center gap-2 text-sm text-gray-600">
+                  <Shield className="h-4 w-4" />
+                  <span>Showing your personal sacramental record{total !== 1 ? 's' : ''}</span>
+                </div>
+              </CardContent>
+            </Card>
+          )}
 
           {loading && (
             <div className="flex justify-center items-center py-12">

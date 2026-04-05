@@ -1,6 +1,7 @@
 <?php
 declare(strict_types=1);
 
+require_once __DIR__ . '/../db.php';
 require_once __DIR__ . '/../middleware/auth.php';
 
 /**
@@ -33,7 +34,7 @@ function handleSacraments(string $method, ?string $id, ?string $action): void {
 }
 
 function searchSacraments(): void {
-    authenticate();
+    $user = authenticate();
 
     $search = trim($_GET['search'] ?? '');
     $birthday = trim($_GET['birthday'] ?? '');
@@ -41,18 +42,34 @@ function searchSacraments(): void {
     $limit  = min(50, max(1, (int)($_GET['limit'] ?? 20)));
     $offset = ($page - 1) * $limit;
 
+    // Non-superadmin users can only view their own record
+    $isSuperAdmin = $user['role'] === 'superadmin';
+
     try {
         $db     = getSacramentsDB();
         $where  = 'WHERE 1=1';
         $params = [];
 
-        if ($search) {
-            $where  .= ' AND name LIKE ?';
-            $params[] = '%' . $search . '%';
-        }
-        if ($birthday) {
-            $where  .= ' AND birthday = ?';
-            $params[] = $birthday;
+        if (!$isSuperAdmin) {
+            // Get the user's name from the main DB to match against sacraments
+            $mainDb = getDB();
+            $nameStmt = $mainDb->prepare('SELECT name FROM users WHERE id = ? LIMIT 1');
+            $nameStmt->execute([$user['id']]);
+            $userRow = $nameStmt->fetch();
+            $userName = $userRow['name'] ?? '';
+
+            $where  .= ' AND LOWER(name) = LOWER(?)';
+            $params[] = $userName;
+        } else {
+            // Superadmin can search all records
+            if ($search) {
+                $where  .= ' AND name LIKE ?';
+                $params[] = '%' . $search . '%';
+            }
+            if ($birthday) {
+                $where  .= ' AND birthday = ?';
+                $params[] = $birthday;
+            }
         }
 
         $countStmt = $db->prepare("SELECT COUNT(*) AS total FROM sacraments $where");
