@@ -66,10 +66,8 @@ function listUsers(): void {
             $sql .= " AND role != 'superadmin'";
         }
 
-        // Child superadmins cannot see the parent superadmin
-        if ($user['role'] === 'superadmin' && !empty($user['created_by'])) {
-            $sql .= " AND NOT (role = 'superadmin' AND created_by IS NULL)";
-        }
+        // Child superadmins can see the parent superadmin but cannot edit/delete them
+        // (edit/delete protections are enforced in updateUser and deleteUser)
 
         $sql .= ' ORDER BY created_at DESC';
         $stmt = $db->query($sql);
