@@ -45,9 +45,19 @@ function getUser(string $id): void {
             jsonResponse(['success' => false, 'message' => 'User not found'], 404);
         }
 
-        // Non-admin users can only view their own profile
+        // Any authenticated user can view profiles (for follow/message features)
+        // but hide sensitive fields for non-admin viewers
         if (!in_array($user['role'], ['admin', 'superadmin'], true) && $user['id'] !== $id) {
-            jsonResponse(['success' => false, 'message' => 'Insufficient permissions'], 403);
+            // Return limited profile info
+            jsonResponse(['success' => true, 'data' => [
+                'id'           => $target['id'],
+                'name'         => $target['name'],
+                'email'        => $target['email'],
+                'role'         => $target['role'],
+                'avatar'       => $target['avatar'],
+                'member_since' => $target['member_since'],
+                'created_at'   => $target['created_at'],
+            ]]);
         }
 
         jsonResponse(['success' => true, 'data' => $target]);
