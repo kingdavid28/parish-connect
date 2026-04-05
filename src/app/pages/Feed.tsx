@@ -87,7 +87,13 @@ export default function Feed() {
   const canDeleteAnyPost = hasPermission(Permission.DELETE_ANY_POST);
 
   const canDeletePost = (post: Post) => {
-    return post.user_id === user?.id || canDeleteAnyPost;
+    // Owner can always delete their own post
+    if (post.user_id === user?.id) return true;
+    // Superadmin can delete any post
+    if (user?.role === "superadmin") return true;
+    // Admin can delete posts except superadmin posts
+    if (canDeleteAnyPost && post.author_role !== "superadmin") return true;
+    return false;
   };
 
   const handleLike = async (postId: string) => {

@@ -94,9 +94,20 @@ function deletePost(string $id): void {
         }
 
         $isOwner = $post['user_id'] === $user['id'];
-        $isAdmin = in_array($user['role'], ['admin', 'superadmin'], true);
+        $isSuperAdmin = $user['role'] === 'superadmin';
 
-        if (!$isOwner && !$isAdmin) {
+        // Check if the post belongs to a superadmin
+        $ownerStmt = $db->prepare('SELECT role FROM users WHERE id = ? LIMIT 1');
+        $ownerStmt->execute([$post['user_id']]);
+        $postOwner = $ownerStmt->fetch();
+
+        // Admins cannot delete superadmin posts
+        if (!$isOwner && $user['role'] === 'admin' && $postOwner && $postOwner['role'] === 'superadmin') {
+            jsonResponse(['success' => false, 'message' => 'Admins cannot delete super admin posts'], 403);
+        }
+
+        // Only owner, admin (for non-superadmin posts), or superadmin can delete
+        if (!$isOwner && !in_array($user['role'], ['admin', 'superadmin'], true)) {
             jsonResponse(['success' => false, 'message' => 'Not authorized to delete this post'], 403);
         }
 
