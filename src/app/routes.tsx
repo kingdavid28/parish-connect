@@ -9,10 +9,11 @@ import ParishRecords from "./pages/ParishRecords";
 import Membership from "./pages/Membership";
 import Settings from "./pages/Settings";
 import AdminManagement from "./pages/AdminManagement";
+import Messages from "./pages/Messages";
 import NotFound from "./pages/NotFound";
 
 export const router = createBrowserRouter([
-  { path: "/login",  Component: Login },
+  { path: "/login", Component: Login },
   { path: "/signup", Component: Signup },
   {
     path: "/",
@@ -24,6 +25,7 @@ export const router = createBrowserRouter([
     children: [
       { index: true, Component: Feed },
       { path: "profile/:id", Component: Profile },
+      { path: "messages", Component: Messages },
       { path: "records", Component: ParishRecords },
       { path: "membership", Component: Membership },
       { path: "settings", Component: Settings },

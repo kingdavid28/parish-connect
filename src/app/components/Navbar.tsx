@@ -36,6 +36,7 @@ import {
   Crown,
   UserCircle,
   ChevronDown,
+  MessageCircle,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -47,6 +48,7 @@ export default function Navbar() {
 
   const navLinks = [
     { path: "/", label: "Feed", icon: Home, showFor: "all" },
+    { path: "/messages", label: "Messages", icon: MessageCircle, showFor: "all" },
     { path: "/records", label: "Parish Records", icon: BookOpen, showFor: "all" },
     { path: "/membership", label: "Membership", icon: Users, showFor: "all" },
     { path: "/admin", label: "User Management", icon: Shield, showFor: "admin" },
