@@ -11,8 +11,10 @@ import {
 import {
   Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger,
 } from "../components/ui/dialog";
+import { Popover, PopoverContent, PopoverTrigger } from "../components/ui/popover";
+import { Calendar as CalendarPicker } from "../components/ui/calendar";
 import {
-  Search, Download, Eye, Lock, BookOpen, Calendar, User, MapPin, Shield, Loader,
+  Search, Download, Eye, Lock, BookOpen, Calendar, User, MapPin, Shield, Loader, CalendarIcon, X,
 } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
@@ -40,7 +42,8 @@ export default function ParishRecords() {
   const [records, setRecords] = useState<SacramentRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
-  const [birthdayFilter, setBirthdayFilter] = useState("");
+  const [birthdayFilter, setBirthdayFilter] = useState<Date | undefined>(undefined);
+  const [calendarOpen, setCalendarOpen] = useState(false);
   const [selectedRecord, setSelectedRecord] = useState<SacramentRecord | null>(null);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -51,7 +54,7 @@ export default function ParishRecords() {
       setLoading(true);
       const params = new URLSearchParams({ page: String(p), limit: '20' });
       if (searchQuery) params.set('search', searchQuery);
-      if (birthdayFilter) params.set('birthday', birthdayFilter);
+      if (birthdayFilter) params.set('birthday', format(birthdayFilter, 'yyyy-MM-dd'));
 
       const res = await fetch(`${API}/sacraments?${params}`, {
         headers: { 'Authorization': `Bearer ${getToken()}` },
@@ -122,13 +125,32 @@ export default function ParishRecords() {
                       className="pl-10"
                     />
                   </div>
-                  <Input
-                    type="date"
-                    value={birthdayFilter}
-                    onChange={(e) => setBirthdayFilter(e.target.value)}
-                    className="w-[200px]"
-                    placeholder="Birthday"
-                  />
+                  <div className="flex items-center gap-2">
+                    <Popover open={calendarOpen} onOpenChange={setCalendarOpen}>
+                      <PopoverTrigger asChild>
+                        <Button variant="outline" className={`w-[200px] justify-start text-left font-normal ${!birthdayFilter ? 'text-muted-foreground' : ''}`}>
+                          <CalendarIcon className="mr-2 h-4 w-4" />
+                          {birthdayFilter ? format(birthdayFilter, "MMM d, yyyy") : "Birthday"}
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-auto p-0" align="start">
+                        <CalendarPicker
+                          mode="single"
+                          selected={birthdayFilter}
+                          onSelect={(date) => { setBirthdayFilter(date); setCalendarOpen(false); }}
+                          captionLayout="dropdown"
+                          fromYear={1920}
+                          toYear={new Date().getFullYear()}
+                          defaultMonth={birthdayFilter || new Date(2000, 0)}
+                        />
+                      </PopoverContent>
+                    </Popover>
+                    {birthdayFilter && (
+                      <Button variant="ghost" size="sm" onClick={() => setBirthdayFilter(undefined)}>
+                        <X className="h-4 w-4" />
+                      </Button>
+                    )}
+                  </div>
                   <Button onClick={handleSearch}>
                     <Search className="h-4 w-4 mr-2" />Search
                   </Button>
