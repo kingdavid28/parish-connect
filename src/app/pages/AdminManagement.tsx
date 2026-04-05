@@ -114,7 +114,8 @@ export default function AdminManagement() {
       }
 
       const json = await response.json();
-      setUsers(json.data || json || []);
+      const result = json.data?.items || json.data || json || [];
+      setUsers(Array.isArray(result) ? result : []);
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to load users";
       setError(message);

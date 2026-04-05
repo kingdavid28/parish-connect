@@ -85,7 +85,8 @@ export default function ParishRecords() {
 
         if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
         const data = await response.json();
-        setRecords(data.data || data || []);
+        const result = data.data?.items || data.data || data || [];
+        setRecords(Array.isArray(result) ? result : []);
       } catch (error) {
         console.error('Failed to fetch records:', error);
         toast.error('Failed to load records');
