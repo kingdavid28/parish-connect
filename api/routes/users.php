@@ -155,7 +155,14 @@ function createUser(): void {
 
 function updateUser(string $id): void {
     $user = authenticate();
-    requireRole($user, 'superadmin');
+
+    // Users can update their own name; only superadmin can change roles
+    $isSelf = $user['id'] === $id;
+    $isSuperAdmin = $user['role'] === 'superadmin';
+
+    if (!$isSelf && !$isSuperAdmin) {
+        jsonResponse(['success' => false, 'message' => 'Insufficient permissions'], 403);
+    }
 
     // Fetch current user's created_by to determine parent status
     $db = getDB();
@@ -167,6 +174,11 @@ function updateUser(string $id): void {
     $body = getJsonBody();
     $newRole = $body['role'] ?? null;
     $newName = isset($body['name']) ? trim($body['name']) : null;
+
+    // Non-superadmins cannot change roles
+    if ($newRole && !$isSuperAdmin) {
+        $newRole = null;
+    }
 
     if (!$newRole && !$newName) {
         jsonResponse(['success' => false, 'message' => 'Nothing to update'], 400);
@@ -283,6 +295,80 @@ function deleteUser(string $id): void {
         jsonResponse(['success' => true, 'message' => 'User deleted successfully']);
     } catch (PDOException $e) {
         error_log('Delete user error: ' . $e->getMessage());
+        jsonResponse(['success' => false, 'message' => 'Internal server error'], 500);
+    }
+}
+
+
+function handleAvatarUpload(string $id): void {
+    $user = authenticate();
+
+    // Users can only upload their own avatar, admins/superadmins can upload for anyone
+    if ($user['id'] !== $id && !in_array($user['role'], ['admin', 'superadmin'], true)) {
+        jsonResponse(['success' => false, 'message' => 'Not authorized'], 403);
+    }
+
+    if (!isset($_FILES['avatar']) || $_FILES['avatar']['error'] !== UPLOAD_ERR_OK) {
+        jsonResponse(['success' => false, 'message' => 'No file uploaded or upload error'], 400);
+    }
+
+    $file = $_FILES['avatar'];
+    $maxSize = 2 * 1024 * 1024; // 2MB
+
+    if ($file['size'] > $maxSize) {
+        jsonResponse(['success' => false, 'message' => 'File too large. Max 2MB.'], 400);
+    }
+
+    $allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+    $finfo = finfo_open(FILEINFO_MIME_TYPE);
+    $mimeType = finfo_file($finfo, $file['tmp_name']);
+    finfo_close($finfo);
+
+    if (!in_array($mimeType, $allowedTypes, true)) {
+        jsonResponse(['success' => false, 'message' => 'Invalid file type. Allowed: JPG, PNG, GIF, WebP'], 400);
+    }
+
+    $ext = match ($mimeType) {
+        'image/jpeg' => 'jpg',
+        'image/png'  => 'png',
+        'image/gif'  => 'gif',
+        'image/webp' => 'webp',
+        default      => 'jpg',
+    };
+
+    $uploadDir = __DIR__ . '/../uploads/avatars/';
+    if (!is_dir($uploadDir)) {
+        mkdir($uploadDir, 0755, true);
+    }
+
+    $filename = $id . '-' . time() . '.' . $ext;
+    $filepath = $uploadDir . $filename;
+
+    if (!move_uploaded_file($file['tmp_name'], $filepath)) {
+        jsonResponse(['success' => false, 'message' => 'Failed to save file'], 500);
+    }
+
+    // Build the public URL
+    $avatarUrl = '/parish-connect/api/uploads/avatars/' . $filename;
+
+    try {
+        $db = getDB();
+        // Delete old avatar file if exists
+        $stmt = $db->prepare('SELECT avatar FROM users WHERE id = ? LIMIT 1');
+        $stmt->execute([$id]);
+        $oldUser = $stmt->fetch();
+        if ($oldUser && $oldUser['avatar']) {
+            $oldPath = __DIR__ . '/..' . str_replace('/parish-connect/api', '', $oldUser['avatar']);
+            if (file_exists($oldPath)) {
+                unlink($oldPath);
+            }
+        }
+
+        $db->prepare('UPDATE users SET avatar = ? WHERE id = ?')->execute([$avatarUrl, $id]);
+
+        jsonResponse(['success' => true, 'message' => 'Avatar updated', 'data' => ['avatar' => $avatarUrl]]);
+    } catch (PDOException $e) {
+        error_log('Avatar upload error: ' . $e->getMessage());
         jsonResponse(['success' => false, 'message' => 'Internal server error'], 500);
     }
 }

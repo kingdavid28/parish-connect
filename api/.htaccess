@@ -18,6 +18,9 @@ RewriteRule ^db\.php$ - [F]
 RewriteRule ^test\.php$ - [F]
 RewriteRule ^setup-admin\.php$ - [F]
 
+# Serve uploaded files directly
+RewriteRule ^uploads/ - [L]
+
 # Route everything through index.php
 RewriteCond %{REQUEST_FILENAME} !-f
 RewriteCond %{REQUEST_FILENAME} !-d

@@ -287,7 +287,7 @@ export default function Feed() {
                   <div>
                     <p className="font-medium">{post.author_name}</p>
                     <p className="text-sm text-gray-500">
-                      {formatDistanceToNow(new Date(post.created_at), {
+                      {formatDistanceToNow(new Date(post.created_at + 'Z'), {
                         addSuffix: true,
                       })}
                     </p>

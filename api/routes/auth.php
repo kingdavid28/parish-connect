@@ -11,6 +11,7 @@ function handleAuth(string $method, string $action): void {
     match (true) {
         $method === 'POST' && $action === 'login'    => authLogin(),
         $method === 'POST' && $action === 'register' => authRegister(),
+        $method === 'POST' && $action === 'password' => authChangePassword(),
         $method === 'GET'  && $action === 'me'       => authMe(),
         default => jsonResponse(['success' => false, 'message' => 'Not found'], 404),
     };
@@ -163,6 +164,46 @@ function authMe(): void {
         ]);
     } catch (PDOException $e) {
         error_log('Auth me error: ' . $e->getMessage());
+        jsonResponse(['success' => false, 'message' => 'Internal server error'], 500);
+    }
+}
+
+
+function authChangePassword(): void {
+    $user = authenticate();
+    $body = getJsonBody();
+
+    $currentPassword = $body['currentPassword'] ?? '';
+    $newPassword     = $body['newPassword'] ?? '';
+
+    if (!$currentPassword || !$newPassword) {
+        jsonResponse(['success' => false, 'message' => 'Current and new password are required'], 400);
+    }
+
+    if (strlen($newPassword) < 8) {
+        jsonResponse(['success' => false, 'message' => 'New password must be at least 8 characters'], 400);
+    }
+
+    try {
+        $db   = getDB();
+        $stmt = $db->prepare('SELECT password_hash FROM users WHERE id = ? AND is_active = 1 LIMIT 1');
+        $stmt->execute([$user['id']]);
+        $row = $stmt->fetch();
+
+        if (!$row || !password_verify($currentPassword, $row['password_hash'])) {
+            jsonResponse(['success' => false, 'message' => 'Current password is incorrect'], 401);
+        }
+
+        $hash = password_hash($newPassword, PASSWORD_BCRYPT, ['cost' => 12]);
+        $db->prepare('UPDATE users SET password_hash = ? WHERE id = ?')->execute([$hash, $user['id']]);
+
+        $db->prepare(
+            'INSERT INTO audit_logs (id, user_id, action, ip_address) VALUES (?, ?, ?, ?)'
+        )->execute([generateUuid(), $user['id'], 'change_password', getClientIp()]);
+
+        jsonResponse(['success' => true, 'message' => 'Password changed successfully']);
+    } catch (PDOException $e) {
+        error_log('Change password error: ' . $e->getMessage());
         jsonResponse(['success' => false, 'message' => 'Internal server error'], 500);
     }
 }
