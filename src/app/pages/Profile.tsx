@@ -47,9 +47,9 @@ export default function Profile() {
     const fetchProfile = async () => {
       try {
         setLoading(true);
-        const token = localStorage.getItem('parish_token');
+        const token = localStorage.getItem('parish_token') || sessionStorage.getItem('parish_token');
         const userId = id || currentUser?.id;
-        
+
         if (!userId) {
           throw new Error('User ID not found');
         }

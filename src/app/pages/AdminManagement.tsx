@@ -101,18 +101,18 @@ export default function AdminManagement() {
     try {
       setIsLoadingUsers(true);
       setError(null);
-      const token = localStorage.getItem('parish_token');
+      const token = localStorage.getItem('parish_token') || sessionStorage.getItem('parish_token');
       const response = await fetch(`${API_BASE_URL}/users`, {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
         }
       });
-      
+
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
-      
+
       const json = await response.json();
       setUsers(json.data || json || []);
     } catch (err) {
@@ -144,7 +144,7 @@ export default function AdminManagement() {
 
     try {
       setIsSubmitting(true);
-      const token = localStorage.getItem('parish_token');
+      const token = localStorage.getItem('parish_token') || sessionStorage.getItem('parish_token');
       const response = await fetch(`${API_BASE_URL}/users`, {
         method: "POST",
         headers: {
@@ -155,7 +155,7 @@ export default function AdminManagement() {
       });
 
       const json = await response.json();
-      
+
       if (!response.ok) {
         throw new Error(json.message || "Failed to create user");
       }
@@ -174,20 +174,20 @@ export default function AdminManagement() {
 
   const handleDeleteUser = async () => {
     if (!userToDelete) return;
-    
+
     try {
       setIsSubmitting(true);
-      const token = localStorage.getItem('parish_token');
+      const token = localStorage.getItem('parish_token') || sessionStorage.getItem('parish_token');
       const response = await fetch(`${API_BASE_URL}/users/${userToDelete.id}`, {
         method: "DELETE",
-        headers: { 
+        headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
         },
       });
 
       const json = await response.json();
-      
+
       if (!response.ok) {
         throw new Error(json.message || "Failed to delete user");
       }
@@ -262,9 +262,9 @@ export default function AdminManagement() {
                 <p className="text-red-900 font-medium">Failed to load users</p>
                 <p className="text-red-800 text-sm">{error}</p>
               </div>
-              <Button 
-                variant="ghost" 
-                size="sm" 
+              <Button
+                variant="ghost"
+                size="sm"
                 onClick={fetchUsers}
                 className="ml-auto"
               >
@@ -547,7 +547,7 @@ export default function AdminManagement() {
             <AlertDialogHeader>
               <AlertDialogTitle>Delete User</AlertDialogTitle>
               <AlertDialogDescription>
-                Are you sure you want to delete <strong>{userToDelete?.name}</strong>? 
+                Are you sure you want to delete <strong>{userToDelete?.name}</strong>?
                 This action cannot be undone and will remove all associated data.
               </AlertDialogDescription>
             </AlertDialogHeader>
