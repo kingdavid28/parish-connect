@@ -11,7 +11,8 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from "../components/ui/dialog";
 import {
-  Calendar, Mail, Shield, Users, BookOpen, Heart, MessageCircle, Loader, Send, Crown, UserCheck, UserPlus,
+  Calendar, Mail, Shield, BookOpen, Heart, MessageCircle, Loader, Send, Crown,
+  UserCheck, UserPlus, Church, Cake,
 } from "lucide-react";
 import { format, formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
@@ -24,9 +25,27 @@ interface Message {
   id: string; sender_id: string; receiver_id: string; content: string;
   is_read: number; created_at: string; sender_name: string; sender_avatar: string;
 }
+interface SacramentRecord {
+  id: string; name: string; birthday: string; parents_name: string;
+  baptized_by: string; canonical_book: string; baptismal_date: string;
+  godparents_name: string; confirmed_by: string; confirmbook_no: string;
+  confirmed_date: string; confirm_sponsor: string;
+}
+interface Post {
+  id: string; content: string; type: string; created_at: string;
+  likes: number; comments: number; is_liked: boolean;
+  author_name: string; author_avatar: string;
+}
 
 const API = '/parish-connect/api';
 const getToken = () => localStorage.getItem('parish_token') || sessionStorage.getItem('parish_token');
+
+function safeTimeAgo(d: string): string {
+  try {
+    const date = new Date(d.includes('T') || d.includes('Z') ? d : d + 'Z');
+    return isNaN(date.getTime()) ? '' : formatDistanceToNow(date, { addSuffix: true });
+  } catch { return ''; }
+}
 
 export default function Profile() {
   const { id } = useParams<{ id: string }>();
@@ -34,53 +53,106 @@ export default function Profile() {
   const [profileData, setProfileData] = useState<ProfileData | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("timeline");
+
+  // Follow state
   const [isFollowing, setIsFollowing] = useState(false);
   const [followerCount, setFollowerCount] = useState(0);
   const [followingCount, setFollowingCount] = useState(0);
+
+  // Message state
   const [showMessages, setShowMessages] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState("");
   const [loadingMessages, setLoadingMessages] = useState(false);
+
+  // Timeline state (sacramental record)
+  const [sacramentRecord, setSacramentRecord] = useState<SacramentRecord | null>(null);
+  const [loadingTimeline, setLoadingTimeline] = useState(false);
+
+  // Posts state
+  const [userPosts, setUserPosts] = useState<Post[]>([]);
+  const [loadingPosts, setLoadingPosts] = useState(false);
 
   const profileId = id || currentUser?.id;
   const isOwnProfile = currentUser?.id === profileId;
 
   useEffect(() => {
     if (!profileId) return;
-    const fetchProfile = async () => {
-      try {
-        setLoading(true);
-        const res = await fetch(`${API}/users/${profileId}`, {
-          headers: { 'Authorization': `Bearer ${getToken()}` },
-        });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = await res.json();
-        setProfileData(data.data || data);
-      } catch { toast.error('Failed to load profile'); }
-      finally { setLoading(false); }
-    };
-    const fetchFollowStatus = async () => {
-      try {
-        const res = await fetch(`${API}/follows/${profileId}/status`, {
-          headers: { 'Authorization': `Bearer ${getToken()}` },
-        });
-        const data = await res.json();
-        if (data.success) {
-          setIsFollowing(data.data.is_following);
-          setFollowerCount(data.data.followers);
-          setFollowingCount(data.data.following);
-        }
-      } catch { /* ignore */ }
-    };
     fetchProfile();
     fetchFollowStatus();
   }, [profileId]);
 
+  useEffect(() => {
+    if (activeTab === 'timeline' && profileData && !sacramentRecord && !loadingTimeline) fetchTimeline();
+    if (activeTab === 'posts' && profileData && userPosts.length === 0 && !loadingPosts) fetchUserPosts();
+  }, [activeTab, profileData]);
+
+  const fetchProfile = async () => {
+    try {
+      setLoading(true);
+      const res = await fetch(`${API}/users/${profileId}`, {
+        headers: { 'Authorization': `Bearer ${getToken()}` },
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      setProfileData(data.data || data);
+    } catch { toast.error('Failed to load profile'); }
+    finally { setLoading(false); }
+  };
+
+  const fetchFollowStatus = async () => {
+    try {
+      const res = await fetch(`${API}/follows/${profileId}/status`, {
+        headers: { 'Authorization': `Bearer ${getToken()}` },
+      });
+      const data = await res.json();
+      if (data.success) {
+        setIsFollowing(data.data.is_following);
+        setFollowerCount(data.data.followers);
+        setFollowingCount(data.data.following);
+      }
+    } catch { /* ignore */ }
+  };
+
+  const fetchTimeline = async () => {
+    if (!profileData?.name) return;
+    try {
+      setLoadingTimeline(true);
+      const res = await fetch(`${API}/sacraments?search=${encodeURIComponent(profileData.name)}&limit=1`, {
+        headers: { 'Authorization': `Bearer ${getToken()}` },
+      });
+      const data = await res.json();
+      if (data.success && data.data?.items?.length > 0) {
+        setSacramentRecord(data.data.items[0]);
+      }
+    } catch { /* ignore */ }
+    finally { setLoadingTimeline(false); }
+  };
+
+  const fetchUserPosts = async () => {
+    try {
+      setLoadingPosts(true);
+      const res = await fetch(`${API}/posts`, {
+        headers: { 'Authorization': `Bearer ${getToken()}` },
+      });
+      const data = await res.json();
+      if (data.success) {
+        // Filter posts by this user
+        const filtered = (data.data || []).filter((p: Post) => {
+          const postAuthor = p.author_name?.toLowerCase().trim();
+          const profileName = profileData?.name?.toLowerCase().trim();
+          return postAuthor === profileName;
+        });
+        setUserPosts(filtered);
+      }
+    } catch { /* ignore */ }
+    finally { setLoadingPosts(false); }
+  };
+
   const handleToggleFollow = async () => {
     try {
       const res = await fetch(`${API}/follows/${profileId}`, {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${getToken()}` },
+        method: 'POST', headers: { 'Authorization': `Bearer ${getToken()}` },
       });
       const data = await res.json();
       if (data.success) {
@@ -93,10 +165,6 @@ export default function Profile() {
 
   const openMessages = async () => {
     setShowMessages(true);
-    await fetchMessages();
-  };
-
-  const fetchMessages = async () => {
     try {
       setLoadingMessages(true);
       const res = await fetch(`${API}/messages/${profileId}`, {
@@ -132,6 +200,15 @@ export default function Profile() {
     }
   };
 
+  const getPostIcon = (type: string) => {
+    switch (type) {
+      case "baptism_anniversary": return <Cake className="h-4 w-4" />;
+      case "parish_event": return <Calendar className="h-4 w-4" />;
+      case "research": return <BookOpen className="h-4 w-4" />;
+      default: return <Church className="h-4 w-4" />;
+    }
+  };
+
   if (loading) return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center">
       <Loader className="h-8 w-8 animate-spin" />
@@ -147,6 +224,7 @@ export default function Profile() {
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="max-w-5xl mx-auto px-4 py-6">
+        {/* Profile Header */}
         <Card className="mb-6">
           <CardContent className="pt-6">
             <div className="flex flex-col md:flex-row items-start md:items-center gap-6">
@@ -160,7 +238,6 @@ export default function Profile() {
                   {getRoleBadge(profileData.role)}
                 </div>
                 <p className="text-gray-600 mb-4">{profileData.bio || "No bio yet"}</p>
-
                 <div className="flex flex-wrap gap-4 mb-2 text-sm text-gray-600">
                   <div className="flex items-center gap-1"><Mail className="h-4 w-4" />{profileData.email}</div>
                   {(profileData.member_since || profileData.created_at) && (
@@ -170,18 +247,13 @@ export default function Profile() {
                     </div>
                   )}
                 </div>
-
                 <div className="flex gap-4 mb-4 text-sm">
                   <span><span className="font-semibold">{followerCount}</span> followers</span>
                   <span><span className="font-semibold">{followingCount}</span> following</span>
                 </div>
-
                 {!isOwnProfile && (
                   <div className="flex gap-2">
-                    <Button
-                      variant={isFollowing ? "outline" : "default"}
-                      onClick={handleToggleFollow}
-                    >
+                    <Button variant={isFollowing ? "outline" : "default"} onClick={handleToggleFollow}>
                       {isFollowing ? <><UserCheck className="h-4 w-4 mr-2" />Following</> : <><UserPlus className="h-4 w-4 mr-2" />Follow</>}
                     </Button>
                     <Button variant="outline" onClick={openMessages}>
@@ -194,22 +266,101 @@ export default function Profile() {
           </CardContent>
         </Card>
 
+        {/* Tabs */}
         <Tabs value={activeTab} onValueChange={setActiveTab}>
           <TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="timeline">Timeline</TabsTrigger>
             <TabsTrigger value="posts">Posts</TabsTrigger>
             <TabsTrigger value="research">Research</TabsTrigger>
           </TabsList>
+
+          {/* Timeline Tab - Sacramental Record */}
           <TabsContent value="timeline" className="mt-6">
-            <Card><CardHeader><CardTitle>Faith Journey Timeline</CardTitle></CardHeader>
-              <CardContent><div className="text-center py-12"><BookOpen className="h-12 w-12 text-gray-400 mx-auto mb-4" /><p className="text-gray-600">Timeline data coming soon</p></div></CardContent>
-            </Card>
+            {loadingTimeline && (
+              <div className="flex justify-center py-12"><Loader className="h-6 w-6 animate-spin" /></div>
+            )}
+            {!loadingTimeline && sacramentRecord && (
+              <div className="space-y-4">
+                <Card>
+                  <CardHeader><CardTitle className="flex items-center gap-2"><Cake className="h-5 w-5" />Baptism</CardTitle></CardHeader>
+                  <CardContent>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                      <div><span className="text-gray-500">Baptismal Date</span><p className="font-medium">{sacramentRecord.baptismal_date || 'N/A'}</p></div>
+                      <div><span className="text-gray-500">Baptized By</span><p className="font-medium">{sacramentRecord.baptized_by || 'N/A'}</p></div>
+                      <div><span className="text-gray-500">Godparents</span><p className="font-medium">{sacramentRecord.godparents_name || 'N/A'}</p></div>
+                      <div><span className="text-gray-500">Canonical Book</span><p className="font-medium">{sacramentRecord.canonical_book || 'N/A'}</p></div>
+                      <div><span className="text-gray-500">Birthday</span><p className="font-medium">{sacramentRecord.birthday || 'N/A'}</p></div>
+                      <div><span className="text-gray-500">Parents</span><p className="font-medium">{sacramentRecord.parents_name || 'N/A'}</p></div>
+                    </div>
+                  </CardContent>
+                </Card>
+                {sacramentRecord.confirmed_by && (
+                  <Card>
+                    <CardHeader><CardTitle className="flex items-center gap-2"><Shield className="h-5 w-5" />Confirmation</CardTitle></CardHeader>
+                    <CardContent>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                        <div><span className="text-gray-500">Confirmed Date</span><p className="font-medium">{sacramentRecord.confirmed_date || 'N/A'}</p></div>
+                        <div><span className="text-gray-500">Confirmed By</span><p className="font-medium">{sacramentRecord.confirmed_by}</p></div>
+                        <div><span className="text-gray-500">Sponsor</span><p className="font-medium">{sacramentRecord.confirm_sponsor || 'N/A'}</p></div>
+                        <div><span className="text-gray-500">Book No.</span><p className="font-medium">{sacramentRecord.confirmbook_no || 'N/A'}</p></div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+                <Card className="bg-amber-50 border-amber-200">
+                  <CardContent className="pt-6">
+                    <p className="text-sm text-amber-700">This record is for reference only. For legal and official purposes, please visit the parish office.</p>
+                  </CardContent>
+                </Card>
+              </div>
+            )}
+            {!loadingTimeline && !sacramentRecord && (
+              <Card><CardContent className="py-12 text-center">
+                <BookOpen className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                <p className="text-gray-600">No sacramental record found</p>
+                <p className="text-sm text-gray-500 mt-1">Your name may not match the parish records exactly</p>
+              </CardContent></Card>
+            )}
           </TabsContent>
-          <TabsContent value="posts" className="mt-6">
-            <Card><CardContent className="py-12 text-center"><Heart className="h-12 w-12 text-gray-400 mx-auto mb-4" /><p className="text-gray-600">User posts will appear here</p></CardContent></Card>
+
+          {/* Posts Tab */}
+          <TabsContent value="posts" className="mt-6 space-y-4">
+            {loadingPosts && (
+              <div className="flex justify-center py-12"><Loader className="h-6 w-6 animate-spin" /></div>
+            )}
+            {!loadingPosts && userPosts.length === 0 && (
+              <Card><CardContent className="py-12 text-center">
+                <Heart className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                <p className="text-gray-600">No posts yet</p>
+              </CardContent></Card>
+            )}
+            {userPosts.map((post) => (
+              <Card key={post.id}>
+                <CardContent className="pt-6">
+                  <div className="flex items-center gap-2 mb-3">
+                    <Badge variant="secondary" className="flex items-center gap-1 text-xs">
+                      {getPostIcon(post.type)}
+                      {post.type === 'parish_event' ? 'Event' : post.type === 'research' ? 'Research' : post.type === 'baptism_anniversary' ? 'Baptism' : 'Community'}
+                    </Badge>
+                    <span className="text-xs text-gray-400">{safeTimeAgo(post.created_at)}</span>
+                  </div>
+                  <p className="text-gray-800 whitespace-pre-wrap">{post.content}</p>
+                  <div className="flex items-center gap-4 mt-4 pt-3 border-t text-sm text-gray-500">
+                    <span className="flex items-center gap-1"><Heart className="h-4 w-4" />{post.likes}</span>
+                    <span className="flex items-center gap-1"><MessageCircle className="h-4 w-4" />{post.comments}</span>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
           </TabsContent>
+
+          {/* Research Tab */}
           <TabsContent value="research" className="mt-6">
-            <Card><CardContent className="py-12 text-center"><BookOpen className="h-12 w-12 text-gray-400 mx-auto mb-4" /><p className="text-gray-600">Family research tree coming soon</p></CardContent></Card>
+            <Card><CardContent className="py-12 text-center">
+              <BookOpen className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+              <p className="text-gray-600">Family research tree coming soon</p>
+              <p className="text-sm text-gray-500 mt-1">Genealogical data and connections</p>
+            </CardContent></Card>
           </TabsContent>
         </Tabs>
 
@@ -232,23 +383,17 @@ export default function Profile() {
               )}
               {messages.map((msg) => (
                 <div key={msg.id} className={`flex ${msg.sender_id === currentUser?.id ? 'justify-end' : 'justify-start'}`}>
-                  <div className={`max-w-[75%] rounded-lg px-4 py-2 ${msg.sender_id === currentUser?.id ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-800'
-                    }`}>
+                  <div className={`max-w-[75%] rounded-lg px-4 py-2 ${msg.sender_id === currentUser?.id ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-800'}`}>
                     <p className="text-sm">{msg.content}</p>
                     <p className={`text-xs mt-1 ${msg.sender_id === currentUser?.id ? 'text-blue-200' : 'text-gray-400'}`}>
-                      {formatDistanceToNow(new Date(msg.created_at + 'Z'), { addSuffix: true })}
+                      {safeTimeAgo(msg.created_at)}
                     </p>
                   </div>
                 </div>
               ))}
             </div>
             <div className="flex gap-2 pt-2 border-t">
-              <Input
-                placeholder="Type a message..."
-                value={newMessage}
-                onChange={(e) => setNewMessage(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
-              />
+              <Input placeholder="Type a message..." value={newMessage} onChange={(e) => setNewMessage(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()} />
               <Button onClick={handleSendMessage} size="sm"><Send className="h-4 w-4" /></Button>
             </div>
           </DialogContent>
