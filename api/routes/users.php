@@ -9,6 +9,7 @@ function handleUsers(string $method, ?string $id): void {
         $method === 'GET'    && !!$id => getUser($id),
         $method === 'GET'    && !$id  => listUsers(),
         $method === 'POST'   && !$id  => createUser(),
+        $method === 'PUT'    && !!$id => updateUser($id),
         $method === 'DELETE' && !!$id => deleteUser($id),
         default => jsonResponse(['success' => false, 'message' => 'Not found'], 404),
     };
@@ -148,6 +149,87 @@ function createUser(): void {
         jsonResponse(['success' => true, 'message' => 'User created successfully', 'data' => ['id' => $id]], 201);
     } catch (PDOException $e) {
         error_log('Create user error: ' . $e->getMessage());
+        jsonResponse(['success' => false, 'message' => 'Internal server error'], 500);
+    }
+}
+
+function updateUser(string $id): void {
+    $user = authenticate();
+    requireRole($user, 'superadmin');
+
+    // Fetch current user's created_by to determine parent status
+    $db = getDB();
+    $selfStmt = $db->prepare('SELECT created_by FROM users WHERE id = ? LIMIT 1');
+    $selfStmt->execute([$user['id']]);
+    $selfRow = $selfStmt->fetch();
+    $isParent = empty($selfRow['created_by']);
+
+    $body = getJsonBody();
+    $newRole = $body['role'] ?? null;
+    $newName = isset($body['name']) ? trim($body['name']) : null;
+
+    if (!$newRole && !$newName) {
+        jsonResponse(['success' => false, 'message' => 'Nothing to update'], 400);
+    }
+
+    try {
+        $stmt = $db->prepare('SELECT id, role, created_by FROM users WHERE id = ? AND is_active = 1 LIMIT 1');
+        $stmt->execute([$id]);
+        $target = $stmt->fetch();
+
+        if (!$target) {
+            jsonResponse(['success' => false, 'message' => 'User not found'], 404);
+        }
+
+        // Cannot edit own role
+        if ($id === $user['id'] && $newRole) {
+            jsonResponse(['success' => false, 'message' => 'You cannot change your own role'], 400);
+        }
+
+        // Cannot edit parent superadmin (unless you ARE the parent)
+        if ($target['role'] === 'superadmin' && empty($target['created_by']) && !$isParent) {
+            jsonResponse(['success' => false, 'message' => 'Cannot modify the parent super admin'], 403);
+        }
+
+        // Child superadmins cannot change another superadmin's role
+        if ($target['role'] === 'superadmin' && !$isParent) {
+            jsonResponse(['success' => false, 'message' => 'Only the parent super admin can modify super admin accounts'], 403);
+        }
+
+        if ($newRole) {
+            $validRoles = ['admin', 'parishioner', 'superadmin'];
+            if (!in_array($newRole, $validRoles, true)) {
+                jsonResponse(['success' => false, 'message' => 'Invalid role'], 400);
+            }
+            // Only parent superadmin can assign superadmin role
+            if ($newRole === 'superadmin' && !$isParent) {
+                jsonResponse(['success' => false, 'message' => 'Only the parent super admin can assign super admin role'], 403);
+            }
+        }
+
+        $updates = [];
+        $params  = [];
+
+        if ($newName) {
+            $updates[] = 'name = ?';
+            $params[]  = $newName;
+        }
+        if ($newRole) {
+            $updates[] = 'role = ?';
+            $params[]  = $newRole;
+        }
+
+        $params[] = $id;
+        $db->prepare('UPDATE users SET ' . implode(', ', $updates) . ' WHERE id = ?')->execute($params);
+
+        $db->prepare(
+            'INSERT INTO audit_logs (id, user_id, action, target_type, target_id, ip_address)
+             VALUES (?, ?, ?, ?, ?, ?)'
+        )->execute([generateUuid(), $user['id'], 'update_user', 'user', $id, getClientIp()]);
+
+        jsonResponse(['success' => true, 'message' => 'User updated successfully']);
+    } catch (PDOException $e) {
+        error_log('Update user error: ' . $e->getMessage());
         jsonResponse(['success' => false, 'message' => 'Internal server error'], 500);
     }
 }

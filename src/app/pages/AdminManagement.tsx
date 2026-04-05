@@ -75,7 +75,7 @@ interface User {
 const API_BASE_URL = '/parish-connect/api';
 
 export default function AdminManagement() {
-  const { user: currentUser, hasPermission } = useAuth();
+  const { user: currentUser, hasPermission, isSuperAdmin } = useAuth();
   const [users, setUsers] = useState<User[]>([]);
   const [isLoadingUsers, setIsLoadingUsers] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -83,7 +83,11 @@ export default function AdminManagement() {
   const [roleFilter, setRoleFilter] = useState<string>("all");
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [showEditDialog, setShowEditDialog] = useState(false);
   const [userToDelete, setUserToDelete] = useState<User | null>(null);
+  const [userToEdit, setUserToEdit] = useState<User | null>(null);
+  const [editRole, setEditRole] = useState("");
+  const [editName, setEditName] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formData, setFormData] = useState({
     name: "",
@@ -96,6 +100,40 @@ export default function AdminManagement() {
   const canDeleteAdmin = hasPermission(Permission.DELETE_ADMIN);
   const canDeleteUser = hasPermission(Permission.DELETE_USER);
   const canEditUser = hasPermission(Permission.EDIT_USER);
+
+  const getToken = () => localStorage.getItem('parish_token') || sessionStorage.getItem('parish_token');
+
+  const handleEditUser = async () => {
+    if (!userToEdit) return;
+    try {
+      setIsSubmitting(true);
+      const response = await fetch(`${API_BASE_URL}/users/${userToEdit.id}`, {
+        method: "PUT",
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${getToken()}`,
+        },
+        body: JSON.stringify({ role: editRole, name: editName }),
+      });
+      const json = await response.json();
+      if (!response.ok) throw new Error(json.message || "Failed to update user");
+      toast.success("User updated successfully");
+      setShowEditDialog(false);
+      setUserToEdit(null);
+      await fetchUsers();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to update user");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const openEditDialog = (user: User) => {
+    setUserToEdit(user);
+    setEditRole(user.role);
+    setEditName(user.name);
+    setShowEditDialog(true);
+  };
 
   const fetchUsers = async () => {
     try {
@@ -417,9 +455,19 @@ export default function AdminManagement() {
                         </TableCell>
                         <TableCell className="text-right">
                           <div className="flex justify-end space-x-2">
+                            {isSuperAdmin && user.id !== currentUser?.id && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => openEditDialog(user)}
+                              >
+                                <Edit className="h-4 w-4 text-blue-600" />
+                              </Button>
+                            )}
                             {user.id !== currentUser?.id &&
                               ((user.role === "admin" && canDeleteAdmin) ||
-                                (user.role === "parishioner" && canDeleteUser)) && (
+                                (user.role === "parishioner" && canDeleteUser) ||
+                                (user.role === "superadmin" && isSuperAdmin)) && (
                                 <Button
                                   variant="ghost"
                                   size="sm"
@@ -580,6 +628,64 @@ export default function AdminManagement() {
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
+
+        {/* Edit User Dialog */}
+        <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Edit User</DialogTitle>
+              <DialogDescription>
+                Update {userToEdit?.name}'s account details
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <Label htmlFor="editName">Full Name</Label>
+                <Input
+                  id="editName"
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                  disabled={isSubmitting}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="editRole">Role</Label>
+                <Select
+                  value={editRole}
+                  onValueChange={setEditRole}
+                  disabled={isSubmitting}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="parishioner">Parishioner</SelectItem>
+                    <SelectItem value="admin">Administrator</SelectItem>
+                    <SelectItem value="superadmin">Super Administrator</SelectItem>
+                  </SelectContent>
+                </Select>
+                {editRole === "superadmin" && (
+                  <p className="text-sm text-amber-600 flex items-center gap-2">
+                    <AlertCircle className="h-4 w-4" />
+                    This user will have full admin privileges
+                  </p>
+                )}
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setShowEditDialog(false)} disabled={isSubmitting}>
+                Cancel
+              </Button>
+              <Button onClick={handleEditUser} disabled={isSubmitting}>
+                {isSubmitting ? (
+                  <><Loader className="h-4 w-4 mr-2 animate-spin" />Saving...</>
+                ) : (
+                  "Save Changes"
+                )}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </div>
   );
