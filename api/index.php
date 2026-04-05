@@ -184,5 +184,12 @@ if ($resource === 'records') {
     exit;
 }
 
+// Sacramental records from SVF parish database
+if ($resource === 'sacraments') {
+    require_once __DIR__ . '/routes/sacraments.php';
+    handleSacraments($method, $id, $action);
+    exit;
+}
+
 // 404 Not Found
 jsonResponse(['success' => false, 'message' => 'Not found'], 404);

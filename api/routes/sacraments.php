@@ -1,0 +1,105 @@
+<?php
+declare(strict_types=1);
+
+require_once __DIR__ . '/../middleware/auth.php';
+
+/**
+ * Connect to the SVF parish sacraments database (separate from main DB).
+ */
+function getSacramentsDB(): PDO {
+    static $pdo = null;
+    if ($pdo) return $pdo;
+
+    $pdo = new PDO(
+        'mysql:host=localhost;port=3306;dbname=u222318185_svf_parish;charset=utf8mb4',
+        'u222318185_svf_user',
+        'kNooCkk@0228a1',
+        [
+            PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
+            PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+            PDO::ATTR_EMULATE_PREPARES   => false,
+        ]
+    );
+    return $pdo;
+}
+
+function handleSacraments(string $method, ?string $id, ?string $action): void {
+    match (true) {
+        $method === 'GET' && !$id       => searchSacraments(),
+        $method === 'GET' && !!$id      => getSacrament($id),
+        default => jsonResponse(['success' => false, 'message' => 'Not found'], 404),
+    };
+    exit;
+}
+
+function searchSacraments(): void {
+    authenticate();
+
+    $search = trim($_GET['search'] ?? '');
+    $birthday = trim($_GET['birthday'] ?? '');
+    $page   = max(1, (int)($_GET['page'] ?? 1));
+    $limit  = min(50, max(1, (int)($_GET['limit'] ?? 20)));
+    $offset = ($page - 1) * $limit;
+
+    try {
+        $db     = getSacramentsDB();
+        $where  = 'WHERE 1=1';
+        $params = [];
+
+        if ($search) {
+            $where  .= ' AND name LIKE ?';
+            $params[] = '%' . $search . '%';
+        }
+        if ($birthday) {
+            $where  .= ' AND birthday = ?';
+            $params[] = $birthday;
+        }
+
+        $countStmt = $db->prepare("SELECT COUNT(*) AS total FROM sacraments $where");
+        $countStmt->execute($params);
+        $total = (int)$countStmt->fetch()['total'];
+
+        $dataStmt = $db->prepare(
+            "SELECT id, name, birthday, parents_name, baptized_by, canonical_book,
+                    baptismal_date, godparents_name, confirmed_by, confirmbook_no,
+                    confirmed_date, confirm_sponsor
+             FROM sacraments $where ORDER BY name ASC LIMIT ? OFFSET ?"
+        );
+        $dataStmt->execute(array_merge($params, [$limit, $offset]));
+        $items = $dataStmt->fetchAll();
+
+        jsonResponse([
+            'success' => true,
+            'data'    => [
+                'items'    => $items,
+                'total'    => $total,
+                'page'     => $page,
+                'pageSize' => $limit,
+                'hasMore'  => ($offset + count($items)) < $total,
+            ],
+        ]);
+    } catch (PDOException $e) {
+        error_log('Sacraments search error: ' . $e->getMessage());
+        jsonResponse(['success' => false, 'message' => 'Internal server error'], 500);
+    }
+}
+
+function getSacrament(string $id): void {
+    authenticate();
+
+    try {
+        $db   = getSacramentsDB();
+        $stmt = $db->prepare('SELECT * FROM sacraments WHERE id = ? LIMIT 1');
+        $stmt->execute([$id]);
+        $record = $stmt->fetch();
+
+        if (!$record) {
+            jsonResponse(['success' => false, 'message' => 'Record not found'], 404);
+        }
+
+        jsonResponse(['success' => true, 'data' => $record]);
+    } catch (PDOException $e) {
+        error_log('Get sacrament error: ' . $e->getMessage());
+        jsonResponse(['success' => false, 'message' => 'Internal server error'], 500);
+    }
+}
