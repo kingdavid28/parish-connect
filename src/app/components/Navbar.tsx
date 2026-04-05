@@ -50,7 +50,7 @@ export default function Navbar() {
     { path: "/", label: "Feed", icon: Home, showFor: "all" },
     { path: "/messages", label: "Messages", icon: MessageCircle, showFor: "all" },
     { path: "/records", label: "Parish Records", icon: BookOpen, showFor: "all" },
-    { path: "/membership", label: "Membership", icon: Users, showFor: "all" },
+    { path: "/membership", label: "Membership", icon: Users, showFor: "admin" },
     { path: "/admin", label: "User Management", icon: Shield, showFor: "admin" },
   ];
 
