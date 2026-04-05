@@ -3,34 +3,29 @@ import { useAuth, Permission } from "../context/AuthContext";
 import { Card, CardContent, CardHeader } from "../components/ui/card";
 import { Avatar, AvatarImage, AvatarFallback } from "../components/ui/avatar";
 import { Button } from "../components/ui/button";
+import { Input } from "../components/ui/input";
 import { Textarea } from "../components/ui/textarea";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
+import { Tabs, TabsList, TabsTrigger } from "../components/ui/tabs";
 import { Badge } from "../components/ui/badge";
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
 } from "../components/ui/alert-dialog";
 import {
-  Heart,
-  MessageCircle,
-  Share2,
-  Calendar,
-  Cake,
-  Church,
-  BookOpen,
-  Users,
-  Trash2,
-  Loader,
+  Heart, MessageCircle, Share2, Calendar, Cake, Church, BookOpen,
+  Trash2, Loader, Send, X,
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
+
+interface Comment {
+  id: string;
+  content: string;
+  created_at: string;
+  user_id: string;
+  author_name: string;
+  author_avatar: string;
+}
 
 interface Post {
   id: string;
@@ -47,34 +42,32 @@ interface Post {
   is_approved: boolean;
 }
 
+const API_BASE_URL = '/parish-connect/api';
+const getToken = () => localStorage.getItem('parish_token') || sessionStorage.getItem('parish_token');
+
 export default function Feed() {
   const { user, hasPermission } = useAuth();
   const [posts, setPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState(true);
   const [newPostContent, setNewPostContent] = useState("");
+  const [postType, setPostType] = useState<string>("community");
   const [activeTab, setActiveTab] = useState("all");
-  const [postToDelete, setPostToDelete] = useState<string | null>(null);
+  // Comments state
+  const [expandedComments, setExpandedComments] = useState<Record<string, boolean>>({});
+  const [commentsData, setCommentsData] = useState<Record<string, Comment[]>>({});
+  const [commentInputs, setCommentInputs] = useState<Record<string, string>>({});
+  const [loadingComments, setLoadingComments] = useState<Record<string, boolean>>({});
 
-  const API_BASE_URL = '/parish-connect/api';
-
-  // Fetch posts from API
-  useEffect(() => {
-    fetchPosts();
-  }, []);
+  useEffect(() => { fetchPosts(); }, []);
 
   const fetchPosts = async () => {
     try {
       setLoading(true);
-      const token = localStorage.getItem('parish_token') || sessionStorage.getItem('parish_token');
       const response = await fetch(`${API_BASE_URL}/posts`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
+        headers: { 'Authorization': `Bearer ${getToken()}` },
       });
       const data = await response.json();
-      if (data.success) {
-        setPosts(data.data || []);
-      }
+      if (data.success) setPosts(data.data || []);
     } catch (error) {
       console.error('Error fetching posts:', error);
       toast.error('Failed to load posts');
@@ -83,132 +76,121 @@ export default function Feed() {
     }
   };
 
-  // Check if user can delete any post (admin/superadmin) or only their own
   const canDeleteAnyPost = hasPermission(Permission.DELETE_ANY_POST);
-
   const canDeletePost = (post: Post) => {
-    // Owner can always delete their own post
     if (post.user_id === user?.id) return true;
-    // Superadmin can delete any post
     if (user?.role === "superadmin") return true;
-    // Admin can delete posts except superadmin posts
     if (canDeleteAnyPost && post.author_role !== "superadmin") return true;
     return false;
   };
 
   const handleLike = async (postId: string) => {
     try {
-      const token = localStorage.getItem('parish_token') || sessionStorage.getItem('parish_token');
       const response = await fetch(`${API_BASE_URL}/posts/${postId}/like`, {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
+        headers: { 'Authorization': `Bearer ${getToken()}` },
       });
       const data = await response.json();
       if (data.success) {
-        // Toggle like locally since API only returns liked status
-        setPosts(
-          posts.map((post) =>
-            post.id === postId
-              ? {
-                ...post,
-                likes: data.liked ? post.likes + 1 : Math.max(0, post.likes - 1),
-                is_liked: data.liked,
-              }
-              : post
-          )
-        );
+        setPosts(posts.map((p) => p.id === postId ? {
+          ...p, likes: data.liked ? p.likes + 1 : Math.max(0, p.likes - 1), is_liked: data.liked,
+        } : p));
       }
-    } catch (error) {
-      console.error('Error liking post:', error);
-      toast.error('Failed to like post');
-    }
+    } catch { toast.error('Failed to like post'); }
   };
 
   const handleCreatePost = async () => {
     if (!newPostContent.trim()) return;
-
     try {
-      const token = localStorage.getItem('parish_token') || sessionStorage.getItem('parish_token');
       const response = await fetch(`${API_BASE_URL}/posts`, {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          content: newPostContent,
-          type: 'community',
-        }),
+        headers: { 'Authorization': `Bearer ${getToken()}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: newPostContent, type: postType }),
       });
       const data = await response.json();
       if (data.success) {
         setNewPostContent('');
-        toast.success('Post created successfully!');
-        fetchPosts(); // Refresh posts
-      } else {
-        toast.error(data.message || 'Failed to create post');
-      }
-    } catch (error) {
-      console.error('Error creating post:', error);
-      toast.error('Failed to create post');
-    }
+        setPostType('community');
+        toast.success('Post created!');
+        fetchPosts();
+      } else toast.error(data.message || 'Failed to create post');
+    } catch { toast.error('Failed to create post'); }
   };
 
   const handleDeletePost = async (postId: string) => {
     try {
-      const token = localStorage.getItem('parish_token') || sessionStorage.getItem('parish_token');
       const response = await fetch(`${API_BASE_URL}/posts/${postId}`, {
         method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
+        headers: { 'Authorization': `Bearer ${getToken()}` },
       });
       const data = await response.json();
       if (data.success) {
-        setPosts(posts.filter((post) => post.id !== postId));
-        toast.success('Post deleted successfully!');
-        setPostToDelete(null);
-      } else {
-        toast.error(data.message || 'Failed to delete post');
-      }
-    } catch (error) {
-      console.error('Error deleting post:', error);
-      toast.error('Failed to delete post');
+        setPosts(posts.filter((p) => p.id !== postId));
+        toast.success('Post deleted!');
+      } else toast.error(data.message || 'Failed to delete post');
+    } catch { toast.error('Failed to delete post'); }
+  };
+
+  const toggleComments = async (postId: string) => {
+    const isExpanded = expandedComments[postId];
+    setExpandedComments({ ...expandedComments, [postId]: !isExpanded });
+    if (!isExpanded && !commentsData[postId]) {
+      await fetchComments(postId);
     }
+  };
+
+  const fetchComments = async (postId: string) => {
+    try {
+      setLoadingComments({ ...loadingComments, [postId]: true });
+      const response = await fetch(`${API_BASE_URL}/posts/${postId}/comments`, {
+        headers: { 'Authorization': `Bearer ${getToken()}` },
+      });
+      const data = await response.json();
+      if (data.success) setCommentsData({ ...commentsData, [postId]: data.data || [] });
+    } catch { toast.error('Failed to load comments'); }
+    finally { setLoadingComments({ ...loadingComments, [postId]: false }); }
+  };
+
+  const handleAddComment = async (postId: string) => {
+    const content = commentInputs[postId]?.trim();
+    if (!content) return;
+    try {
+      const response = await fetch(`${API_BASE_URL}/posts/${postId}/comments`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${getToken()}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content }),
+      });
+      const data = await response.json();
+      if (data.success) {
+        setCommentsData({
+          ...commentsData,
+          [postId]: [...(commentsData[postId] || []), data.data],
+        });
+        setCommentInputs({ ...commentInputs, [postId]: '' });
+        setPosts(posts.map((p) => p.id === postId ? { ...p, comments: p.comments + 1 } : p));
+      } else toast.error(data.message || 'Failed to add comment');
+    } catch { toast.error('Failed to add comment'); }
   };
 
   const getPostIcon = (type: string) => {
     switch (type) {
-      case "baptism_anniversary":
-        return <Cake className="h-4 w-4" />;
-      case "parish_event":
-        return <Calendar className="h-4 w-4" />;
-      case "research":
-        return <BookOpen className="h-4 w-4" />;
-      default:
-        return <Church className="h-4 w-4" />;
+      case "baptism_anniversary": return <Cake className="h-4 w-4" />;
+      case "parish_event": return <Calendar className="h-4 w-4" />;
+      case "research": return <BookOpen className="h-4 w-4" />;
+      default: return <Church className="h-4 w-4" />;
     }
   };
 
   const getPostTypeLabel = (type: string) => {
     switch (type) {
-      case "baptism_anniversary":
-        return "Baptism Anniversary";
-      case "parish_event":
-        return "Parish Event";
-      case "research":
-        return "Genealogy Research";
-      default:
-        return "Community";
+      case "baptism_anniversary": return "Baptism Anniversary";
+      case "parish_event": return "Parish Event";
+      case "research": return "Genealogy Research";
+      default: return "Community";
     }
   };
 
-  const filteredPosts =
-    activeTab === "all"
-      ? posts
-      : posts.filter((post) => post.type === activeTab);
+  const filteredPosts = activeTab === "all" ? posts : posts.filter((p) => p.type === activeTab);
 
   return (
     <div className="max-w-3xl mx-auto px-4 py-6">
@@ -229,16 +211,33 @@ export default function Feed() {
               />
               <div className="flex justify-between items-center">
                 <div className="flex space-x-2">
-                  <Button variant="outline" size="sm">
+                  <Button
+                    variant={postType === "parish_event" ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setPostType(postType === "parish_event" ? "community" : "parish_event")}
+                  >
                     <Calendar className="h-4 w-4 mr-2" />
                     Event
                   </Button>
-                  <Button variant="outline" size="sm">
+                  <Button
+                    variant={postType === "research" ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setPostType(postType === "research" ? "community" : "research")}
+                  >
                     <BookOpen className="h-4 w-4 mr-2" />
                     Research
                   </Button>
                 </div>
-                <Button onClick={handleCreatePost}>Post</Button>
+                <div className="flex items-center gap-2">
+                  {postType !== "community" && (
+                    <Badge variant="secondary" className="flex items-center gap-1">
+                      {getPostIcon(postType)}
+                      {getPostTypeLabel(postType)}
+                      <X className="h-3 w-3 ml-1 cursor-pointer" onClick={() => setPostType("community")} />
+                    </Badge>
+                  )}
+                  <Button onClick={handleCreatePost}>Post</Button>
+                </div>
               </div>
             </div>
           </div>
@@ -256,7 +255,6 @@ export default function Feed() {
         </TabsList>
       </Tabs>
 
-      {/* Loading State */}
       {loading && (
         <div className="flex justify-center items-center py-12">
           <Loader className="h-6 w-6 animate-spin" />
@@ -278,18 +276,13 @@ export default function Feed() {
               <div className="flex items-start justify-between">
                 <div className="flex items-center space-x-3">
                   <Avatar>
-                    <AvatarImage
-                      src={post.author_avatar}
-                      alt={post.author_name}
-                    />
+                    <AvatarImage src={post.author_avatar} alt={post.author_name} />
                     <AvatarFallback>{post.author_name[0]}</AvatarFallback>
                   </Avatar>
                   <div>
                     <p className="font-medium">{post.author_name}</p>
                     <p className="text-sm text-gray-500">
-                      {formatDistanceToNow(new Date(post.created_at + 'Z'), {
-                        addSuffix: true,
-                      })}
+                      {formatDistanceToNow(new Date(post.created_at + 'Z'), { addSuffix: true })}
                     </p>
                   </div>
                 </div>
@@ -300,27 +293,18 @@ export default function Feed() {
               </div>
             </CardHeader>
             <CardContent>
-              <p className="text-gray-800 mb-4 whitespace-pre-wrap">
-                {post.content}
-              </p>
+              <p className="text-gray-800 mb-4 whitespace-pre-wrap">{post.content}</p>
 
               {/* Actions */}
               <div className="flex items-center justify-between pt-4 border-t">
                 <div className="flex items-center space-x-4">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => handleLike(post.id)}
-                    className={post.is_liked ? "text-red-500" : ""}
-                  >
-                    <Heart
-                      className={`h-5 w-5 mr-2 ${post.is_liked ? "fill-current" : ""
-                        }`}
-                    />
+                  <Button variant="ghost" size="sm" onClick={() => handleLike(post.id)}
+                    className={post.is_liked ? "text-red-500" : ""}>
+                    <Heart className={`h-5 w-5 mr-2 ${post.is_liked ? "fill-current" : ""}`} />
                     {post.likes}
                   </Button>
-                  <Button variant="ghost" size="sm">
-                    <MessageCircle className="h-5 w-5 mr-2" />
+                  <Button variant="ghost" size="sm" onClick={() => toggleComments(post.id)}>
+                    <MessageCircle className={`h-5 w-5 mr-2 ${expandedComments[post.id] ? "fill-current text-blue-500" : ""}`} />
                     {post.comments}
                   </Button>
                 </div>
@@ -329,33 +313,70 @@ export default function Feed() {
                 </Button>
               </div>
 
+              {/* Comments Section */}
+              {expandedComments[post.id] && (
+                <div className="mt-4 pt-4 border-t space-y-3">
+                  {loadingComments[post.id] && (
+                    <div className="flex justify-center py-2">
+                      <Loader className="h-4 w-4 animate-spin" />
+                    </div>
+                  )}
+                  {(commentsData[post.id] || []).map((comment) => (
+                    <div key={comment.id} className="flex items-start space-x-3">
+                      <Avatar className="h-8 w-8">
+                        <AvatarImage src={comment.author_avatar} alt={comment.author_name} />
+                        <AvatarFallback className="text-xs">{comment.author_name[0]}</AvatarFallback>
+                      </Avatar>
+                      <div className="flex-1 bg-gray-50 rounded-lg p-3">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="text-sm font-medium">{comment.author_name}</span>
+                          <span className="text-xs text-gray-400">
+                            {formatDistanceToNow(new Date(comment.created_at + 'Z'), { addSuffix: true })}
+                          </span>
+                        </div>
+                        <p className="text-sm text-gray-700">{comment.content}</p>
+                      </div>
+                    </div>
+                  ))}
+                  {/* Add Comment */}
+                  <div className="flex items-center space-x-2 pt-2">
+                    <Avatar className="h-8 w-8">
+                      <AvatarImage src={user?.avatar} alt={user?.name} />
+                      <AvatarFallback className="text-xs">{user?.name[0]}</AvatarFallback>
+                    </Avatar>
+                    <div className="flex-1 flex gap-2">
+                      <Input
+                        placeholder="Write a comment..."
+                        value={commentInputs[post.id] || ''}
+                        onChange={(e) => setCommentInputs({ ...commentInputs, [post.id]: e.target.value })}
+                        onKeyDown={(e) => e.key === 'Enter' && handleAddComment(post.id)}
+                        className="text-sm"
+                      />
+                      <Button size="sm" variant="ghost" onClick={() => handleAddComment(post.id)}>
+                        <Send className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* Delete Button */}
               {canDeletePost(post) && (
                 <div className="mt-4">
                   <AlertDialog>
                     <AlertDialogTrigger>
                       <Button variant="destructive" size="sm">
-                        <Trash2 className="h-4 w-4 mr-2" />
-                        Delete
+                        <Trash2 className="h-4 w-4 mr-2" />Delete
                       </Button>
                     </AlertDialogTrigger>
                     <AlertDialogContent>
                       <AlertDialogHeader>
-                        <AlertDialogTitle>
-                          Are you sure you want to delete this post?
-                        </AlertDialogTitle>
-                        <AlertDialogDescription>
-                          This action cannot be undone. This will permanently
-                          delete the post.
-                        </AlertDialogDescription>
+                        <AlertDialogTitle>Are you sure you want to delete this post?</AlertDialogTitle>
+                        <AlertDialogDescription>This action cannot be undone.</AlertDialogDescription>
                       </AlertDialogHeader>
                       <AlertDialogFooter>
                         <AlertDialogCancel>Cancel</AlertDialogCancel>
-                        <AlertDialogAction
-                          onClick={() => handleDeletePost(post.id)}
-                        >
-                          Delete
-                        </AlertDialogAction>
+                        <AlertDialogAction onClick={() => handleDeletePost(post.id)}>Delete</AlertDialogAction>
                       </AlertDialogFooter>
                     </AlertDialogContent>
                   </AlertDialog>

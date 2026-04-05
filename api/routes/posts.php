@@ -6,10 +6,12 @@ require_once __DIR__ . '/../middleware/auth.php';
 
 function handlePosts(string $method, ?string $id, ?string $action): void {
     match (true) {
-        $method === 'GET'  && !$id                        => listPosts(),
-        $method === 'POST' && !$id                        => createPost(),
-        $method === 'DELETE' && !!$id                     => deletePost($id),
-        $method === 'POST' && !!$id && $action === 'like' => toggleLike($id),
+        $method === 'GET'  && !$id                            => listPosts(),
+        $method === 'POST' && !$id                            => createPost(),
+        $method === 'DELETE' && !!$id && !$action             => deletePost($id),
+        $method === 'POST' && !!$id && $action === 'like'     => toggleLike($id),
+        $method === 'GET'  && !!$id && $action === 'comments' => listComments($id),
+        $method === 'POST' && !!$id && $action === 'comments' => addComment($id),
         default => jsonResponse(['success' => false, 'message' => 'Not found'], 404),
     };
     exit;
@@ -140,6 +142,73 @@ function toggleLike(string $id): void {
         }
     } catch (PDOException $e) {
         error_log('Toggle like error: ' . $e->getMessage());
+        jsonResponse(['success' => false, 'message' => 'Internal server error'], 500);
+    }
+}
+
+
+function listComments(string $postId): void {
+    authenticate();
+
+    try {
+        $db = getDB();
+        $stmt = $db->prepare(
+            'SELECT c.id, c.content, c.created_at, c.user_id,
+                    u.name AS author_name, u.avatar AS author_avatar
+             FROM comments c
+             JOIN users u ON c.user_id = u.id
+             WHERE c.post_id = ?
+             ORDER BY c.created_at ASC'
+        );
+        $stmt->execute([$postId]);
+        jsonResponse(['success' => true, 'data' => $stmt->fetchAll()]);
+    } catch (PDOException $e) {
+        error_log('List comments error: ' . $e->getMessage());
+        jsonResponse(['success' => false, 'message' => 'Internal server error'], 500);
+    }
+}
+
+function addComment(string $postId): void {
+    $user = authenticate();
+    $body = getJsonBody();
+    $content = trim($body['content'] ?? '');
+
+    if (!$content) {
+        jsonResponse(['success' => false, 'message' => 'Content is required'], 400);
+    }
+
+    if (strlen($content) > 1000) {
+        jsonResponse(['success' => false, 'message' => 'Comment must be under 1000 characters'], 400);
+    }
+
+    try {
+        $db = getDB();
+
+        // Verify post exists
+        $check = $db->prepare('SELECT id FROM posts WHERE id = ? LIMIT 1');
+        $check->execute([$postId]);
+        if (!$check->fetch()) {
+            jsonResponse(['success' => false, 'message' => 'Post not found'], 404);
+        }
+
+        $id = generateUuid();
+        $db->prepare(
+            'INSERT INTO comments (id, post_id, user_id, content) VALUES (?, ?, ?, ?)'
+        )->execute([$id, $postId, $user['id'], $content]);
+
+        // Fetch the created comment with author info
+        $stmt = $db->prepare(
+            'SELECT c.id, c.content, c.created_at, c.user_id,
+                    u.name AS author_name, u.avatar AS author_avatar
+             FROM comments c
+             JOIN users u ON c.user_id = u.id
+             WHERE c.id = ?'
+        );
+        $stmt->execute([$id]);
+
+        jsonResponse(['success' => true, 'data' => $stmt->fetch()], 201);
+    } catch (PDOException $e) {
+        error_log('Add comment error: ' . $e->getMessage());
         jsonResponse(['success' => false, 'message' => 'Internal server error'], 500);
     }
 }
