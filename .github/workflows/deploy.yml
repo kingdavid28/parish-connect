@@ -23,7 +23,7 @@ jobs:
       - name: Build Frontend
         run: npm run build
       
-      - name: Deploy Frontend to Hostinger
+      - name: Deploy Frontend
         uses: SamKirkland/FTP-Deploy-Action@v4.3.5
         with:
           server: ${{ secrets.HOSTINGER_FTP_SERVER }}
@@ -31,15 +31,15 @@ jobs:
           password: ${{ secrets.HOSTINGER_FTP_PASSWORD }}
           local-dir: ./dist/
           server-dir: ./public_html/parish-connect/
-          state-name: .ftp-deploy-frontend.json
-          dangerous-clean-slate: false
+          state-name: frontend-state.json
+          dangerous-clean-slate: true
           exclude: |
             **/.git*
             **/node_modules/**
             **/api/**
             **/uploads/**
       
-      - name: Deploy API to Hostinger
+      - name: Deploy API
         uses: SamKirkland/FTP-Deploy-Action@v4.3.5
         with:
           server: ${{ secrets.HOSTINGER_FTP_SERVER }}
@@ -47,8 +47,8 @@ jobs:
           password: ${{ secrets.HOSTINGER_FTP_PASSWORD }}
           local-dir: ./api/
           server-dir: ./public_html/parish-connect/api/
-          state-name: .ftp-deploy-api.json
-          dangerous-clean-slate: false
+          state-name: api-state.json
+          dangerous-clean-slate: true
           exclude: |
             **/.git*
             **/node_modules/**
