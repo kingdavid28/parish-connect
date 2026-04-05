@@ -66,11 +66,12 @@ function listUsers(): void {
             $sql .= " AND role != 'superadmin'";
         }
 
-        // Child superadmins can see the parent superadmin but cannot edit/delete them
-        // (edit/delete protections are enforced in updateUser and deleteUser)
+        // Hide the parent superadmin from all other users
+        $sql .= " AND NOT (role = 'superadmin' AND created_by IS NULL AND id != ?)";
 
         $sql .= ' ORDER BY created_at DESC';
-        $stmt = $db->query($sql);
+        $stmt = $db->prepare($sql);
+        $stmt->execute([$user['id']]);
 
         jsonResponse(['success' => true, 'data' => $stmt->fetchAll()]);
     } catch (PDOException $e) {
