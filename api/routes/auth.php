@@ -103,7 +103,17 @@ function authRegister(): void {
         jsonResponse(['success' => false, 'message' => 'Password must contain uppercase, lowercase and a number'], 400);
     }
 
-    // Verify name exists in the sacraments (parish records) database
+    // Verify name + birthday + father's first name against sacraments DB
+    $birthday = trim($body['birthday'] ?? '');
+    $fatherFirstName = trim($body['fatherFirstName'] ?? '');
+
+    if (!$birthday) {
+        jsonResponse(['success' => false, 'message' => 'Birthday is required'], 400);
+    }
+    if (!$fatherFirstName) {
+        jsonResponse(['success' => false, 'message' => "Father's first name is required for verification"], 400);
+    }
+
     try {
         $sacDb = new PDO(
             'mysql:host=localhost;port=3306;dbname=u222318185_svf_parish;charset=utf8mb4',
@@ -111,17 +121,30 @@ function authRegister(): void {
             'kNooCkk@0228a1',
             [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC]
         );
-        $sacStmt = $sacDb->prepare('SELECT id FROM sacraments WHERE LOWER(name) = LOWER(?) LIMIT 1');
-        $sacStmt->execute([$name]);
-        if (!$sacStmt->fetch()) {
+        $sacStmt = $sacDb->prepare(
+            'SELECT id, parents_name FROM sacraments WHERE LOWER(name) = LOWER(?) AND birthday = ? LIMIT 1'
+        );
+        $sacStmt->execute([$name, $birthday]);
+        $sacRecord = $sacStmt->fetch();
+
+        if (!$sacRecord) {
             jsonResponse([
                 'success' => false,
-                'message' => 'Your name was not found in the parish records. Please use the exact name as it appears in the sacramental records, or contact your parish administrator to create an account for you.'
+                'message' => 'Your name and birthday were not found in the parish records. Please use the exact name as it appears in the sacramental records.'
+            ], 403);
+        }
+
+        // Verify father's first name from parents_name field
+        $parentsName = strtolower($sacRecord['parents_name'] ?? '');
+        $fatherCheck = strtolower($fatherFirstName);
+        if (!$parentsName || strpos($parentsName, $fatherCheck) === false) {
+            jsonResponse([
+                'success' => false,
+                'message' => "The father's first name does not match our records. Please try again."
             ], 403);
         }
     } catch (PDOException $e) {
         error_log('Sacraments DB check error: ' . $e->getMessage());
-        // If sacraments DB is unavailable, block registration as a safety measure
         jsonResponse(['success' => false, 'message' => 'Unable to verify parish records. Please try again later.'], 500);
     }
 
