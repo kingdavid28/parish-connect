@@ -89,7 +89,7 @@ export default function AdminManagement() {
     name: "",
     email: "",
     password: "",
-    role: "parishioner" as "admin" | "parishioner",
+    role: "parishioner" as string,
   });
 
   const canCreateAdmin = hasPermission(Permission.CREATE_ADMIN);
@@ -497,7 +497,7 @@ export default function AdminManagement() {
                   onValueChange={(value) =>
                     setFormData({
                       ...formData,
-                      role: value as "admin" | "parishioner",
+                      role: value,
                     })
                   }
                   disabled={isSubmitting}
@@ -510,12 +510,21 @@ export default function AdminManagement() {
                     {canCreateAdmin && (
                       <SelectItem value="admin">Administrator</SelectItem>
                     )}
+                    {currentUser?.role === "superadmin" && (
+                      <SelectItem value="superadmin">Super Administrator</SelectItem>
+                    )}
                   </SelectContent>
                 </Select>
                 {formData.role === "admin" && (
                   <p className="text-sm text-amber-600 flex items-center gap-2">
                     <AlertCircle className="h-4 w-4" />
                     Admins have elevated permissions
+                  </p>
+                )}
+                {formData.role === "superadmin" && (
+                  <p className="text-sm text-amber-600 flex items-center gap-2">
+                    <AlertCircle className="h-4 w-4" />
+                    This user will have full admin privileges but cannot modify the parent super admin account.
                   </p>
                 )}
               </div>

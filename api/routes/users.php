@@ -6,12 +6,49 @@ require_once __DIR__ . '/../middleware/auth.php';
 
 function handleUsers(string $method, ?string $id): void {
     match (true) {
-        $method === 'GET'    && !$id => listUsers(),
-        $method === 'POST'   && !$id => createUser(),
+        $method === 'GET'    && !!$id => getUser($id),
+        $method === 'GET'    && !$id  => listUsers(),
+        $method === 'POST'   && !$id  => createUser(),
         $method === 'DELETE' && !!$id => deleteUser($id),
         default => jsonResponse(['success' => false, 'message' => 'Not found'], 404),
     };
     exit;
+}
+
+/**
+ * Check if a user is the "parent" (original) superadmin.
+ * The parent superadmin has no created_by value (they were seeded/setup).
+ */
+function isParentSuperAdmin(array $user): bool {
+    return $user['role'] === 'superadmin' && empty($user['created_by']);
+}
+
+function getUser(string $id): void {
+    $user = authenticate();
+
+    try {
+        $db   = getDB();
+        $stmt = $db->prepare(
+            'SELECT id, name, email, role, parish_id, avatar, member_since, last_login, created_by, created_at
+             FROM users WHERE id = ? AND is_active = 1 LIMIT 1'
+        );
+        $stmt->execute([$id]);
+        $target = $stmt->fetch();
+
+        if (!$target) {
+            jsonResponse(['success' => false, 'message' => 'User not found'], 404);
+        }
+
+        // Non-admin users can only view their own profile
+        if (!in_array($user['role'], ['admin', 'superadmin'], true) && $user['id'] !== $id) {
+            jsonResponse(['success' => false, 'message' => 'Insufficient permissions'], 403);
+        }
+
+        jsonResponse(['success' => true, 'data' => $target]);
+    } catch (PDOException $e) {
+        error_log('Get user error: ' . $e->getMessage());
+        jsonResponse(['success' => false, 'message' => 'Internal server error'], 500);
+    }
 }
 
 function listUsers(): void {
@@ -20,12 +57,17 @@ function listUsers(): void {
 
     try {
         $db = getDB();
-        $sql = 'SELECT id, name, email, role, parish_id, avatar, member_since, last_login, created_by
+        $sql = 'SELECT id, name, email, role, parish_id, avatar, member_since, last_login, created_by, created_at
                 FROM users WHERE is_active = 1';
 
-        // Admins cannot see superadmin
+        // Admins cannot see superadmins
         if ($user['role'] === 'admin') {
             $sql .= " AND role != 'superadmin'";
+        }
+
+        // Child superadmins cannot see the parent superadmin
+        if ($user['role'] === 'superadmin' && !empty($user['created_by'])) {
+            $sql .= " AND NOT (role = 'superadmin' AND created_by IS NULL)";
         }
 
         $sql .= ' ORDER BY created_at DESC';
@@ -41,6 +83,13 @@ function listUsers(): void {
 function createUser(): void {
     $user = authenticate();
     requireRole($user, 'admin', 'superadmin');
+
+    // Fetch full user record to check created_by
+    $db = getDB();
+    $selfStmt = $db->prepare('SELECT created_by FROM users WHERE id = ? LIMIT 1');
+    $selfStmt->execute([$user['id']]);
+    $selfRow = $selfStmt->fetch();
+    $userCreatedBy = $selfRow['created_by'] ?? null;
 
     $body     = getJsonBody();
     $name     = trim($body['name'] ?? '');
@@ -61,18 +110,22 @@ function createUser(): void {
         jsonResponse(['success' => false, 'message' => 'Password must be at least 8 characters'], 400);
     }
 
-    if (!in_array($role, ['admin', 'parishioner'], true)) {
+    $validRoles = ['admin', 'parishioner'];
+    // Only superadmins can create superadmin or admin accounts
+    if ($user['role'] === 'superadmin') {
+        $validRoles[] = 'superadmin';
+    }
+
+    if (!in_array($role, $validRoles, true)) {
         jsonResponse(['success' => false, 'message' => 'Invalid role'], 400);
     }
 
-    // Only superadmin can create admins
-    if ($role === 'admin' && $user['role'] !== 'superadmin') {
-        jsonResponse(['success' => false, 'message' => 'Only super admin can create admin users'], 403);
+    // Only superadmin can create admins or superadmins
+    if (in_array($role, ['admin', 'superadmin'], true) && $user['role'] !== 'superadmin') {
+        jsonResponse(['success' => false, 'message' => 'Only super admin can create admin/superadmin users'], 403);
     }
 
     try {
-        $db = getDB();
-
         $check = $db->prepare('SELECT id FROM users WHERE email = ? LIMIT 1');
         $check->execute([$email]);
         if ($check->fetch()) {
@@ -107,9 +160,15 @@ function deleteUser(string $id): void {
         jsonResponse(['success' => false, 'message' => 'You cannot delete your own account'], 400);
     }
 
+    // Fetch full user record to check if current user is parent superadmin
+    $db = getDB();
+    $selfStmt = $db->prepare('SELECT created_by FROM users WHERE id = ? LIMIT 1');
+    $selfStmt->execute([$user['id']]);
+    $selfRow = $selfStmt->fetch();
+    $isParent = $user['role'] === 'superadmin' && empty($selfRow['created_by']);
+
     try {
-        $db   = getDB();
-        $stmt = $db->prepare('SELECT id, role FROM users WHERE id = ? AND is_active = 1 LIMIT 1');
+        $stmt = $db->prepare('SELECT id, role, created_by FROM users WHERE id = ? AND is_active = 1 LIMIT 1');
         $stmt->execute([$id]);
         $target = $stmt->fetch();
 
@@ -117,8 +176,14 @@ function deleteUser(string $id): void {
             jsonResponse(['success' => false, 'message' => 'User not found'], 404);
         }
 
-        if ($target['role'] === 'superadmin') {
-            jsonResponse(['success' => false, 'message' => 'Cannot delete super admin'], 403);
+        // Only parent superadmin can delete other superadmins
+        if ($target['role'] === 'superadmin' && !$isParent) {
+            jsonResponse(['success' => false, 'message' => 'Only the parent super admin can delete super admin accounts'], 403);
+        }
+
+        // Parent superadmin cannot be deleted by anyone
+        if ($target['role'] === 'superadmin' && empty($target['created_by'])) {
+            jsonResponse(['success' => false, 'message' => 'The parent super admin account cannot be deleted'], 403);
         }
 
         if ($target['role'] === 'admin' && $user['role'] !== 'superadmin') {
