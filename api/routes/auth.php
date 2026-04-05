@@ -9,10 +9,11 @@ use Firebase\JWT\JWT;
 
 function handleAuth(string $method, string $action): void {
     match (true) {
-        $method === 'POST' && $action === 'login'    => authLogin(),
-        $method === 'POST' && $action === 'register' => authRegister(),
-        $method === 'POST' && $action === 'password' => authChangePassword(),
-        $method === 'GET'  && $action === 'me'       => authMe(),
+        $method === 'POST' && $action === 'login'           => authLogin(),
+        $method === 'POST' && $action === 'register'        => authRegister(),
+        $method === 'POST' && $action === 'password'        => authChangePassword(),
+        $method === 'POST' && $action === 'forgot-password' => authForgotPassword(),
+        $method === 'GET'  && $action === 'me'              => authMe(),
         default => jsonResponse(['success' => false, 'message' => 'Not found'], 404),
     };
     exit;
@@ -252,6 +253,85 @@ function authChangePassword(): void {
         jsonResponse(['success' => true, 'message' => 'Password changed successfully']);
     } catch (PDOException $e) {
         error_log('Change password error: ' . $e->getMessage());
+        jsonResponse(['success' => false, 'message' => 'Internal server error'], 500);
+    }
+}
+
+
+function authForgotPassword(): void {
+    $body = getJsonBody();
+    $email          = trim(strtolower($body['email'] ?? ''));
+    $name           = trim($body['name'] ?? '');
+    $birthday       = trim($body['birthday'] ?? '');
+    $fatherFirstName = trim($body['fatherFirstName'] ?? '');
+    $newPassword    = $body['newPassword'] ?? '';
+
+    if (!$email || !$name || !$birthday || !$fatherFirstName || !$newPassword) {
+        jsonResponse(['success' => false, 'message' => 'All fields are required'], 400);
+    }
+
+    if (strlen($newPassword) < 8) {
+        jsonResponse(['success' => false, 'message' => 'New password must be at least 8 characters'], 400);
+    }
+
+    if (!preg_match('/[A-Z]/', $newPassword) ||
+        !preg_match('/[a-z]/', $newPassword) ||
+        !preg_match('/\d/', $newPassword)) {
+        jsonResponse(['success' => false, 'message' => 'Password must contain uppercase, lowercase and a number'], 400);
+    }
+
+    try {
+        // Step 1: Verify user exists in main DB
+        $db = getDB();
+        $userStmt = $db->prepare('SELECT id, name FROM users WHERE email = ? AND is_active = 1 LIMIT 1');
+        $userStmt->execute([$email]);
+        $user = $userStmt->fetch();
+
+        if (!$user) {
+            jsonResponse(['success' => false, 'message' => 'No account found with this email address'], 404);
+        }
+
+        // Step 2: Verify identity against sacraments DB
+        $sacDb = new PDO(
+            'mysql:host=localhost;port=3306;dbname=u222318185_svf_parish;charset=utf8mb4',
+            'u222318185_svf_user',
+            'kNooCkk@0228a1',
+            [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC]
+        );
+
+        // Convert birthday to DB format
+        $ts = strtotime($birthday);
+        $birthdayFormatted = $ts !== false ? date('F j, Y', $ts) : $birthday;
+
+        $sacStmt = $sacDb->prepare(
+            'SELECT id, parents_name FROM sacraments WHERE LOWER(name) = LOWER(?) AND birthday = ? LIMIT 1'
+        );
+        $sacStmt->execute([$name, $birthdayFormatted]);
+        $sacRecord = $sacStmt->fetch();
+
+        if (!$sacRecord) {
+            jsonResponse(['success' => false, 'message' => 'Identity verification failed. Name and birthday do not match parish records.'], 403);
+        }
+
+        // Step 3: Verify father's first name
+        $parentsName = strtolower($sacRecord['parents_name'] ?? '');
+        $fatherCheck = strtolower($fatherFirstName);
+        if (!$parentsName || strpos($parentsName, $fatherCheck) === false) {
+            jsonResponse(['success' => false, 'message' => "Identity verification failed. Father's first name does not match."], 403);
+        }
+
+        // Step 4: Update password
+        $hash = password_hash($newPassword, PASSWORD_BCRYPT, ['cost' => 12]);
+        $db->prepare('UPDATE users SET password_hash = ? WHERE id = ?')->execute([$hash, $user['id']]);
+
+        // Audit log
+        $db->prepare(
+            'INSERT INTO audit_logs (id, user_id, action, ip_address) VALUES (?, ?, ?, ?)'
+        )->execute([generateUuid(), $user['id'], 'forgot_password_reset', getClientIp()]);
+
+        jsonResponse(['success' => true, 'message' => 'Password reset successfully. You can now log in with your new password.']);
+    } catch (PDOException $e) {
+        error_log('Forgot password error: ' . $e->getMessage());
         jsonResponse(['success' => false, 'message' => 'Internal server error'], 500);
     }
 }

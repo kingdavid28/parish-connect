@@ -15,12 +15,12 @@ export default function Login() {
   const location = useLocation();
   const from = (location.state as { from?: { pathname: string } })?.from?.pathname || "/";
 
-  const [email, setEmail]           = useState("");
-  const [password, setPassword]     = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
-  const [error, setError]           = useState("");
-  const [isLoading, setIsLoading]   = useState(false);
+  const [error, setError] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
 
   if (isAuthenticated) return <Navigate to={from} replace />;
 
@@ -125,12 +125,17 @@ export default function Login() {
               {isLoading ? "Signing in..." : "Sign In"}
             </Button>
 
-            <p className="text-center text-sm text-gray-600">
-              Don't have an account?{" "}
-              <Link to="/signup" className="text-blue-600 hover:underline font-medium">
-                Create account
+            <div className="text-center space-y-2">
+              <Link to="/forgot-password" className="text-sm text-blue-600 hover:underline">
+                Forgot your password?
               </Link>
-            </p>
+              <p className="text-sm text-gray-600">
+                Don't have an account?{" "}
+                <Link to="/signup" className="text-blue-600 hover:underline font-medium">
+                  Create account
+                </Link>
+              </p>
+            </div>
           </form>
         </CardContent>
       </Card>

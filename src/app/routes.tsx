@@ -10,11 +10,13 @@ import Membership from "./pages/Membership";
 import Settings from "./pages/Settings";
 import AdminManagement from "./pages/AdminManagement";
 import Messages from "./pages/Messages";
+import ForgotPassword from "./pages/ForgotPassword";
 import NotFound from "./pages/NotFound";
 
 export const router = createBrowserRouter([
   { path: "/login", Component: Login },
   { path: "/signup", Component: Signup },
+  { path: "/forgot-password", Component: ForgotPassword },
   {
     path: "/",
     element: (
