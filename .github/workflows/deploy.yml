@@ -23,13 +23,6 @@ jobs:
       - name: Build Frontend
         run: npm run build
       
-      - name: Verify Build Output
-        run: |
-          echo "Build output structure:"
-          ls -la dist/ | head -10
-          echo "Files in dist root:"
-          ls dist/
-      
       - name: Deploy Frontend to Hostinger
         uses: SamKirkland/FTP-Deploy-Action@v4.3.5
         with:
@@ -38,11 +31,13 @@ jobs:
           password: ${{ secrets.HOSTINGER_FTP_PASSWORD }}
           local-dir: ./dist/
           server-dir: ./public_html/parish-connect/
-          state-name: .ftp-deploy-sync-state-frontend.json
-          dangerous-clean-slate: false
+          state-name: .ftp-deploy-frontend.json
+          dangerous-clean-slate: true
           exclude: |
             **/.git*
             **/node_modules/**
+            **/api/**
+            **/uploads/**
       
       - name: Deploy API to Hostinger
         uses: SamKirkland/FTP-Deploy-Action@v4.3.5
@@ -52,19 +47,11 @@ jobs:
           password: ${{ secrets.HOSTINGER_FTP_PASSWORD }}
           local-dir: ./api/
           server-dir: ./public_html/parish-connect/api/
-          state-name: .ftp-deploy-sync-state-api.json
-          dangerous-clean-slate: false
+          state-name: .ftp-deploy-api.json
+          dangerous-clean-slate: true
           exclude: |
             **/.git*
             **/node_modules/**
             **/.env.example
             **/.env
-      
-      - name: Deployment Notification
-        if: always()
-        run: |
-          if [ "${{ job.status }}" == "success" ]; then
-            echo "✅ Deployment to Hostinger completed successfully!"
-          else
-            echo "❌ Deployment failed. Check logs above."
-          fi
+            **/uploads/**
