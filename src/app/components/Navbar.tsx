@@ -4,7 +4,7 @@ import { useAuth } from "../context/AuthContext";
 import { Button } from "./ui/button";
 import { Avatar, AvatarImage, AvatarFallback } from "./ui/avatar";
 
-const logo = "/parish-connect-logo.png";
+const logo = import.meta.env.BASE_URL + "parish-connect-logo.png";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -123,11 +123,10 @@ export default function Navbar() {
                   <Link
                     key={link.path}
                     to={link.path}
-                    className={`flex items-center space-x-2 px-4 py-2 rounded-lg transition-colors ${
-                      isActive(link.path)
+                    className={`flex items-center space-x-2 px-4 py-2 rounded-lg transition-colors ${isActive(link.path)
                         ? "bg-blue-50 text-blue-600"
                         : "text-gray-600 hover:bg-gray-100"
-                    }`}
+                      }`}
                   >
                     <Icon className="h-5 w-5" />
                     <span>{link.label}</span>
@@ -243,11 +242,10 @@ export default function Navbar() {
                       key={link.path}
                       to={link.path}
                       onClick={() => setMobileMenuOpen(false)}
-                      className={`flex items-center space-x-2 px-4 py-2 rounded-lg transition-colors ${
-                        isActive(link.path)
+                      className={`flex items-center space-x-2 px-4 py-2 rounded-lg transition-colors ${isActive(link.path)
                           ? "bg-blue-50 text-blue-600"
                           : "text-gray-600 hover:bg-gray-100"
-                      }`}
+                        }`}
                     >
                       <Icon className="h-5 w-5" />
                       <span>{link.label}</span>

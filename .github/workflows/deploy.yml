@@ -32,7 +32,7 @@ jobs:
           local-dir: ./dist/
           server-dir: ./public_html/parish-connect/
           state-name: frontend-state.json
-          dangerous-clean-slate: true
+          dangerous-clean-slate: false
           exclude: |
             **/.git*
             **/node_modules/**
@@ -48,7 +48,7 @@ jobs:
           local-dir: ./api/
           server-dir: ./public_html/parish-connect/api/
           state-name: api-state.json
-          dangerous-clean-slate: true
+          dangerous-clean-slate: false
           exclude: |
             **/.git*
             **/node_modules/**
