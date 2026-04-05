@@ -58,6 +58,16 @@ function listUsers(): void {
 
     try {
         $db = getDB();
+
+        // Check if current user is the parent superadmin (no created_by in DB)
+        $isParentSuperAdmin = false;
+        if ($user['role'] === 'superadmin') {
+            $selfStmt = $db->prepare('SELECT created_by FROM users WHERE id = ? LIMIT 1');
+            $selfStmt->execute([$user['id']]);
+            $selfRow = $selfStmt->fetch();
+            $isParentSuperAdmin = empty($selfRow['created_by']);
+        }
+
         $sql = 'SELECT id, name, email, role, parish_id, avatar, member_since, last_login, created_by, created_at
                 FROM users WHERE is_active = 1';
 
@@ -66,12 +76,13 @@ function listUsers(): void {
             $sql .= " AND role != 'superadmin'";
         }
 
-        // Hide the parent superadmin from all other users
-        $sql .= " AND NOT (role = 'superadmin' AND created_by IS NULL AND id != ?)";
+        // Parent superadmin is invisible to everyone except themselves
+        if (!$isParentSuperAdmin) {
+            $sql .= " AND NOT (role = 'superadmin' AND created_by IS NULL)";
+        }
 
         $sql .= ' ORDER BY created_at DESC';
-        $stmt = $db->prepare($sql);
-        $stmt->execute([$user['id']]);
+        $stmt = $db->query($sql);
 
         jsonResponse(['success' => true, 'data' => $stmt->fetchAll()]);
     } catch (PDOException $e) {
