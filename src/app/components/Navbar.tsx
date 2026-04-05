@@ -111,6 +111,7 @@ export default function Navbar() {
                 />
                 <span className="text-xl font-semibold text-gray-900 hidden sm:block">
                   Parish Connect
+                  <span className="block text-xs font-normal text-gray-500">sanvicenteferrerparish-franciscans</span>
                 </span>
               </Link>
             </div>
@@ -124,8 +125,8 @@ export default function Navbar() {
                     key={link.path}
                     to={link.path}
                     className={`flex items-center space-x-2 px-4 py-2 rounded-lg transition-colors ${isActive(link.path)
-                        ? "bg-blue-50 text-blue-600"
-                        : "text-gray-600 hover:bg-gray-100"
+                      ? "bg-blue-50 text-blue-600"
+                      : "text-gray-600 hover:bg-gray-100"
                       }`}
                   >
                     <Icon className="h-5 w-5" />
@@ -243,8 +244,8 @@ export default function Navbar() {
                       to={link.path}
                       onClick={() => setMobileMenuOpen(false)}
                       className={`flex items-center space-x-2 px-4 py-2 rounded-lg transition-colors ${isActive(link.path)
-                          ? "bg-blue-50 text-blue-600"
-                          : "text-gray-600 hover:bg-gray-100"
+                        ? "bg-blue-50 text-blue-600"
+                        : "text-gray-600 hover:bg-gray-100"
                         }`}
                     >
                       <Icon className="h-5 w-5" />
