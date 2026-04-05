@@ -246,6 +246,17 @@ export default function ParishRecords() {
                                         </div>
                                       </div>
                                     )}
+                                    <div className="mt-6 p-4 bg-amber-50 border border-amber-200 rounded-lg">
+                                      <div className="flex items-start gap-3">
+                                        <Shield className="h-5 w-5 text-amber-600 mt-0.5 flex-shrink-0" />
+                                        <div className="text-sm text-amber-900">
+                                          <p className="font-medium mb-1">Verification Notice</p>
+                                          <p className="text-amber-700">
+                                            This record is for reference only. For legal and official purposes, please visit the parish office to request a verified and authenticated copy of this document.
+                                          </p>
+                                        </div>
+                                      </div>
+                                    </div>
                                   </div>
                                 )}
                               </DialogContent>
