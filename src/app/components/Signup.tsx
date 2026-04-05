@@ -17,10 +17,10 @@ interface PasswordRule {
 }
 
 const PASSWORD_RULES: PasswordRule[] = [
-  { label: "At least 8 characters",       test: (p) => p.length >= 8 },
-  { label: "One uppercase letter",         test: (p) => /[A-Z]/.test(p) },
-  { label: "One lowercase letter",         test: (p) => /[a-z]/.test(p) },
-  { label: "One number",                   test: (p) => /\d/.test(p) },
+  { label: "At least 8 characters", test: (p) => p.length >= 8 },
+  { label: "One uppercase letter", test: (p) => /[A-Z]/.test(p) },
+  { label: "One lowercase letter", test: (p) => /[a-z]/.test(p) },
+  { label: "One number", test: (p) => /\d/.test(p) },
 ];
 
 export default function Signup() {
@@ -28,11 +28,11 @@ export default function Signup() {
   const navigate = useNavigate();
 
   const [form, setForm] = useState({ name: "", email: "", password: "", confirm: "" });
-  const [showPassword, setShowPassword]   = useState(false);
-  const [showConfirm, setShowConfirm]     = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
   const [agreedToTerms, setAgreedToTerms] = useState(false);
-  const [error, setError]                 = useState("");
-  const [isLoading, setIsLoading]         = useState(false);
+  const [error, setError] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
 
   if (isAuthenticated) return <Navigate to="/" replace />;
 
@@ -60,8 +60,8 @@ export default function Signup() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          name:     form.name.trim(),
-          email:    form.email.trim(),
+          name: form.name.trim(),
+          email: form.email.trim(),
           password: form.password,
         }),
       });
@@ -121,6 +121,9 @@ export default function Signup() {
                 autoComplete="name"
                 disabled={isLoading}
               />
+              <p className="text-xs text-gray-500">
+                Use your exact name as it appears in the parish sacramental records.
+              </p>
             </div>
 
             {/* Email */}
@@ -170,9 +173,8 @@ export default function Signup() {
                     {[1, 2, 3, 4].map((i) => (
                       <div
                         key={i}
-                        className={`h-1 flex-1 rounded-full transition-colors ${
-                          i <= passwordStrength ? strengthColor : "bg-gray-200"
-                        }`}
+                        className={`h-1 flex-1 rounded-full transition-colors ${i <= passwordStrength ? strengthColor : "bg-gray-200"
+                          }`}
                       />
                     ))}
                   </div>
@@ -208,11 +210,10 @@ export default function Signup() {
                   required
                   autoComplete="new-password"
                   disabled={isLoading}
-                  className={`pr-10 ${
-                    form.confirm && form.confirm !== form.password
+                  className={`pr-10 ${form.confirm && form.confirm !== form.password
                       ? "border-red-400 focus-visible:ring-red-400"
                       : ""
-                  }`}
+                    }`}
                 />
                 <button
                   type="button"
