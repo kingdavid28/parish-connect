@@ -163,6 +163,20 @@ if ($resource === 'posts') {
     exit;
 }
 
+// Follow routes
+if ($resource === 'follows') {
+    require_once __DIR__ . '/routes/follows.php';
+    handleFollows($method, $id, $action);
+    exit;
+}
+
+// Message routes
+if ($resource === 'messages') {
+    require_once __DIR__ . '/routes/messages.php';
+    handleMessages($method, $id, $action);
+    exit;
+}
+
 // Parish record routes
 if ($resource === 'records') {
     require_once __DIR__ . '/routes/records.php';

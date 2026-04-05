@@ -118,3 +118,31 @@ VALUES (
   'st-marys',
   CURDATE()
 );
+
+-- Follows table
+CREATE TABLE IF NOT EXISTS follows (
+  follower_id VARCHAR(36) NOT NULL,
+  following_id VARCHAR(36) NOT NULL,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (follower_id, following_id),
+  FOREIGN KEY (follower_id) REFERENCES users(id) ON DELETE CASCADE,
+  FOREIGN KEY (following_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+-- Messages table
+CREATE TABLE IF NOT EXISTS messages (
+  id VARCHAR(36) PRIMARY KEY,
+  sender_id VARCHAR(36) NOT NULL,
+  receiver_id VARCHAR(36) NOT NULL,
+  content TEXT NOT NULL,
+  is_read TINYINT(1) DEFAULT 0,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (sender_id) REFERENCES users(id) ON DELETE CASCADE,
+  FOREIGN KEY (receiver_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE INDEX idx_follows_follower ON follows(follower_id);
+CREATE INDEX idx_follows_following ON follows(following_id);
+CREATE INDEX idx_messages_sender ON messages(sender_id);
+CREATE INDEX idx_messages_receiver ON messages(receiver_id);
+CREATE INDEX idx_messages_conversation ON messages(sender_id, receiver_id);
