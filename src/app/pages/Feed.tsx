@@ -101,11 +101,15 @@ export default function Feed() {
       });
       const data = await response.json();
       if (data.success) {
-        // Update local state
+        // Toggle like locally since API only returns liked status
         setPosts(
           posts.map((post) =>
             post.id === postId
-              ? { ...post, likes: data.data.likes, is_liked: data.data.is_liked }
+              ? {
+                ...post,
+                likes: data.liked ? post.likes + 1 : Math.max(0, post.likes - 1),
+                is_liked: data.liked,
+              }
               : post
           )
         );
