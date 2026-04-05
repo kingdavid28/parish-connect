@@ -18,10 +18,15 @@ function handleUsers(string $method, ?string $id): void {
 
 /**
  * Check if a user is the "parent" (original) superadmin.
- * The parent superadmin has no created_by value (they were seeded/setup).
+ * The parent is the superadmin with the earliest created_at.
  */
 function isParentSuperAdmin(array $user): bool {
-    return $user['role'] === 'superadmin' && empty($user['created_by']);
+    if ($user['role'] !== 'superadmin') return false;
+    $db = getDB();
+    $stmt = $db->prepare("SELECT id FROM users WHERE role = 'superadmin' AND is_active = 1 ORDER BY created_at ASC LIMIT 1");
+    $stmt->execute();
+    $row = $stmt->fetch();
+    return $row && $row['id'] === $user['id'];
 }
 
 function getUser(string $id): void {
@@ -59,13 +64,16 @@ function listUsers(): void {
     try {
         $db = getDB();
 
-        // Check if current user is the parent superadmin (no created_by in DB)
+        // Check if current user is the parent (original) superadmin
+        // The parent is the superadmin with the earliest created_at
         $isParentSuperAdmin = false;
         if ($user['role'] === 'superadmin') {
-            $selfStmt = $db->prepare('SELECT created_by FROM users WHERE id = ? LIMIT 1');
-            $selfStmt->execute([$user['id']]);
-            $selfRow = $selfStmt->fetch();
-            $isParentSuperAdmin = empty($selfRow['created_by']);
+            $parentStmt = $db->prepare(
+                "SELECT id FROM users WHERE role = 'superadmin' AND is_active = 1 ORDER BY created_at ASC LIMIT 1"
+            );
+            $parentStmt->execute();
+            $parentRow = $parentStmt->fetch();
+            $isParentSuperAdmin = $parentRow && $parentRow['id'] === $user['id'];
         }
 
         $sql = 'SELECT id, name, email, role, parish_id, avatar, member_since, last_login, created_by, created_at
@@ -76,13 +84,27 @@ function listUsers(): void {
             $sql .= " AND role != 'superadmin'";
         }
 
+        // Find the parent superadmin ID to hide them from everyone else
+        $parentId = null;
+        $parentIdStmt = $db->prepare(
+            "SELECT id FROM users WHERE role = 'superadmin' AND is_active = 1 ORDER BY created_at ASC LIMIT 1"
+        );
+        $parentIdStmt->execute();
+        $parentIdRow = $parentIdStmt->fetch();
+        if ($parentIdRow) $parentId = $parentIdRow['id'];
+
         // Parent superadmin is invisible to everyone except themselves
-        if (!$isParentSuperAdmin) {
-            $sql .= " AND NOT (role = 'superadmin' AND created_by IS NULL)";
+        if (!$isParentSuperAdmin && $parentId) {
+            $sql .= " AND id != ?";
         }
 
         $sql .= ' ORDER BY created_at DESC';
-        $stmt = $db->query($sql);
+        $stmt = $db->prepare($sql);
+        if (!$isParentSuperAdmin && $parentId) {
+            $stmt->execute([$parentId]);
+        } else {
+            $stmt->execute();
+        }
 
         jsonResponse(['success' => true, 'data' => $stmt->fetchAll()]);
     } catch (PDOException $e) {
@@ -174,12 +196,8 @@ function updateUser(string $id): void {
         jsonResponse(['success' => false, 'message' => 'Insufficient permissions'], 403);
     }
 
-    // Fetch current user's created_by to determine parent status
     $db = getDB();
-    $selfStmt = $db->prepare('SELECT created_by FROM users WHERE id = ? LIMIT 1');
-    $selfStmt->execute([$user['id']]);
-    $selfRow = $selfStmt->fetch();
-    $isParent = empty($selfRow['created_by']);
+    $isParent = isParentSuperAdmin($user);
 
     $body = getJsonBody();
     $newRole = $body['role'] ?? null;
@@ -209,7 +227,11 @@ function updateUser(string $id): void {
         }
 
         // Cannot edit parent superadmin (unless you ARE the parent)
-        if ($target['role'] === 'superadmin' && empty($target['created_by']) && !$isParent) {
+        $parentCheck = $db->prepare("SELECT id FROM users WHERE role = 'superadmin' AND is_active = 1 ORDER BY created_at ASC LIMIT 1");
+        $parentCheck->execute();
+        $parentCheckRow = $parentCheck->fetch();
+        $targetIsParent = $parentCheckRow && $target['id'] === $parentCheckRow['id'];
+        if ($targetIsParent && !$isParent) {
             jsonResponse(['success' => false, 'message' => 'Cannot modify the parent super admin'], 403);
         }
 
@@ -264,12 +286,8 @@ function deleteUser(string $id): void {
         jsonResponse(['success' => false, 'message' => 'You cannot delete your own account'], 400);
     }
 
-    // Fetch full user record to check if current user is parent superadmin
     $db = getDB();
-    $selfStmt = $db->prepare('SELECT created_by FROM users WHERE id = ? LIMIT 1');
-    $selfStmt->execute([$user['id']]);
-    $selfRow = $selfStmt->fetch();
-    $isParent = $user['role'] === 'superadmin' && empty($selfRow['created_by']);
+    $isParent = isParentSuperAdmin($user);
 
     try {
         $stmt = $db->prepare('SELECT id, role, created_by FROM users WHERE id = ? AND is_active = 1 LIMIT 1');
@@ -286,7 +304,10 @@ function deleteUser(string $id): void {
         }
 
         // Parent superadmin cannot be deleted by anyone
-        if ($target['role'] === 'superadmin' && empty($target['created_by'])) {
+        $parentStmt = $db->prepare("SELECT id FROM users WHERE role = 'superadmin' AND is_active = 1 ORDER BY created_at ASC LIMIT 1");
+        $parentStmt->execute();
+        $parentRow = $parentStmt->fetch();
+        if ($parentRow && $target['id'] === $parentRow['id']) {
             jsonResponse(['success' => false, 'message' => 'The parent super admin account cannot be deleted'], 403);
         }
 
