@@ -9,6 +9,14 @@ import { MessageCircle, Send, Loader, ArrowLeft } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
 
+function safeTimeAgo(dateStr: string): string {
+    try {
+        const d = new Date(dateStr.includes('T') || dateStr.includes('Z') ? dateStr : dateStr + 'Z');
+        if (isNaN(d.getTime())) return '';
+        return formatDistanceToNow(d, { addSuffix: true });
+    } catch { return ''; }
+}
+
 interface Conversation {
     id: string; name: string; avatar: string; role: string;
     last_message: string; last_message_at: string; unread_count: number;
@@ -137,7 +145,7 @@ export default function Messages() {
                                     </div>
                                     <p className="text-xs text-gray-500 truncate">{conv.last_message}</p>
                                     <p className="text-xs text-gray-400">
-                                        {formatDistanceToNow(new Date(conv.last_message_at + 'Z'), { addSuffix: true })}
+                                        {safeTimeAgo(conv.last_message_at)}
                                     </p>
                                 </div>
                             </button>
@@ -182,7 +190,7 @@ export default function Messages() {
                                             }`}>
                                             <p className="text-sm">{msg.content}</p>
                                             <p className={`text-xs mt-1 ${msg.sender_id === user?.id ? 'text-blue-200' : 'text-gray-400'}`}>
-                                                {formatDistanceToNow(new Date(msg.created_at + 'Z'), { addSuffix: true })}
+                                                {safeTimeAgo(msg.created_at)}
                                             </p>
                                         </div>
                                     </div>
