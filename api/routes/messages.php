@@ -74,22 +74,56 @@ function getConversation(string $partnerId): void {
 
 function sendMessage(string $receiverId): void {
     $user = authenticate();
-    $body = getJsonBody();
-    $content = trim($body['content'] ?? '');
 
-    if (!$content) {
-        jsonResponse(['success' => false, 'message' => 'Message content is required'], 400);
+    // Support both JSON and multipart/form-data (for image uploads)
+    $contentType = $_SERVER['CONTENT_TYPE'] ?? '';
+    if (str_contains($contentType, 'multipart/form-data')) {
+        $content = trim($_POST['content'] ?? '');
+    } else {
+        $body = getJsonBody();
+        $content = trim($body['content'] ?? '');
     }
-    if (strlen($content) > 2000) {
-        jsonResponse(['success' => false, 'message' => 'Message must be under 2000 characters'], 400);
-    }
+
     if ($user['id'] === $receiverId) {
         jsonResponse(['success' => false, 'message' => 'Cannot message yourself'], 400);
     }
 
+    // Handle image upload
+    $imageUrl = null;
+    if (isset($_FILES['image']) && $_FILES['image']['error'] === UPLOAD_ERR_OK) {
+        $file = $_FILES['image'];
+        if ($file['size'] > 5 * 1024 * 1024) {
+            jsonResponse(['success' => false, 'message' => 'Image too large. Max 5MB.'], 400);
+        }
+        $allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+        $finfo = finfo_open(FILEINFO_MIME_TYPE);
+        $mimeType = finfo_file($finfo, $file['tmp_name']);
+        finfo_close($finfo);
+        if (!in_array($mimeType, $allowedTypes, true)) {
+            jsonResponse(['success' => false, 'message' => 'Invalid image type.'], 400);
+        }
+        $ext = match ($mimeType) {
+            'image/jpeg' => 'jpg', 'image/png' => 'png',
+            'image/gif' => 'gif', 'image/webp' => 'webp', default => 'jpg',
+        };
+        $uploadDir = __DIR__ . '/../uploads/messages/';
+        if (!is_dir($uploadDir)) mkdir($uploadDir, 0755, true);
+        $filename = generateUuid() . '.' . $ext;
+        if (!move_uploaded_file($file['tmp_name'], $uploadDir . $filename)) {
+            jsonResponse(['success' => false, 'message' => 'Failed to save image'], 500);
+        }
+        $imageUrl = '/parish-connect/api/uploads/messages/' . $filename;
+    }
+
+    if (!$content && !$imageUrl) {
+        jsonResponse(['success' => false, 'message' => 'Message content or image is required'], 400);
+    }
+    if ($content && strlen($content) > 2000) {
+        jsonResponse(['success' => false, 'message' => 'Message must be under 2000 characters'], 400);
+    }
+
     try {
         $db = getDB();
-        // Verify receiver exists
         $check = $db->prepare('SELECT id FROM users WHERE id = ? AND is_active = 1 LIMIT 1');
         $check->execute([$receiverId]);
         if (!$check->fetch()) {
@@ -97,12 +131,12 @@ function sendMessage(string $receiverId): void {
         }
 
         $id = generateUuid();
-        $db->prepare('INSERT INTO messages (id, sender_id, receiver_id, content) VALUES (?, ?, ?, ?)')
-           ->execute([$id, $user['id'], $receiverId, $content]);
+        $db->prepare('INSERT INTO messages (id, sender_id, receiver_id, content, image_url) VALUES (?, ?, ?, ?, ?)')
+           ->execute([$id, $user['id'], $receiverId, $content ?: '', $imageUrl]);
 
         jsonResponse(['success' => true, 'data' => [
             'id' => $id, 'sender_id' => $user['id'], 'receiver_id' => $receiverId,
-            'content' => $content, 'is_read' => 0, 'created_at' => date('Y-m-d H:i:s'),
+            'content' => $content ?: '', 'image_url' => $imageUrl, 'is_read' => 0, 'created_at' => date('Y-m-d H:i:s'),
         ]], 201);
     } catch (PDOException $e) {
         error_log('Send message error: ' . $e->getMessage());

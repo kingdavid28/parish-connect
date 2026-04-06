@@ -23,7 +23,7 @@ interface ProfileData {
 }
 interface Message {
   id: string; sender_id: string; receiver_id: string; content: string;
-  is_read: number; created_at: string; sender_name: string; sender_avatar: string;
+  image_url?: string; is_read: number; created_at: string; sender_name: string; sender_avatar: string;
 }
 interface SacramentRecord {
   id: string; name: string; birthday: string; parents_name: string;

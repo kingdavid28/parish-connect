@@ -5,7 +5,7 @@ import { Avatar, AvatarImage, AvatarFallback } from "../components/ui/avatar";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Badge } from "../components/ui/badge";
-import { MessageCircle, Send, Loader, ArrowLeft } from "lucide-react";
+import { MessageCircle, Send, Loader, ArrowLeft, ImageIcon, X } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
 
@@ -23,7 +23,7 @@ interface Conversation {
 }
 interface Message {
     id: string; sender_id: string; receiver_id: string; content: string;
-    is_read: number; created_at: string; sender_name: string; sender_avatar: string;
+    image_url?: string; is_read: number; created_at: string; sender_name: string; sender_avatar: string;
 }
 
 const API = '/parish-connect/api';
@@ -37,6 +37,9 @@ export default function Messages() {
     const [messages, setMessages] = useState<Message[]>([]);
     const [loadingMessages, setLoadingMessages] = useState(false);
     const [newMessage, setNewMessage] = useState("");
+    const [selectedImage, setSelectedImage] = useState<File | null>(null);
+    const [imagePreview, setImagePreview] = useState<string | null>(null);
+    const fileInputRef = useRef<HTMLInputElement>(null);
     const messagesEndRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => { fetchConversations(); }, []);
@@ -72,12 +75,16 @@ export default function Messages() {
     };
 
     const handleSend = async () => {
-        if (!newMessage.trim() || !activeChat) return;
+        if ((!newMessage.trim() && !selectedImage) || !activeChat) return;
         try {
+            const formData = new FormData();
+            if (newMessage.trim()) formData.append('content', newMessage);
+            if (selectedImage) formData.append('image', selectedImage);
+
             const res = await fetch(`${API}/messages/${activeChat.id}`, {
                 method: 'POST',
-                headers: { 'Authorization': `Bearer ${getToken()}`, 'Content-Type': 'application/json' },
-                body: JSON.stringify({ content: newMessage }),
+                headers: { 'Authorization': `Bearer ${getToken()}` },
+                body: formData,
             });
             const data = await res.json();
             if (data.success) {
@@ -87,12 +94,31 @@ export default function Messages() {
                     sender_avatar: user?.avatar || '',
                 }]);
                 setNewMessage('');
-                // Update conversation list
+                clearImage();
                 setConversations(conversations.map((c) =>
-                    c.id === activeChat.id ? { ...c, last_message: newMessage, last_message_at: new Date().toISOString() } : c
+                    c.id === activeChat.id ? { ...c, last_message: selectedImage ? '📷 Photo' : newMessage, last_message_at: new Date().toISOString() } : c
                 ));
             } else toast.error(data.message || 'Failed to send');
         } catch { toast.error('Failed to send message'); }
+    };
+
+    const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        if (file.size > 5 * 1024 * 1024) { toast.error('Image too large. Max 5MB.'); return; }
+        if (!['image/jpeg', 'image/png', 'image/gif', 'image/webp'].includes(file.type)) {
+            toast.error('Invalid image type.'); return;
+        }
+        setSelectedImage(file);
+        const reader = new FileReader();
+        reader.onload = (ev) => setImagePreview(ev.target?.result as string);
+        reader.readAsDataURL(file);
+    };
+
+    const clearImage = () => {
+        setSelectedImage(null);
+        setImagePreview(null);
+        if (fileInputRef.current) fileInputRef.current.value = '';
     };
 
     const totalUnread = conversations.reduce((sum, c) => sum + (c.unread_count || 0), 0);
@@ -188,7 +214,10 @@ export default function Messages() {
                                     <div key={msg.id} className={`flex ${msg.sender_id === user?.id ? 'justify-end' : 'justify-start'}`}>
                                         <div className={`max-w-[75%] rounded-lg px-4 py-2 ${msg.sender_id === user?.id ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-800'
                                             }`}>
-                                            <p className="text-sm">{msg.content}</p>
+                                            {msg.image_url && (
+                                                <img src={msg.image_url} alt="Shared image" className="max-h-48 rounded mb-2 cursor-pointer" onClick={() => window.open(msg.image_url, '_blank')} loading="lazy" />
+                                            )}
+                                            {msg.content && <p className="text-sm">{msg.content}</p>}
                                             <p className={`text-xs mt-1 ${msg.sender_id === user?.id ? 'text-blue-200' : 'text-gray-400'}`}>
                                                 {safeTimeAgo(msg.created_at)}
                                             </p>
@@ -198,8 +227,24 @@ export default function Messages() {
                                 <div ref={messagesEndRef} />
                             </div>
 
+                            {/* Image Preview */}
+                            {imagePreview && (
+                                <div className="px-4 pt-2">
+                                    <div className="relative inline-block">
+                                        <img src={imagePreview} alt="Preview" className="max-h-24 rounded" />
+                                        <button onClick={clearImage} className="absolute -top-1 -right-1 bg-black/60 text-white rounded-full p-0.5 hover:bg-black/80">
+                                            <X className="h-3 w-3" />
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+
                             {/* Input */}
-                            <div className="flex gap-2 p-4 border-t">
+                            <div className="flex gap-2 p-4 border-t items-center">
+                                <input ref={fileInputRef} type="file" accept="image/jpeg,image/png,image/gif,image/webp" className="hidden" onChange={handleImageSelect} />
+                                <Button variant="ghost" size="sm" onClick={() => fileInputRef.current?.click()}>
+                                    <ImageIcon className="h-5 w-5 text-gray-500" />
+                                </Button>
                                 <Input
                                     placeholder="Type a message..."
                                     value={newMessage}
