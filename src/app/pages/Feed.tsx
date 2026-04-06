@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useAuth, Permission } from "../context/AuthContext";
 import { Card, CardContent, CardHeader } from "../components/ui/card";
 import { Avatar, AvatarImage, AvatarFallback } from "../components/ui/avatar";
@@ -13,7 +13,7 @@ import {
 } from "../components/ui/alert-dialog";
 import {
   Heart, MessageCircle, Share2, Calendar, Cake, Church, BookOpen,
-  Trash2, Loader, Send, X,
+  Trash2, Loader, Send, X, ImageIcon,
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
@@ -40,6 +40,7 @@ interface Post {
   comments: number;
   is_liked: boolean;
   is_approved: boolean;
+  image_url?: string;
 }
 
 const API_BASE_URL = '/parish-connect/api';
@@ -52,6 +53,9 @@ export default function Feed() {
   const [newPostContent, setNewPostContent] = useState("");
   const [postType, setPostType] = useState<string>("community");
   const [activeTab, setActiveTab] = useState("all");
+  const [selectedImage, setSelectedImage] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   // Comments state
   const [expandedComments, setExpandedComments] = useState<Record<string, boolean>>({});
   const [commentsData, setCommentsData] = useState<Record<string, Comment[]>>({});
@@ -102,19 +106,46 @@ export default function Feed() {
   const handleCreatePost = async () => {
     if (!newPostContent.trim()) return;
     try {
+      const formData = new FormData();
+      formData.append('content', newPostContent);
+      formData.append('type', postType);
+      if (selectedImage) formData.append('image', selectedImage);
+
       const response = await fetch(`${API_BASE_URL}/posts`, {
         method: 'POST',
-        headers: { 'Authorization': `Bearer ${getToken()}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content: newPostContent, type: postType }),
+        headers: { 'Authorization': `Bearer ${getToken()}` },
+        body: formData,
       });
       const data = await response.json();
       if (data.success) {
         setNewPostContent('');
         setPostType('community');
+        setSelectedImage(null);
+        setImagePreview(null);
+        if (fileInputRef.current) fileInputRef.current.value = '';
         toast.success('Post created!');
         fetchPosts();
       } else toast.error(data.message || 'Failed to create post');
     } catch { toast.error('Failed to create post'); }
+  };
+
+  const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) { toast.error('Image too large. Max 5MB.'); return; }
+    if (!['image/jpeg', 'image/png', 'image/gif', 'image/webp'].includes(file.type)) {
+      toast.error('Invalid image type. Use JPG, PNG, GIF, or WebP.'); return;
+    }
+    setSelectedImage(file);
+    const reader = new FileReader();
+    reader.onload = (ev) => setImagePreview(ev.target?.result as string);
+    reader.readAsDataURL(file);
+  };
+
+  const clearImage = () => {
+    setSelectedImage(null);
+    setImagePreview(null);
+    if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   const handleDeletePost = async (postId: string) => {
@@ -209,8 +240,22 @@ export default function Feed() {
                 onChange={(e) => setNewPostContent(e.target.value)}
                 className="mb-3 min-h-[100px]"
               />
+              {/* Image Preview */}
+              {imagePreview && (
+                <div className="relative mb-3 inline-block">
+                  <img src={imagePreview} alt="Preview" className="max-h-48 rounded-lg object-cover" />
+                  <button onClick={clearImage} className="absolute top-1 right-1 bg-black/60 text-white rounded-full p-1 hover:bg-black/80">
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+              )}
+              <input ref={fileInputRef} type="file" accept="image/jpeg,image/png,image/gif,image/webp" className="hidden" onChange={handleImageSelect} />
               <div className="flex justify-between items-center">
                 <div className="flex space-x-2">
+                  <Button variant="outline" size="sm" onClick={() => fileInputRef.current?.click()}>
+                    <ImageIcon className="h-4 w-4 mr-2" />
+                    Photo
+                  </Button>
                   <Button
                     variant={postType === "parish_event" ? "default" : "outline"}
                     size="sm"
@@ -294,6 +339,13 @@ export default function Feed() {
             </CardHeader>
             <CardContent>
               <p className="text-gray-800 mb-4 whitespace-pre-wrap">{post.content}</p>
+
+              {/* Post Image */}
+              {post.image_url && (
+                <div className="mb-4 rounded-lg overflow-hidden">
+                  <img src={post.image_url} alt="Post image" className="w-full max-h-96 object-cover" loading="lazy" />
+                </div>
+              )}
 
               {/* Actions */}
               <div className="flex items-center justify-between pt-4 border-t">

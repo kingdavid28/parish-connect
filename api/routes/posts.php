@@ -47,13 +47,17 @@ function listPosts(): void {
 
 function createPost(): void {
     $user = authenticate();
-    $body = getJsonBody();
 
-    $content     = trim($body['content'] ?? '');
-    $type        = $body['type'] ?? 'community';
-    $eventDate   = $body['eventDate'] ?? null;
-    $eventLoc    = $body['eventLocation'] ?? null;
-    $baptismYear = isset($body['baptismYear']) ? (int)$body['baptismYear'] : null;
+    // Support both JSON and multipart/form-data (for image uploads)
+    $contentType = $_SERVER['CONTENT_TYPE'] ?? '';
+    if (str_contains($contentType, 'multipart/form-data')) {
+        $content     = trim($_POST['content'] ?? '');
+        $type        = $_POST['type'] ?? 'community';
+    } else {
+        $body = getJsonBody();
+        $content     = trim($body['content'] ?? '');
+        $type        = $body['type'] ?? 'community';
+    }
 
     if (!$content) {
         jsonResponse(['success' => false, 'message' => 'Content is required'], 400);
@@ -68,12 +72,46 @@ function createPost(): void {
         jsonResponse(['success' => false, 'message' => 'Invalid post type'], 400);
     }
 
+    // Handle image upload
+    $imageUrl = null;
+    if (isset($_FILES['image']) && $_FILES['image']['error'] === UPLOAD_ERR_OK) {
+        $file = $_FILES['image'];
+        $maxSize = 5 * 1024 * 1024; // 5MB
+
+        if ($file['size'] > $maxSize) {
+            jsonResponse(['success' => false, 'message' => 'Image too large. Max 5MB.'], 400);
+        }
+
+        $allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+        $finfo = finfo_open(FILEINFO_MIME_TYPE);
+        $mimeType = finfo_file($finfo, $file['tmp_name']);
+        finfo_close($finfo);
+
+        if (!in_array($mimeType, $allowedTypes, true)) {
+            jsonResponse(['success' => false, 'message' => 'Invalid image type. Allowed: JPG, PNG, GIF, WebP'], 400);
+        }
+
+        $ext = match ($mimeType) {
+            'image/jpeg' => 'jpg', 'image/png' => 'png',
+            'image/gif' => 'gif', 'image/webp' => 'webp', default => 'jpg',
+        };
+
+        $uploadDir = __DIR__ . '/../uploads/posts/';
+        if (!is_dir($uploadDir)) mkdir($uploadDir, 0755, true);
+
+        $filename = generateUuid() . '.' . $ext;
+        if (!move_uploaded_file($file['tmp_name'], $uploadDir . $filename)) {
+            jsonResponse(['success' => false, 'message' => 'Failed to save image'], 500);
+        }
+        $imageUrl = '/parish-connect/api/uploads/posts/' . $filename;
+    }
+
     try {
         $id = generateUuid();
         getDB()->prepare(
-            'INSERT INTO posts (id, user_id, content, type, event_date, event_location, baptism_year)
-             VALUES (?, ?, ?, ?, ?, ?, ?)'
-        )->execute([$id, $user['id'], $content, $type, $eventDate, $eventLoc, $baptismYear]);
+            'INSERT INTO posts (id, user_id, content, type, image_url)
+             VALUES (?, ?, ?, ?, ?)'
+        )->execute([$id, $user['id'], $content, $type, $imageUrl]);
 
         jsonResponse(['success' => true, 'message' => 'Post created', 'data' => ['id' => $id]], 201);
     } catch (PDOException $e) {
