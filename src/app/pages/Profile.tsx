@@ -34,7 +34,7 @@ interface SacramentRecord {
 interface Post {
   id: string; content: string; type: string; created_at: string;
   likes: number; comments: number; is_liked: boolean;
-  author_name: string; author_avatar: string;
+  author_name: string; author_avatar: string; image_url?: string;
 }
 
 const API = '/parish-connect/api';
@@ -345,6 +345,11 @@ export default function Profile() {
                     <span className="text-xs text-gray-400">{safeTimeAgo(post.created_at)}</span>
                   </div>
                   <p className="text-gray-800 whitespace-pre-wrap">{post.content}</p>
+                  {post.image_url && (
+                    <div className="mt-3 rounded-lg overflow-hidden">
+                      <img src={post.image_url} alt="Post image" className="w-full max-h-96 object-cover" loading="lazy" />
+                    </div>
+                  )}
                   <div className="flex items-center gap-4 mt-4 pt-3 border-t text-sm text-gray-500">
                     <span className="flex items-center gap-1"><Heart className="h-4 w-4" />{post.likes}</span>
                     <span className="flex items-center gap-1"><MessageCircle className="h-4 w-4" />{post.comments}</span>
