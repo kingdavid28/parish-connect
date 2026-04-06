@@ -177,6 +177,13 @@ if ($resource === 'messages') {
     exit;
 }
 
+// Group chat routes
+if ($resource === 'groups') {
+    require_once __DIR__ . '/routes/groups.php';
+    handleGroups($method, $id, $action);
+    exit;
+}
+
 // Parish record routes
 if ($resource === 'records') {
     require_once __DIR__ . '/routes/records.php';
