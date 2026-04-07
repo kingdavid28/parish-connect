@@ -7,3 +7,18 @@
 .safe-area-bottom {
   padding-bottom: env(safe-area-inset-bottom, 0px);
 }
+
+/* Fix mobile keyboard covering inputs */
+@supports (height: 100dvh) {
+  .auth-page {
+    min-height: 100dvh;
+    height: auto;
+  }
+}
+
+.auth-page {
+  min-height: 100vh;
+  min-height: 100dvh;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}

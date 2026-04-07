@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { Link, useNavigate } from "react-router";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -34,6 +34,21 @@ export default function ForgotPassword() {
     const [showPassword, setShowPassword] = useState(false);
     const [error, setError] = useState("");
     const [isLoading, setIsLoading] = useState(false);
+    const pageRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        const handleFocus = (e: FocusEvent) => {
+            const target = e.target as HTMLElement;
+            if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') {
+                setTimeout(() => {
+                    target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }, 300);
+            }
+        };
+        const el = pageRef.current;
+        el?.addEventListener('focusin', handleFocus);
+        return () => el?.removeEventListener('focusin', handleFocus);
+    }, []);
 
     const passwordStrength = PASSWORD_RULES.filter((r) => r.test(newPassword)).length;
     const strengthLabel = ["", "Weak", "Fair", "Good", "Strong"][passwordStrength];
@@ -85,7 +100,7 @@ export default function ForgotPassword() {
     };
 
     return (
-        <div className="min-h-[100dvh] flex items-start sm:items-center justify-center p-4 pt-8 sm:pt-4 overflow-y-auto">
+        <div ref={pageRef} className="auth-page flex items-start sm:items-center justify-center p-4 pt-8 sm:pt-4">
             <Card className="w-full max-w-md shadow-lg">
                 <CardHeader className="space-y-1 text-center">
                     <div className="flex justify-center mb-2">
