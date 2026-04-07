@@ -171,7 +171,7 @@ export default function Messages() {
     };
 
     return (
-        <div className="max-w-4xl mx-auto px-4 py-6">
+        <div className="max-w-4xl mx-auto px-4 py-6 pb-20 md:pb-6">
             <div className="mb-6 flex items-center justify-between">
                 <div className="flex items-center gap-3">
                     <div className="bg-blue-600 p-2 rounded-lg"><MessageCircle className="h-6 w-6 text-white" /></div>

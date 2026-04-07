@@ -23,6 +23,18 @@ export default function Navbar() {
   const { user, logout, isAuthenticated, isAdmin } = useAuth();
   const location = useLocation();
   const [showLogoutDialog, setShowLogoutDialog] = useState(false);
+  const [keyboardOpen, setKeyboardOpen] = useState(false);
+
+  // Detect mobile keyboard open
+  useEffect(() => {
+    const vv = window.visualViewport;
+    if (!vv) return;
+    const handleResize = () => {
+      setKeyboardOpen(vv.height < window.innerHeight * 0.75);
+    };
+    vv.addEventListener('resize', handleResize);
+    return () => vv.removeEventListener('resize', handleResize);
+  }, []);
 
   const navLinks = [
     { path: "/", label: "Feed", icon: Home, showFor: "all" },
@@ -87,8 +99,8 @@ export default function Navbar() {
                     key={link.path}
                     to={link.path}
                     className={`relative flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-all ${active
-                        ? "bg-blue-600 text-white shadow-sm"
-                        : "text-gray-600 hover:bg-gray-100 hover:text-gray-900"
+                      ? "bg-blue-600 text-white shadow-sm"
+                      : "text-gray-600 hover:bg-gray-100 hover:text-gray-900"
                       }`}
                   >
                     <Icon className="h-4 w-4" />
@@ -156,31 +168,33 @@ export default function Navbar() {
         </div>
       </nav>
 
-      {/* Mobile Bottom Tab Bar */}
-      <div className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-gray-200 safe-area-bottom">
-        <div className="flex justify-around items-center h-16 px-2">
-          {visibleNavLinks.slice(0, 5).map((link) => {
-            const Icon = link.icon;
-            const active = isActive(link.path);
-            return (
-              <Link
-                key={link.path}
-                to={link.path}
-                className={`flex flex-col items-center justify-center gap-0.5 flex-1 py-1 rounded-lg transition-colors ${active ? "text-blue-600" : "text-gray-400 hover:text-gray-600"
-                  }`}
-              >
-                <div className={`p-1.5 rounded-full transition-colors ${active ? "bg-blue-50" : ""}`}>
-                  <Icon className="h-5 w-5" />
-                </div>
-                <span className="text-[10px] font-medium">{link.label}</span>
-              </Link>
-            );
-          })}
+      {/* Mobile Bottom Tab Bar - hidden when keyboard is open */}
+      {!keyboardOpen && (
+        <div className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-gray-200 safe-area-bottom">
+          <div className="flex justify-around items-center h-16 px-2">
+            {visibleNavLinks.slice(0, 5).map((link) => {
+              const Icon = link.icon;
+              const active = isActive(link.path);
+              return (
+                <Link
+                  key={link.path}
+                  to={link.path}
+                  className={`flex flex-col items-center justify-center gap-0.5 flex-1 py-1 rounded-lg transition-colors ${active ? "text-blue-600" : "text-gray-400 hover:text-gray-600"
+                    }`}
+                >
+                  <div className={`p-1.5 rounded-full transition-colors ${active ? "bg-blue-50" : ""}`}>
+                    <Icon className="h-5 w-5" />
+                  </div>
+                  <span className="text-[10px] font-medium">{link.label}</span>
+                </Link>
+              );
+            })}
+          </div>
         </div>
-      </div>
+      )}
 
-      {/* Bottom padding spacer for mobile */}
-      <div className="md:hidden h-16" />
+      {/* Bottom padding spacer for mobile - hidden when keyboard is open */}
+      {!keyboardOpen && <div className="md:hidden h-16" />}
 
       {/* Logout Dialog */}
       <AlertDialog open={showLogoutDialog} onOpenChange={setShowLogoutDialog}>
