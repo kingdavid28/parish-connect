@@ -10,48 +10,38 @@ jobs:
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
-      
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '18'
+          node-version: '20'
           cache: 'npm'
-      
+
       - name: Install Dependencies
         run: npm install
-      
+
       - name: Build Frontend
         run: npm run build
-      
-      - name: Deploy Frontend
-        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+
+      - name: Deploy Frontend via SFTP
+        uses: wlixcc/SFTP-Deploy-Action@v1.2.4
         with:
           server: ${{ secrets.HOSTINGER_FTP_SERVER }}
           username: ${{ secrets.HOSTINGER_FTP_USER }}
           password: ${{ secrets.HOSTINGER_FTP_PASSWORD }}
-          local-dir: ./dist/
-          server-dir: ./public_html/parish-connect/
-          state-name: frontend-state.json
-          dangerous-clean-slate: false
-          exclude: |
-            **/.git*
-            **/node_modules/**
-            **/api/**
-            **/uploads/**
-      
-      - name: Deploy API
-        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+          local_path: ./dist/*
+          remote_path: /home/${{ secrets.HOSTINGER_FTP_USER }}/public_html/parish-connect
+          sftp_only: true
+          delete_remote_files: false
+
+      - name: Deploy API via SFTP
+        uses: wlixcc/SFTP-Deploy-Action@v1.2.4
         with:
           server: ${{ secrets.HOSTINGER_FTP_SERVER }}
           username: ${{ secrets.HOSTINGER_FTP_USER }}
           password: ${{ secrets.HOSTINGER_FTP_PASSWORD }}
-          local-dir: ./api/
-          server-dir: ./public_html/parish-connect/api/
-          state-name: api-state.json
-          dangerous-clean-slate: false
-          exclude: |
-            **/.git*
-            **/node_modules/**
-            **/.env.example
-            **/.env
-            **/uploads/**
+          local_path: ./api/*
+          remote_path: /home/${{ secrets.HOSTINGER_FTP_USER }}/public_html/parish-connect/api
+          sftp_only: true
+          delete_remote_files: false
+          args: '--exclude=.env --exclude=.env.example --exclude=uploads'
