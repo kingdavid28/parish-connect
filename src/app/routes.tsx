@@ -11,6 +11,7 @@ import Settings from "./pages/Settings";
 import AdminManagement from "./pages/AdminManagement";
 import Messages from "./pages/Messages";
 import ForgotPassword from "./pages/ForgotPassword";
+import QRCodePage from "./pages/QRCode";
 import NotFound from "./pages/NotFound";
 
 export const router = createBrowserRouter([
@@ -29,6 +30,7 @@ export const router = createBrowserRouter([
       { path: "profile/:id", Component: Profile },
       { path: "messages", Component: Messages },
       { path: "records", Component: ParishRecords },
+      { path: "qrcode", Component: QRCodePage },
       { path: "membership", Component: Membership },
       { path: "settings", Component: Settings },
       {

@@ -15,7 +15,7 @@ import {
 } from "./ui/alert-dialog";
 import {
   Home, BookOpen, Users, Settings as SettingsIcon, LogOut, Shield, Crown,
-  UserCircle, ChevronDown, MessageCircle,
+  UserCircle, ChevronDown, MessageCircle, QrCode,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -156,6 +156,13 @@ export default function Navbar() {
                       <SettingsIcon className="mr-2 h-4 w-4" />Settings
                     </Link>
                   </DropdownMenuItem>
+                  {isAdmin && (
+                    <DropdownMenuItem asChild>
+                      <Link to="/qrcode" className="cursor-pointer">
+                        <QrCode className="mr-2 h-4 w-4" />App QR Code
+                      </Link>
+                    </DropdownMenuItem>
+                  )}
                   <DropdownMenuSeparator />
                   <DropdownMenuItem onClick={() => setShowLogoutDialog(true)} className="cursor-pointer text-red-600 focus:text-red-600 focus:bg-red-50">
                     <LogOut className="mr-2 h-4 w-4" />Logout
