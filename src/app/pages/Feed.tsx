@@ -342,8 +342,13 @@ export default function Feed() {
 
               {/* Post Image */}
               {post.image_url && (
-                <div className="mb-4 rounded-lg overflow-hidden">
-                  <img src={post.image_url} alt="Post image" className="w-full max-h-96 object-cover" loading="lazy" />
+                <div className="mb-4 rounded-lg overflow-hidden bg-gray-50">
+                  <img
+                    src={post.image_url}
+                    alt="Post image"
+                    className="w-full object-contain max-h-[500px]"
+                    loading="lazy"
+                  />
                 </div>
               )}
 
@@ -360,7 +365,18 @@ export default function Feed() {
                     {post.comments}
                   </Button>
                 </div>
-                <Button variant="ghost" size="sm">
+                <Button variant="ghost" size="sm" onClick={async () => {
+                  const shareUrl = `${window.location.origin}/parish-connect`;
+                  const shareText = `${post.author_name}: ${post.content.slice(0, 100)}${post.content.length > 100 ? '...' : ''}`;
+                  if (navigator.share) {
+                    try {
+                      await navigator.share({ title: 'Parish Connect', text: shareText, url: shareUrl });
+                    } catch { /* user cancelled */ }
+                  } else {
+                    await navigator.clipboard.writeText(`${shareText}\n${shareUrl}`);
+                    toast.success('Post link copied!');
+                  }
+                }}>
                   <Share2 className="h-5 w-5" />
                 </Button>
               </div>
