@@ -69,7 +69,6 @@ export default function Signup() {
     setError("");
 
     if (!form.name.trim()) { setError("Full name is required."); return; }
-    if (!birthday) { setError("Birthday is required."); return; }
     if (!form.fatherFirstName.trim()) { setError("Father's first name is required for verification."); return; }
     if (form.password !== form.confirm) { setError("Passwords do not match."); return; }
     if (passwordStrength < 3) { setError("Please choose a stronger password."); return; }
@@ -136,7 +135,7 @@ export default function Signup() {
 
             {/* Birthday */}
             <div className="space-y-2">
-              <Label>Birthday</Label>
+              <Label>Birthday <span className="text-gray-400 font-normal text-xs">(optional if not in records)</span></Label>
               <Popover open={calendarOpen} onOpenChange={setCalendarOpen}>
                 <PopoverTrigger asChild>
                   <Button variant="outline" className={`w-full justify-start text-left font-normal ${!birthday ? 'text-muted-foreground' : ''}`} disabled={isLoading}>

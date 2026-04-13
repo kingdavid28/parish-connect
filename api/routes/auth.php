@@ -108,9 +108,6 @@ function authRegister(): void {
     $birthday = trim($body['birthday'] ?? '');
     $fatherFirstName = trim($body['fatherFirstName'] ?? '');
 
-    if (!$birthday) {
-        jsonResponse(['success' => false, 'message' => 'Birthday is required'], 400);
-    }
     if (!$fatherFirstName) {
         jsonResponse(['success' => false, 'message' => "Father's first name is required for verification"], 400);
     }
@@ -122,28 +119,44 @@ function authRegister(): void {
             'kNooCkk@0228a1',
             [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC]
         );
-        // Convert birthday to DB format — handle multiple formats in DB
-        $ts = strtotime($birthday);
-        if ($ts === false) {
-            jsonResponse(['success' => false, 'message' => 'Invalid birthday format'], 400);
-        }
-        $birthdayISO          = date('Y-m-d', $ts);       // 1980-02-28
-        $birthdayWithComma    = date('F j, Y', $ts);       // February 28, 1980
-        $birthdayWithoutComma = date('F j Y', $ts);        // February 28 1980
 
-        $sacStmt = $sacDb->prepare(
-            'SELECT id, parents_name FROM sacraments
-             WHERE LOWER(name) = LOWER(?)
-               AND (birthday = ? OR birthday = ? OR birthday = ?)
-             LIMIT 1'
-        );
-        $sacStmt->execute([$name, $birthdayISO, $birthdayWithComma, $birthdayWithoutComma]);
-        $sacRecord = $sacStmt->fetch();
+        $sacRecord = null;
+
+        if ($birthday) {
+            // Try to match name + birthday
+            $ts = strtotime($birthday);
+            if ($ts !== false) {
+                $birthdayISO          = date('Y-m-d', $ts);
+                $birthdayWithComma    = date('F j, Y', $ts);
+                $birthdayWithoutComma = date('F j Y', $ts);
+
+                $sacStmt = $sacDb->prepare(
+                    'SELECT id, parents_name FROM sacraments
+                     WHERE LOWER(name) = LOWER(?)
+                       AND (birthday = ? OR birthday = ? OR birthday = ?)
+                     LIMIT 1'
+                );
+                $sacStmt->execute([$name, $birthdayISO, $birthdayWithComma, $birthdayWithoutComma]);
+                $sacRecord = $sacStmt->fetch();
+            }
+        }
+
+        // Fallback: match name only when birthday is empty or not provided in DB
+        if (!$sacRecord) {
+            $fallbackStmt = $sacDb->prepare(
+                "SELECT id, parents_name FROM sacraments
+                 WHERE LOWER(name) = LOWER(?)
+                   AND (birthday IS NULL OR birthday = '' OR birthday = '0000-00-00')
+                 LIMIT 1"
+            );
+            $fallbackStmt->execute([$name]);
+            $sacRecord = $fallbackStmt->fetch();
+        }
 
         if (!$sacRecord) {
             jsonResponse([
                 'success' => false,
-                'message' => 'Your name and birthday were not found in the parish records. Please use the exact name as it appears in the sacramental records.'
+                'message' => 'Your name was not found in the parish records. Please use the exact name as it appears in the sacramental records.'
             ], 403);
         }
 
@@ -317,6 +330,7 @@ function authForgotPassword(): void {
         $birthdayWithComma    = date('F j, Y', $ts);
         $birthdayWithoutComma = date('F j Y', $ts);
 
+        // First try: match name + birthday
         $sacStmt = $sacDb->prepare(
             'SELECT id, parents_name FROM sacraments
              WHERE LOWER(name) = LOWER(?)
@@ -325,6 +339,18 @@ function authForgotPassword(): void {
         );
         $sacStmt->execute([$name, $birthdayISO, $birthdayWithComma, $birthdayWithoutComma]);
         $sacRecord = $sacStmt->fetch();
+
+        // Fallback: record exists with this name but no birthday
+        if (!$sacRecord) {
+            $fallbackStmt = $sacDb->prepare(
+                "SELECT id, parents_name FROM sacraments
+                 WHERE LOWER(name) = LOWER(?)
+                   AND (birthday IS NULL OR birthday = '' OR birthday = '0000-00-00')
+                 LIMIT 1"
+            );
+            $fallbackStmt->execute([$name]);
+            $sacRecord = $fallbackStmt->fetch();
+        }
 
         if (!$sacRecord) {
             jsonResponse(['success' => false, 'message' => 'Identity verification failed. Name and birthday do not match parish records.'], 403);
