@@ -71,9 +71,11 @@ function searchSacraments(): void {
                 // Convert yyyy-MM-dd input to that format
                 $ts = strtotime($birthday);
                 if ($ts !== false) {
-                    $birthdayFormatted = date('F j, Y', $ts);
-                    $where  .= ' AND birthday = ?';
-                    $params[] = $birthdayFormatted;
+                    $birthdayWithComma    = date('F j, Y', $ts);
+                    $birthdayWithoutComma = date('F j Y', $ts);
+                    $where  .= ' AND (birthday = ? OR birthday = ?)';
+                    $params[] = $birthdayWithComma;
+                    $params[] = $birthdayWithoutComma;
                 }
             }
         }

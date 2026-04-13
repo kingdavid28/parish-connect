@@ -122,13 +122,22 @@ function authRegister(): void {
             'kNooCkk@0228a1',
             [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC]
         );
-        $sacStmt = $sacDb->prepare(
-            'SELECT id, parents_name FROM sacraments WHERE LOWER(name) = LOWER(?) AND birthday = ? LIMIT 1'
-        );
-        // Convert yyyy-MM-dd to "September 24, 1995" format to match DB
+        // Convert yyyy-MM-dd to match DB birthday format (e.g. "February 28, 1980" or "February 28 1980")
         $ts = strtotime($birthday);
-        $birthdayFormatted = $ts !== false ? date('F j, Y', $ts) : $birthday;
-        $sacStmt->execute([$name, $birthdayFormatted]);
+        if ($ts === false) {
+            jsonResponse(['success' => false, 'message' => 'Invalid birthday format'], 400);
+        }
+        // Try both "February 28, 1980" and "February 28 1980" formats
+        $birthdayWithComma    = date('F j, Y', $ts);
+        $birthdayWithoutComma = date('F j Y', $ts);
+
+        $sacStmt = $sacDb->prepare(
+            'SELECT id, parents_name FROM sacraments
+             WHERE LOWER(name) = LOWER(?)
+               AND (birthday = ? OR birthday = ?)
+             LIMIT 1'
+        );
+        $sacStmt->execute([$name, $birthdayWithComma, $birthdayWithoutComma]);
         $sacRecord = $sacStmt->fetch();
 
         if (!$sacRecord) {
@@ -299,14 +308,21 @@ function authForgotPassword(): void {
             [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC]
         );
 
-        // Convert birthday to DB format
+        // Convert birthday to DB format — handle both "February 28, 1980" and "February 28 1980"
         $ts = strtotime($birthday);
-        $birthdayFormatted = $ts !== false ? date('F j, Y', $ts) : $birthday;
+        if ($ts === false) {
+            jsonResponse(['success' => false, 'message' => 'Invalid birthday format'], 400);
+        }
+        $birthdayWithComma    = date('F j, Y', $ts);
+        $birthdayWithoutComma = date('F j Y', $ts);
 
         $sacStmt = $sacDb->prepare(
-            'SELECT id, parents_name FROM sacraments WHERE LOWER(name) = LOWER(?) AND birthday = ? LIMIT 1'
+            'SELECT id, parents_name FROM sacraments
+             WHERE LOWER(name) = LOWER(?)
+               AND (birthday = ? OR birthday = ?)
+             LIMIT 1'
         );
-        $sacStmt->execute([$name, $birthdayFormatted]);
+        $sacStmt->execute([$name, $birthdayWithComma, $birthdayWithoutComma]);
         $sacRecord = $sacStmt->fetch();
 
         if (!$sacRecord) {
