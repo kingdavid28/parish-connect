@@ -696,13 +696,12 @@ export default function AdminManagement() {
                 </DialogFooter>
               </DialogContent>
             </Dialog>
-          </div>
-        </TabsContent>
-        <TabsContent value="wallet">
-          <AdminWallet />
-        </TabsContent>
-      </Tabs>
+          </TabsContent>
+          <TabsContent value="wallet">
+            <AdminWallet />
+          </TabsContent>
+        </Tabs>
+      </div>
     </div>
-    </div >
   );
 }
