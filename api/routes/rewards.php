@@ -236,6 +236,9 @@ function giveKudos(string $receiverId): void {
         jsonResponse(['success' => false, 'message' => 'You cannot give kudos to yourself'], 400);
     }
 
+    // Kudos cost — same as what the receiver earns
+    $kudosCost = POINTS['kudos_received']; // 15 GBless
+
     try {
         $db = getDB();
 
@@ -258,18 +261,60 @@ function giveKudos(string $receiverId): void {
             jsonResponse(['success' => false, 'message' => 'User not found'], 404);
         }
 
-        // Award points to receiver, ref_id = giver's id for rate-limit tracking
-        awardPoints($receiverId, 'kudos_received', $giver['id']);
+        // Check giver has enough GBless
+        $balStmt = $db->prepare('SELECT total_points FROM user_points WHERE user_id = ? LIMIT 1');
+        $balStmt->execute([$giver['id']]);
+        $giverBalance = (int)($balStmt->fetchColumn() ?: 0);
+
+        if ($giverBalance < $kudosCost) {
+            jsonResponse([
+                'success' => false,
+                'message' => 'You need at least ' . $kudosCost . ' GBless to give kudos. Earn more by posting and engaging!',
+                'code'    => 'insufficient_balance',
+            ], 400);
+        }
+
+        // Atomic transaction: deduct from giver, credit receiver
+        $db->beginTransaction();
+        try {
+            // Deduct from giver
+            $db->prepare(
+                'UPDATE user_points SET total_points = total_points - ? WHERE user_id = ?'
+            )->execute([$kudosCost, $giver['id']]);
+
+            $db->prepare(
+                'INSERT INTO point_transactions (id, user_id, action, points, ref_id)
+                 VALUES (?, ?, ?, ?, ?)'
+            )->execute([generateUuid(), $giver['id'], 'kudos_sent', -$kudosCost, $receiverId]);
+
+            // Credit receiver
+            $db->prepare(
+                'INSERT INTO user_points (user_id, total_points) VALUES (?, ?)
+                 ON DUPLICATE KEY UPDATE total_points = total_points + VALUES(total_points)'
+            )->execute([$receiverId, $kudosCost]);
+
+            $db->prepare(
+                'INSERT INTO point_transactions (id, user_id, action, points, ref_id)
+                 VALUES (?, ?, ?, ?, ?)'
+            )->execute([generateUuid(), $receiverId, 'kudos_received', $kudosCost, $giver['id']]);
+
+            $db->commit();
+        } catch (\Exception $e) {
+            $db->rollBack();
+            throw $e;
+        }
+
+        checkAndAwardBadges($receiverId);
 
         // Notify receiver
         sendPushToUser($receiverId, [
             'title' => '💛 Kudos from ' . $giver['name'],
-            'body'  => $giver['name'] . ' gave you kudos!',
+            'body'  => $giver['name'] . ' gave you ' . $kudosCost . ' GBless as kudos!',
             'tag'   => 'kudos-' . $giver['id'],
             'url'   => '/parish-connect/rewards',
         ]);
 
-        jsonResponse(['success' => true, 'message' => 'Kudos given!']);
+        jsonResponse(['success' => true, 'message' => 'Kudos given! ' . $kudosCost . ' GBless sent to ' . $receiver['name'] . '.']);
     } catch (\Exception $e) {
         error_log('giveKudos error: ' . $e->getMessage());
         jsonResponse(['success' => false, 'message' => 'Internal server error'], 500);

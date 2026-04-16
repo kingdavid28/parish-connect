@@ -72,6 +72,7 @@ const TX_LABELS: Record<string, string> = {
     comment_added: "Left a comment",
     like_received: "Received a like",
     kudos_received: "Received kudos",
+    kudos_sent: "Gave kudos",
     follow_received: "Gained a follower",
     daily_login: "Daily login",
     topup_approved: "GCash top-up",
@@ -83,7 +84,7 @@ const TX_LABELS: Record<string, string> = {
 
 const TX_ICONS: Record<string, string> = {
     post_created: "✍️", comment_added: "💬", like_received: "❤️",
-    kudos_received: "💛", follow_received: "🤝", daily_login: "☀️",
+    kudos_received: "💛", kudos_sent: "💛", follow_received: "🤝", daily_login: "☀️",
     topup_approved: "💰", gift_received: "🎁", gift_sent: "🎁",
     cashout_reserved: "💸", cashout_refunded: "↩️",
 };

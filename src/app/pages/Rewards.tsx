@@ -49,6 +49,7 @@ const ACTION_LABELS: Record<string, string> = {
     comment_added: "Left a comment",
     like_received: "Received a like",
     kudos_received: "Received kudos",
+    kudos_sent: "Gave kudos",
     follow_received: "Gained a follower",
     daily_login: "Daily login",
 };
@@ -58,6 +59,7 @@ const ACTION_ICONS: Record<string, string> = {
     comment_added: "💬",
     like_received: "❤️",
     kudos_received: "💛",
+    kudos_sent: "💛",
     follow_received: "🤝",
     daily_login: "☀️",
 };
@@ -168,7 +170,7 @@ export default function Rewards() {
                 <TabsContent value="overview" className="mt-4 space-y-3">
                     <h2 className="text-sm font-semibold text-gray-600 uppercase tracking-wide">How to earn GBless Points</h2>
                     <div className="grid grid-cols-2 gap-3">
-                        {Object.entries(ACTION_LABELS).map(([action, label]) => (
+                        {Object.entries(ACTION_LABELS).filter(([a]) => !['kudos_sent'].includes(a)).map(([action, label]) => (
                             <div key={action} className="flex items-center gap-2 bg-gray-50 rounded-lg p-3 text-sm">
                                 <span className="text-lg">{ACTION_ICONS[action]}</span>
                                 <div>
@@ -177,6 +179,13 @@ export default function Rewards() {
                                 </div>
                             </div>
                         ))}
+                        <div className="flex items-center gap-2 bg-yellow-50 border border-yellow-100 rounded-lg p-3 text-sm">
+                            <span className="text-lg">💛</span>
+                            <div>
+                                <p className="font-medium">Give kudos</p>
+                                <p className="text-xs text-gray-400">−15 GBless from you, +15 to them</p>
+                            </div>
+                        </div>
                     </div>
 
                     <h2 className="text-sm font-semibold text-gray-600 uppercase tracking-wide pt-2">Recent activity</h2>
