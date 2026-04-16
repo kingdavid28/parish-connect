@@ -48,8 +48,8 @@ const ACTION_LABELS: Record<string, string> = {
     post_created: "Published a post",
     comment_added: "Left a comment",
     like_received: "Received a like",
-    kudos_received: "Received kudos",
-    kudos_sent: "Gave kudos",
+    kudos_received: "Received praise",
+    kudos_sent: "Gave praise",
     follow_received: "Gained a follower",
     daily_login: "Daily login",
 };
@@ -182,7 +182,7 @@ export default function Rewards() {
                         <div className="flex items-center gap-2 bg-yellow-50 border border-yellow-100 rounded-lg p-3 text-sm">
                             <span className="text-lg">💛</span>
                             <div>
-                                <p className="font-medium">Give kudos</p>
+                                <p className="font-medium">Give praise</p>
                                 <p className="text-xs text-gray-400">−15 GBless from you, +15 to them</p>
                             </div>
                         </div>

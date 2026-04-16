@@ -10,7 +10,7 @@ function handleRewards(string $method, ?string $id, ?string $action): void {
         $method === 'GET'  && !$id                              => getMyRewards(),
         $method === 'GET'  && $id === 'leaderboard'             => getLeaderboard(),
         $method === 'GET'  && !!$id && !$action                 => getUserRewards($id),
-        $method === 'POST' && !!$id && $action === 'kudos'      => giveKudos($id),
+        $method === 'POST' && !!$id && $action === 'kudos'      => givePraise($id),
         default => jsonResponse(['success' => false, 'message' => 'Not found'], 404),
     };
     exit;
@@ -31,7 +31,7 @@ const BADGES = [
     ['slug' => 'first_post',      'name' => 'First Post',       'description' => 'Published your first post',          'icon' => '✍️',  'threshold' => 1,   'metric' => 'posts'],
     ['slug' => 'active_member',   'name' => 'Active Member',    'description' => 'Reached 100 points',                 'icon' => '⭐',  'threshold' => 100, 'metric' => 'points'],
     ['slug' => 'community_pillar','name' => 'Community Pillar', 'description' => 'Reached 500 points',                 'icon' => '🏛️', 'threshold' => 500, 'metric' => 'points'],
-    ['slug' => 'beloved',         'name' => 'Beloved',          'description' => 'Received 10 kudos from parishioners','icon' => '💛',  'threshold' => 10,  'metric' => 'kudos'],
+    ['slug' => 'beloved',         'name' => 'Beloved',          'description' => 'Received 10 praises from parishioners','icon' => '💛',  'threshold' => 10,  'metric' => 'kudos'],
     ['slug' => 'connector',       'name' => 'Connector',        'description' => 'Has 10 followers',                   'icon' => '🤝',  'threshold' => 10,  'metric' => 'followers'],
     ['slug' => 'storyteller',     'name' => 'Storyteller',      'description' => 'Published 10 posts',                 'icon' => '📖',  'threshold' => 10,  'metric' => 'posts'],
 ];
@@ -229,20 +229,20 @@ function getLeaderboard(): void {
     }
 }
 
-function giveKudos(string $receiverId): void {
+function givePraise(string $receiverId): void {
     $giver = authenticate();
 
     if ($giver['id'] === $receiverId) {
-        jsonResponse(['success' => false, 'message' => 'You cannot give kudos to yourself'], 400);
+        jsonResponse(['success' => false, 'message' => 'You cannot praise yourself'], 400);
     }
 
-    // Kudos cost — same as what the receiver earns
-    $kudosCost = POINTS['kudos_received']; // 15 GBless
+    // Praise cost — same as what the receiver earns
+    $praiseCost = POINTS['kudos_received']; // 15 GBless
 
     try {
         $db = getDB();
 
-        // Rate limit: 1 kudos per giver→receiver per day
+        // Rate limit: 1 praise per giver→receiver per day
         $check = $db->prepare(
             "SELECT id FROM point_transactions
              WHERE user_id = ? AND action = 'kudos_received' AND ref_id = ? AND DATE(created_at) = CURDATE()
@@ -250,7 +250,7 @@ function giveKudos(string $receiverId): void {
         );
         $check->execute([$receiverId, $giver['id']]);
         if ($check->fetch()) {
-            jsonResponse(['success' => false, 'message' => 'You already gave kudos to this person today'], 429);
+            jsonResponse(['success' => false, 'message' => 'You already praised this person today'], 429);
         }
 
         // Verify receiver exists
@@ -266,10 +266,10 @@ function giveKudos(string $receiverId): void {
         $balStmt->execute([$giver['id']]);
         $giverBalance = (int)($balStmt->fetchColumn() ?: 0);
 
-        if ($giverBalance < $kudosCost) {
+        if ($giverBalance < $praiseCost) {
             jsonResponse([
                 'success' => false,
-                'message' => 'You need at least ' . $kudosCost . ' GBless to give kudos. Earn more by posting and engaging!',
+                'message' => 'You need at least ' . $praiseCost . ' GBless to give praise. Earn more by posting and engaging!',
                 'code'    => 'insufficient_balance',
             ], 400);
         }
@@ -280,23 +280,23 @@ function giveKudos(string $receiverId): void {
             // Deduct from giver
             $db->prepare(
                 'UPDATE user_points SET total_points = total_points - ? WHERE user_id = ?'
-            )->execute([$kudosCost, $giver['id']]);
+            )->execute([$praiseCost, $giver['id']]);
 
             $db->prepare(
                 'INSERT INTO point_transactions (id, user_id, action, points, ref_id)
                  VALUES (?, ?, ?, ?, ?)'
-            )->execute([generateUuid(), $giver['id'], 'kudos_sent', -$kudosCost, $receiverId]);
+            )->execute([generateUuid(), $giver['id'], 'kudos_sent', -$praiseCost, $receiverId]);
 
             // Credit receiver
             $db->prepare(
                 'INSERT INTO user_points (user_id, total_points) VALUES (?, ?)
                  ON DUPLICATE KEY UPDATE total_points = total_points + VALUES(total_points)'
-            )->execute([$receiverId, $kudosCost]);
+            )->execute([$receiverId, $praiseCost]);
 
             $db->prepare(
                 'INSERT INTO point_transactions (id, user_id, action, points, ref_id)
                  VALUES (?, ?, ?, ?, ?)'
-            )->execute([generateUuid(), $receiverId, 'kudos_received', $kudosCost, $giver['id']]);
+            )->execute([generateUuid(), $receiverId, 'kudos_received', $praiseCost, $giver['id']]);
 
             $db->commit();
         } catch (\Exception $e) {
@@ -308,15 +308,15 @@ function giveKudos(string $receiverId): void {
 
         // Notify receiver
         sendPushToUser($receiverId, [
-            'title' => '💛 Kudos from ' . $giver['name'],
-            'body'  => $giver['name'] . ' gave you ' . $kudosCost . ' GBless as kudos!',
-            'tag'   => 'kudos-' . $giver['id'],
+            'title' => '💛 Praise from ' . $giver['name'],
+            'body'  => $giver['name'] . ' praised you with ' . $praiseCost . ' GBless!',
+            'tag'   => 'praise-' . $giver['id'],
             'url'   => '/parish-connect/rewards',
         ]);
 
-        jsonResponse(['success' => true, 'message' => 'Kudos given! ' . $kudosCost . ' GBless sent to ' . $receiver['name'] . '.']);
+        jsonResponse(['success' => true, 'message' => 'Praise given! ' . $praiseCost . ' GBless sent to ' . $receiver['name'] . '.']);
     } catch (\Exception $e) {
-        error_log('giveKudos error: ' . $e->getMessage());
+        error_log('givePraise error: ' . $e->getMessage());
         jsonResponse(['success' => false, 'message' => 'Internal server error'], 500);
     }
 }
