@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/../db.php';
 require_once __DIR__ . '/../middleware/auth.php';
+require_once __DIR__ . '/rewards.php';
 
 function handleFollows(string $method, ?string $id, ?string $action): void {
     match (true) {
@@ -34,6 +35,7 @@ function toggleFollow(string $targetId): void {
         } else {
             $db->prepare('INSERT INTO follows (follower_id, following_id) VALUES (?, ?)')
                ->execute([$user['id'], $targetId]);
+            awardPoints($targetId, 'follow_received', $user['id']);
             jsonResponse(['success' => true, 'following' => true]);
         }
     } catch (PDOException $e) {

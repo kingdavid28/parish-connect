@@ -184,6 +184,27 @@ if ($resource === 'groups') {
     exit;
 }
 
+// Push notification routes
+if ($resource === 'push') {
+    require_once __DIR__ . '/routes/push.php';
+    handlePush($method, $id);
+    exit;
+}
+
+// Rewards & gamification routes
+if ($resource === 'rewards') {
+    require_once __DIR__ . '/routes/rewards.php';
+    handleRewards($method, $id, $action);
+    exit;
+}
+
+// GBless wallet routes (top-up, cash-out, gifting)
+if ($resource === 'wallet') {
+    require_once __DIR__ . '/routes/wallet.php';
+    handleWallet($method, $id, $action);
+    exit;
+}
+
 // Parish record routes
 if ($resource === 'records') {
     require_once __DIR__ . '/routes/records.php';

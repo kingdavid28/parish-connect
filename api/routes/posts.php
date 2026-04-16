@@ -3,6 +3,8 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/../db.php';
 require_once __DIR__ . '/../middleware/auth.php';
+require_once __DIR__ . '/push.php';
+require_once __DIR__ . '/rewards.php';
 
 function handlePosts(string $method, ?string $id, ?string $action): void {
     match (true) {
@@ -113,6 +115,25 @@ function createPost(): void {
              VALUES (?, ?, ?, ?, ?)'
         )->execute([$id, $user['id'], $content, $type, $imageUrl]);
 
+        // Notify followers of the post author
+        $db = getDB();
+        $followers = $db->prepare(
+            'SELECT follower_id FROM follows WHERE following_id = ?'
+        );
+        $followers->execute([$user['id']]);
+        $preview = mb_strimwidth($content, 0, 80, '…');
+        foreach ($followers->fetchAll() as $row) {
+            sendPushToUser($row['follower_id'], [
+                'title' => $user['name'] . ' posted',
+                'body'  => $preview,
+                'tag'   => 'new-post-' . $id,
+                'url'   => '/parish-connect/',
+            ]);
+        }
+
+        // Award points to post author
+        awardPoints($user['id'], 'post_created', $id);
+
         jsonResponse(['success' => true, 'message' => 'Post created', 'data' => ['id' => $id]], 201);
     } catch (PDOException $e) {
         error_log('Create post error: ' . $e->getMessage());
@@ -176,6 +197,13 @@ function toggleLike(string $id): void {
         } else {
             $db->prepare('INSERT INTO post_likes (post_id, user_id) VALUES (?, ?)')
                ->execute([$id, $user['id']]);
+            // Award points to post author for receiving a like
+            $authorStmt = $db->prepare('SELECT user_id FROM posts WHERE id = ? LIMIT 1');
+            $authorStmt->execute([$id]);
+            $postRow = $authorStmt->fetch();
+            if ($postRow && $postRow['user_id'] !== $user['id']) {
+                awardPoints($postRow['user_id'], 'like_received', $id);
+            }
             jsonResponse(['success' => true, 'liked' => true]);
         }
     } catch (PDOException $e) {
@@ -243,6 +271,23 @@ function addComment(string $postId): void {
              WHERE c.id = ?'
         );
         $stmt->execute([$id]);
+
+        // Notify the post author (if not the commenter)
+        $postAuthor = $db->prepare('SELECT user_id FROM posts WHERE id = ? LIMIT 1');
+        $postAuthor->execute([$postId]);
+        $post = $postAuthor->fetch();
+        if ($post && $post['user_id'] !== $user['id']) {
+            $preview = mb_strimwidth($content, 0, 80, '…');
+            sendPushToUser($post['user_id'], [
+                'title' => $user['name'] . ' commented',
+                'body'  => $preview,
+                'tag'   => 'comment-' . $id,
+                'url'   => '/parish-connect/',
+            ]);
+        }
+
+        // Award points to commenter
+        awardPoints($user['id'], 'comment_added', $id);
 
         jsonResponse(['success' => true, 'data' => $stmt->fetch()], 201);
     } catch (PDOException $e) {

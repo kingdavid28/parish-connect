@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/../db.php';
 require_once __DIR__ . '/../middleware/auth.php';
+require_once __DIR__ . '/push.php';
 
 function handleMessages(string $method, ?string $id, ?string $action): void {
     match (true) {
@@ -133,6 +134,15 @@ function sendMessage(string $receiverId): void {
         $id = generateUuid();
         $db->prepare('INSERT INTO messages (id, sender_id, receiver_id, content, image_url) VALUES (?, ?, ?, ?, ?)')
            ->execute([$id, $user['id'], $receiverId, $content ?: '', $imageUrl]);
+
+        // Push notification to receiver
+        $preview = $content ? mb_strimwidth($content, 0, 80, '…') : '📷 Image';
+        sendPushToUser($receiverId, [
+            'title' => 'New message from ' . $user['name'],
+            'body'  => $preview,
+            'tag'   => 'message-' . $user['id'],
+            'url'   => '/parish-connect/messages',
+        ]);
 
         jsonResponse(['success' => true, 'data' => [
             'id' => $id, 'sender_id' => $user['id'], 'receiver_id' => $receiverId,

@@ -31,3 +31,11 @@ define('DB_PASSWORD',    $env['DB_PASSWORD']       ?? '');
 define('JWT_SECRET',     $env['JWT_SECRET']        ?? '');
 define('JWT_EXPIRES',    (int)($env['JWT_EXPIRES_SECONDS'] ?? 604800));
 define('ALLOWED_ORIGINS',$env['ALLOWED_ORIGINS']   ?? '');
+define('VAPID_PUBLIC_KEY', $env['VAPID_PUBLIC_KEY'] ?? '');
+define('VAPID_PRIVATE_KEY',$env['VAPID_PRIVATE_KEY'] ?? '');
+define('VAPID_EMAIL',    $env['VAPID_EMAIL']        ?? '');
+
+// GCash parish info (displayed to users for manual top-up)
+define('GCASH_NUMBER',  $env['GCASH_NUMBER']  ?? '');
+define('GCASH_NAME',    $env['GCASH_NAME']    ?? '');
+define('GCASH_QR_URL',  $env['GCASH_QR_URL']  ?? '');

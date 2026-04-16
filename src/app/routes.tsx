@@ -13,6 +13,8 @@ import Messages from "./pages/Messages";
 import ForgotPassword from "./pages/ForgotPassword";
 import QRCodePage from "./pages/QRCode";
 import NotFound from "./pages/NotFound";
+import Rewards from "./pages/Rewards";
+import Wallet from "./pages/Wallet";
 
 export const router = createBrowserRouter([
   { path: "/login", Component: Login },
@@ -33,6 +35,8 @@ export const router = createBrowserRouter([
       { path: "qrcode", Component: QRCodePage },
       { path: "membership", Component: Membership },
       { path: "settings", Component: Settings },
+      { path: "rewards", Component: Rewards },
+      { path: "wallet", Component: Wallet },
       {
         path: "admin",
         element: (

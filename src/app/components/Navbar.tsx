@@ -15,7 +15,7 @@ import {
 } from "./ui/alert-dialog";
 import {
   Home, BookOpen, Users, Settings as SettingsIcon, LogOut, Shield, Crown,
-  UserCircle, ChevronDown, MessageCircle, QrCode,
+  UserCircle, ChevronDown, MessageCircle, QrCode, Trophy, Wallet as WalletIcon,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -40,6 +40,8 @@ export default function Navbar() {
     { path: "/", label: "Feed", icon: Home, showFor: "all" },
     { path: "/messages", label: "Messages", icon: MessageCircle, showFor: "all" },
     { path: "/records", label: "Records", icon: BookOpen, showFor: "all" },
+    { path: "/rewards", label: "Rewards", icon: Trophy, showFor: "all" },
+    { path: "/wallet", label: "Wallet", icon: WalletIcon, showFor: "all" },
     { path: "/membership", label: "Members", icon: Users, showFor: "admin" },
     { path: "/admin", label: "Manage", icon: Shield, showFor: "admin" },
   ];
@@ -149,6 +151,16 @@ export default function Navbar() {
                   <DropdownMenuItem asChild>
                     <Link to={`/profile/${user?.id}`} className="cursor-pointer">
                       <UserCircle className="mr-2 h-4 w-4" />My Profile
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
+                    <Link to="/rewards" className="cursor-pointer">
+                      <Trophy className="mr-2 h-4 w-4" />Rewards
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
+                    <Link to="/wallet" className="cursor-pointer">
+                      <WalletIcon className="mr-2 h-4 w-4" />GBless Wallet
                     </Link>
                   </DropdownMenuItem>
                   <DropdownMenuItem asChild>

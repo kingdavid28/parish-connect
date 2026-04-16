@@ -19,6 +19,7 @@ import {
   Settings as SettingsIcon,
   User,
   Bell,
+  BellOff,
   Lock,
   Shield,
   Eye,
@@ -28,9 +29,11 @@ import {
   Loader,
 } from "lucide-react";
 import { toast } from "sonner";
+import { usePushNotifications } from "../hooks/usePushNotifications";
 
 export default function Settings() {
   const { user, isAdmin } = useAuth();
+  const { isSupported, permission, isSubscribed, isLoading: pushLoading, subscribe, unsubscribe } = usePushNotifications();
   const [showPassword, setShowPassword] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
@@ -165,7 +168,23 @@ export default function Settings() {
   };
 
   const handleSavePrivacy = () => toast.success("Privacy settings updated!");
-  const handleSaveNotifications = () => toast.success("Notification preferences updated!");
+
+  const handleTogglePush = async () => {
+    if (isSubscribed) {
+      const ok = await unsubscribe();
+      if (ok) toast.success("Push notifications disabled");
+      else toast.error("Failed to disable push notifications");
+    } else {
+      if (permission === "denied") {
+        toast.error("Notifications are blocked. Enable them in your browser settings.");
+        return;
+      }
+      const ok = await subscribe();
+      if (ok) toast.success("Push notifications enabled");
+      else if (permission !== "granted") toast.info("Notification permission was not granted");
+      else toast.error("Failed to enable push notifications");
+    }
+  };
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -316,6 +335,43 @@ export default function Settings() {
               <CardDescription>Manage how and when you receive notifications</CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
+              {/* Push notifications toggle */}
+              {isSupported ? (
+                <div className="flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <Label className="flex items-center gap-2">
+                      {isSubscribed ? <Bell className="h-4 w-4 text-blue-600" /> : <BellOff className="h-4 w-4 text-gray-400" />}
+                      Push Notifications
+                    </Label>
+                    <p className="text-sm text-gray-500">
+                      {permission === "denied"
+                        ? "Blocked in browser — enable in site settings"
+                        : isSubscribed
+                          ? "You'll receive push notifications on this device"
+                          : "Get notified about parish activity on this device"}
+                    </p>
+                  </div>
+                  <Button
+                    variant={isSubscribed ? "outline" : "default"}
+                    size="sm"
+                    onClick={handleTogglePush}
+                    disabled={pushLoading || permission === "denied"}
+                  >
+                    {pushLoading ? (
+                      <Loader className="h-4 w-4 animate-spin" />
+                    ) : isSubscribed ? (
+                      "Disable"
+                    ) : (
+                      "Enable"
+                    )}
+                  </Button>
+                </div>
+              ) : (
+                <p className="text-sm text-gray-500">
+                  Push notifications are not supported in this browser.
+                </p>
+              )}
+              <Separator />
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
                   <div className="space-y-0.5">
@@ -324,7 +380,6 @@ export default function Settings() {
                   </div>
                   <Switch checked={emailNotifications} onCheckedChange={setEmailNotifications} />
                 </div>
-                <Separator />
                 <div className="flex items-center justify-between">
                   <div className="space-y-0.5">
                     <Label>New Posts</Label>
@@ -346,9 +401,6 @@ export default function Settings() {
                   </div>
                   <Switch checked={researchUpdates} onCheckedChange={setResearchUpdates} />
                 </div>
-              </div>
-              <div className="flex justify-end">
-                <Button onClick={handleSaveNotifications}><Save className="h-4 w-4 mr-2" />Save Notification Settings</Button>
               </div>
             </CardContent>
           </Card>

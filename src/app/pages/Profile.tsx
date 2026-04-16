@@ -12,10 +12,11 @@ import {
 } from "../components/ui/dialog";
 import {
   Calendar, Mail, Shield, BookOpen, Heart, MessageCircle, Loader, Send, Crown,
-  UserCheck, UserPlus, Church, Cake,
+  UserCheck, UserPlus, Church, Cake, Star, Zap,
 } from "lucide-react";
 import { format, formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
+import { KudosButton } from "../components/KudosButton";
 
 interface ProfileData {
   id: string; name: string; email: string; avatar?: string; role: string;
@@ -35,6 +36,11 @@ interface Post {
   id: string; content: string; type: string; created_at: string;
   likes: number; comments: number; is_liked: boolean;
   author_name: string; author_avatar: string; image_url?: string;
+}
+interface UserRewards {
+  total_points: number;
+  rank: number;
+  badges: { slug: string; name: string; icon: string; earned: boolean }[];
 }
 
 const API = '/parish-connect/api';
@@ -73,6 +79,9 @@ export default function Profile() {
   const [userPosts, setUserPosts] = useState<Post[]>([]);
   const [loadingPosts, setLoadingPosts] = useState(false);
 
+  // Rewards state
+  const [userRewards, setUserRewards] = useState<UserRewards | null>(null);
+
   const profileId = id || currentUser?.id;
   const isOwnProfile = currentUser?.id === profileId;
 
@@ -80,6 +89,7 @@ export default function Profile() {
     if (!profileId) return;
     fetchProfile();
     fetchFollowStatus();
+    fetchUserRewards();
   }, [profileId]);
 
   useEffect(() => {
@@ -147,6 +157,16 @@ export default function Profile() {
       }
     } catch { /* ignore */ }
     finally { setLoadingPosts(false); }
+  };
+
+  const fetchUserRewards = async () => {
+    try {
+      const res = await fetch(`${API}/rewards/${profileId}`, {
+        headers: { 'Authorization': `Bearer ${getToken()}` },
+      });
+      const data = await res.json();
+      if (data.success) setUserRewards(data.data);
+    } catch { /* ignore */ }
   };
 
   const handleToggleFollow = async () => {
@@ -259,6 +279,21 @@ export default function Profile() {
                     <Button variant="outline" onClick={openMessages}>
                       <MessageCircle className="h-4 w-4 mr-2" />Message
                     </Button>
+                    <KudosButton receiverId={profileId!} receiverName={profileData.name} />
+                  </div>
+                )}
+                {/* Points & badges summary */}
+                {userRewards && (
+                  <div className="flex items-center gap-3 mt-2 flex-wrap">
+                    <span className="flex items-center gap-1 text-sm text-yellow-600 font-medium">
+                      <Zap className="h-4 w-4" />{userRewards.total_points} GBless
+                    </span>
+                    <span className="text-sm text-gray-400">Rank #{userRewards.rank}</span>
+                    <div className="flex gap-1">
+                      {userRewards.badges.filter(b => b.earned).map(b => (
+                        <span key={b.slug} title={b.name} className="text-lg">{b.icon}</span>
+                      ))}
+                    </div>
                   </div>
                 )}
               </div>
