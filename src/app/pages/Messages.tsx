@@ -143,7 +143,7 @@ export default function Messages() {
         setShowCreateGroup(true);
         setGroupName(""); setSelectedMembers([]);
         try {
-            const res = await fetch(`${API}/users`, { headers: { 'Authorization': `Bearer ${getToken()}` } });
+            const res = await fetch(`${API}/users/search?all=1`, { headers: { 'Authorization': `Bearer ${getToken()}` } });
             const data = await res.json();
             if (data.success) setAvailableUsers((data.data || []).filter((u: UserItem) => u.id !== user?.id));
         } catch { setAvailableUsers([]); }

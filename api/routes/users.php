@@ -19,27 +19,42 @@ function handleUsers(string $method, ?string $id): void {
 
 /**
  * Search users by name — available to all authenticated users (for gifting).
+ * Pass ?q=name for search, or ?all=1 to list all (for membership directory).
  */
 function searchUsers(): void {
     $user = authenticate();
     $q    = trim($_GET['search'] ?? $_GET['q'] ?? '');
-
-    if (strlen($q) < 2) {
-        jsonResponse(['success' => true, 'data' => []]);
-    }
+    $all  = ($_GET['all'] ?? '') === '1';
 
     try {
-        $db   = getDB();
-        $stmt = $db->prepare(
-            "SELECT id, name, avatar, role
-             FROM users
-             WHERE is_active = 1
-               AND id != ?
-               AND name LIKE ?
-             ORDER BY name ASC
-             LIMIT 10"
-        );
-        $stmt->execute([$user['id'], '%' . $q . '%']);
+        $db = getDB();
+
+        if ($all || strlen($q) === 0) {
+            // Return all active users except self (for membership directory)
+            $stmt = $db->prepare(
+                "SELECT id, name, avatar, role, email, created_at, member_since
+                 FROM users
+                 WHERE is_active = 1 AND id != ?
+                 ORDER BY name ASC
+                 LIMIT 200"
+            );
+            $stmt->execute([$user['id']]);
+        } else {
+            if (strlen($q) < 2) {
+                jsonResponse(['success' => true, 'data' => []]);
+            }
+            $stmt = $db->prepare(
+                "SELECT id, name, avatar, role
+                 FROM users
+                 WHERE is_active = 1
+                   AND id != ?
+                   AND name LIKE ?
+                 ORDER BY name ASC
+                 LIMIT 10"
+            );
+            $stmt->execute([$user['id'], '%' . $q . '%']);
+        }
+
         jsonResponse(['success' => true, 'data' => $stmt->fetchAll()]);
     } catch (PDOException $e) {
         error_log('Search users error: ' . $e->getMessage());

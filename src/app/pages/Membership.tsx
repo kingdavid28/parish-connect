@@ -81,7 +81,7 @@ export default function Membership() {
   const fetchMembers = async () => {
     try {
       setLoading(true);
-      const response = await fetch(`${API_BASE_URL}/users`, {
+      const response = await fetch(`${API_BASE_URL}/users/search?all=1`, {
         headers: { 'Authorization': `Bearer ${getToken()}` },
       });
       const data = await response.json();
