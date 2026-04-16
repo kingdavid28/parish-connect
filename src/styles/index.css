@@ -8,17 +8,20 @@
   padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 
-/* Fix mobile keyboard covering inputs */
-@supports (height: 100dvh) {
-  .auth-page {
-    min-height: 100dvh;
-    height: auto;
-  }
-}
-
+/*
+ * Auth pages (Login / Signup)
+ * Strategy: make the page a natural scroll container so the browser
+ * can scroll the focused input into view without any JS hacks.
+ * - overflow-y: auto  → page scrolls when keyboard pushes content down
+ * - min-height: 100dvh → fills the screen but grows taller if needed
+ * - padding-bottom    → ensures the submit button is never hidden behind
+ *                       the keyboard on iOS (which doesn't resize the viewport)
+ */
 .auth-page {
-  min-height: 100vh;
   min-height: 100dvh;
+  min-height: 100vh;
+  /* fallback */
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
+  padding-bottom: max(env(safe-area-inset-bottom, 0px), 24px);
 }

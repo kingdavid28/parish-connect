@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect } from "react";
 import { useNavigate, useLocation, Navigate, Link } from "react-router";
 import { useAuth } from "../context/AuthContext";
 import { Button } from "./ui/button";
@@ -23,18 +23,18 @@ export default function Login() {
   const [isLoading, setIsLoading] = useState(false);
   const pageRef = useRef<HTMLDivElement>(null);
 
+  // Scroll the focused input above the keyboard on iOS (which doesn't
+  // resize the layout even with interactive-widget=resizes-content).
   useEffect(() => {
-    const handleFocus = (e: FocusEvent) => {
-      const target = e.target as HTMLElement;
-      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') {
-        setTimeout(() => {
-          target.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        }, 300);
-      }
+    const vv = window.visualViewport;
+    if (!vv) return;
+    const onResize = () => {
+      const focused = document.activeElement as HTMLElement | null;
+      if (!focused || !['INPUT', 'TEXTAREA'].includes(focused.tagName)) return;
+      setTimeout(() => focused.scrollIntoView({ behavior: 'smooth', block: 'center' }), 50);
     };
-    const el = pageRef.current;
-    el?.addEventListener('focusin', handleFocus);
-    return () => el?.removeEventListener('focusin', handleFocus);
+    vv.addEventListener('resize', onResize);
+    return () => vv.removeEventListener('resize', onResize);
   }, []);
 
   if (isAuthenticated) return <Navigate to={from} replace />;
@@ -54,7 +54,7 @@ export default function Login() {
   };
 
   return (
-    <div ref={pageRef} className="auth-page flex items-start sm:items-center justify-center p-4 pt-8 sm:pt-4">
+    <div className="auth-page flex items-start justify-center p-4 pt-8">
       <Card className="w-full max-w-md shadow-lg">
         <CardHeader className="space-y-1 text-center">
           <div className="flex justify-center mb-2">
