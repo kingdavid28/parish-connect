@@ -243,7 +243,7 @@ export default function Profile() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <div className="max-w-5xl mx-auto px-4 py-6">
+      <div className="max-w-5xl mx-auto px-4 py-6 pb-24 md:pb-6">
         {/* Profile Header */}
         <Card className="mb-6">
           <CardContent className="pt-6">

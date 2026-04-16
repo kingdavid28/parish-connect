@@ -224,7 +224,7 @@ export default function Feed() {
   const filteredPosts = activeTab === "all" ? posts : posts.filter((p) => p.type === activeTab);
 
   return (
-    <div className="max-w-3xl mx-auto px-4 py-6">
+    <div className="max-w-3xl mx-auto px-4 py-6 pb-24 md:pb-6">
       {/* Create Post */}
       <Card className="mb-6">
         <CardContent className="pt-6">

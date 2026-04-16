@@ -149,7 +149,7 @@ export default function Membership() {
   };
 
   return (
-    <div className="max-w-7xl mx-auto px-4 py-6">
+    <div className="max-w-7xl mx-auto px-4 py-6 pb-24 md:pb-6">
       <div className="mb-6">
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-3">

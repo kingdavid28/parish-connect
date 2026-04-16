@@ -122,7 +122,7 @@ export default function Rewards() {
     const lockedBadges = myRewards?.badges.filter((b) => !b.earned) ?? [];
 
     return (
-        <div className="max-w-3xl mx-auto px-4 py-6 space-y-6">
+        <div className="max-w-3xl mx-auto px-4 py-6 pb-24 md:pb-6 space-y-6">
             {/* Header */}
             <div className="flex items-center gap-3">
                 <div className="bg-yellow-500 p-2 rounded-lg">
