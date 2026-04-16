@@ -147,6 +147,11 @@ checkRateLimit('global_' . $clientIp, 100, 900);
 // User routes
 if ($resource === 'users') {
     require_once __DIR__ . '/routes/users.php';
+    // Search: GET /users/search?q=name (any authenticated user)
+    if ($id === 'search' && $method === 'GET') {
+        searchUsers();
+        exit;
+    }
     // Handle avatar upload: POST /users/{id}/avatar
     if ($action === 'avatar' && $method === 'POST' && $id) {
         handleAvatarUpload($id);

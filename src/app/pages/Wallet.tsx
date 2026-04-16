@@ -212,7 +212,7 @@ export default function Wallet() {
         if (q.length < 2) { setGiftResults([]); return; }
         setSearchingUsers(true);
         try {
-            const res = await fetch(`${API}/users?search=${encodeURIComponent(q)}`, {
+            const res = await fetch(`${API}/users/search?q=${encodeURIComponent(q)}`, {
                 headers: { Authorization: `Bearer ${getToken()}` },
             });
             const data = await res.json();
@@ -234,7 +234,7 @@ export default function Wallet() {
                 body: JSON.stringify({ receiver_id: giftRecipient.id, gbless_amount: parseInt(giftAmount), message: giftMessage }),
             });
             const data = await res.json();
-            if (!data.success) { toast.error(data.message); return; }
+            if (!data.success) { toast.error(data.message || "Failed to send gift"); return; }
             toast.success(data.message);
             setGiftRecipient(null); setGiftAmount(""); setGiftMessage(""); setGiftSearch(""); setGiftResults([]);
             fetchSummary();

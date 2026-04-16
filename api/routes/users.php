@@ -6,6 +6,7 @@ require_once __DIR__ . '/../middleware/auth.php';
 
 function handleUsers(string $method, ?string $id): void {
     match (true) {
+        $method === 'GET'    && $id === 'search' => searchUsers(),
         $method === 'GET'    && !!$id => getUser($id),
         $method === 'GET'    && !$id  => listUsers(),
         $method === 'POST'   && !$id  => createUser(),
@@ -14,6 +15,36 @@ function handleUsers(string $method, ?string $id): void {
         default => jsonResponse(['success' => false, 'message' => 'Not found'], 404),
     };
     exit;
+}
+
+/**
+ * Search users by name — available to all authenticated users (for gifting).
+ */
+function searchUsers(): void {
+    $user = authenticate();
+    $q    = trim($_GET['search'] ?? $_GET['q'] ?? '');
+
+    if (strlen($q) < 2) {
+        jsonResponse(['success' => true, 'data' => []]);
+    }
+
+    try {
+        $db   = getDB();
+        $stmt = $db->prepare(
+            "SELECT id, name, avatar, role
+             FROM users
+             WHERE is_active = 1
+               AND id != ?
+               AND name LIKE ?
+             ORDER BY name ASC
+             LIMIT 10"
+        );
+        $stmt->execute([$user['id'], '%' . $q . '%']);
+        jsonResponse(['success' => true, 'data' => $stmt->fetchAll()]);
+    } catch (PDOException $e) {
+        error_log('Search users error: ' . $e->getMessage());
+        jsonResponse(['success' => false, 'message' => 'Internal server error'], 500);
+    }
 }
 
 /**
