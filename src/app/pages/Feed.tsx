@@ -50,6 +50,9 @@ export default function Feed() {
   const { user, hasPermission } = useAuth();
   const [posts, setPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(false);
+  const [page, setPage] = useState(1);
   const [newPostContent, setNewPostContent] = useState("");
   const [postType, setPostType] = useState<string>("community");
   const [activeTab, setActiveTab] = useState("all");
@@ -62,21 +65,28 @@ export default function Feed() {
   const [commentInputs, setCommentInputs] = useState<Record<string, string>>({});
   const [loadingComments, setLoadingComments] = useState<Record<string, boolean>>({});
 
-  useEffect(() => { fetchPosts(); }, []);
+  useEffect(() => { fetchPosts(1); }, []);
 
-  const fetchPosts = async () => {
+  const fetchPosts = async (p = 1) => {
     try {
-      setLoading(true);
-      const response = await fetch(`${API_BASE_URL}/posts`, {
+      if (p === 1) setLoading(true);
+      else setLoadingMore(true);
+      const response = await fetch(`${API_BASE_URL}/posts?page=${p}&limit=20`, {
         headers: { 'Authorization': `Bearer ${getToken()}` },
       });
       const data = await response.json();
-      if (data.success) setPosts(data.data || []);
+      if (data.success) {
+        const incoming = data.data || [];
+        setPosts(prev => p === 1 ? incoming : [...prev, ...incoming]);
+        setHasMore(incoming.length === 20);
+        setPage(p);
+      }
     } catch (error) {
       console.error('Error fetching posts:', error);
       toast.error('Failed to load posts');
     } finally {
       setLoading(false);
+      setLoadingMore(false);
     }
   };
 
@@ -124,7 +134,7 @@ export default function Feed() {
         setImagePreview(null);
         if (fileInputRef.current) fileInputRef.current.value = '';
         toast.success('Post created!');
-        fetchPosts();
+        fetchPosts(1);
       } else toast.error(data.message || 'Failed to create post');
     } catch { toast.error('Failed to create post'); }
   };
@@ -322,7 +332,7 @@ export default function Feed() {
                 <div className="flex items-center space-x-3">
                   <Avatar>
                     <AvatarImage src={post.author_avatar} alt={post.author_name} loading="lazy" />
-                    <AvatarFallback>{post.author_name[0]}</AvatarFallback>
+                    <AvatarFallback>{post.author_name?.[0] ?? '?'}</AvatarFallback>
                   </Avatar>
                   <div>
                     <p className="font-medium">{post.author_name}</p>
@@ -395,7 +405,7 @@ export default function Feed() {
                     <div key={comment.id} className="flex items-start space-x-3">
                       <Avatar className="h-8 w-8">
                         <AvatarImage src={comment.author_avatar} alt={comment.author_name} loading="lazy" />
-                        <AvatarFallback className="text-xs">{comment.author_name[0]}</AvatarFallback>
+                        <AvatarFallback className="text-xs">{comment.author_name?.[0] ?? '?'}</AvatarFallback>
                       </Avatar>
                       <div className="flex-1 bg-gray-50 rounded-lg p-3">
                         <div className="flex items-center gap-2 mb-1">
@@ -456,6 +466,16 @@ export default function Feed() {
           </Card>
         ))}
       </div>
+
+      {/* Load more */}
+      {!loading && hasMore && activeTab === "all" && (
+        <div className="flex justify-center mt-6">
+          <Button variant="outline" onClick={() => fetchPosts(page + 1)} disabled={loadingMore}>
+            {loadingMore ? <Loader className="h-4 w-4 animate-spin mr-2" /> : null}
+            {loadingMore ? "Loading..." : "Load more posts"}
+          </Button>
+        </div>
+      )}
     </div>
   );
 }

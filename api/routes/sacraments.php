@@ -12,9 +12,9 @@ function getSacramentsDB(): PDO {
     if ($pdo) return $pdo;
 
     $pdo = new PDO(
-        'mysql:host=localhost;port=3306;dbname=u222318185_svf_parish;charset=utf8mb4',
-        'u222318185_svf_user',
-        'kNooCkk@0228a1',
+        sprintf('mysql:host=%s;port=3306;dbname=%s;charset=utf8mb4', SAC_DB_HOST, SAC_DB_NAME),
+        SAC_DB_USER,
+        SAC_DB_PASSWORD,
         [
             PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
             PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,

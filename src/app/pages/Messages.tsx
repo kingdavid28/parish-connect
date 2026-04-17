@@ -208,7 +208,7 @@ export default function Messages() {
                             {conversations.map((conv) => (
                                 <button key={conv.id} onClick={() => openDirectChat(conv)}
                                     className={`w-full flex items-center gap-3 p-3 hover:bg-gray-50 border-b text-left ${activeChat?.id === conv.id && chatType === 'direct' ? 'bg-blue-50' : ''}`}>
-                                    <Avatar className="h-10 w-10"><AvatarImage src={conv.avatar} /><AvatarFallback>{conv.name[0]}</AvatarFallback></Avatar>
+                                    <Avatar className="h-10 w-10"><AvatarImage src={conv.avatar} /><AvatarFallback>{conv.name?.[0] ?? '?'}</AvatarFallback></Avatar>
                                     <div className="flex-1 min-w-0">
                                         <div className="flex items-center justify-between">
                                             <span className="font-medium text-sm truncate">{conv.name}</span>
@@ -267,7 +267,7 @@ export default function Messages() {
                                         <Users className="h-4 w-4 text-blue-600" />
                                     </div>
                                 ) : (
-                                    <Avatar className="h-8 w-8"><AvatarImage src={activeChat.avatar} /><AvatarFallback>{activeChat.name[0]}</AvatarFallback></Avatar>
+                                    <Avatar className="h-8 w-8"><AvatarImage src={activeChat.avatar} /><AvatarFallback>{activeChat.name?.[0] ?? '?'}</AvatarFallback></Avatar>
                                 )}
                                 <span className="font-medium">{activeChat.name}</span>
                                 {chatType === 'group' && <Badge variant="secondary" className="text-xs">Group</Badge>}
@@ -334,7 +334,7 @@ export default function Messages() {
                                 {availableUsers.map((u) => (
                                     <button key={u.id} onClick={() => toggleMember(u.id)}
                                         className={`w-full flex items-center gap-3 p-2 hover:bg-gray-50 text-left ${selectedMembers.includes(u.id) ? 'bg-blue-50' : ''}`}>
-                                        <Avatar className="h-8 w-8"><AvatarImage src={u.avatar} /><AvatarFallback>{u.name[0]}</AvatarFallback></Avatar>
+                                        <Avatar className="h-8 w-8"><AvatarImage src={u.avatar} /><AvatarFallback>{u.name?.[0] ?? '?'}</AvatarFallback></Avatar>
                                         <span className="text-sm flex-1">{u.name}</span>
                                         {selectedMembers.includes(u.id) && <Badge className="bg-blue-600 text-xs">Added</Badge>}
                                     </button>

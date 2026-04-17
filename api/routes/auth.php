@@ -4,6 +4,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/../db.php';
 require_once __DIR__ . '/../middleware/auth.php';
 require_once __DIR__ . '/../vendor/autoload.php';
+require_once __DIR__ . '/sacraments.php';
 
 use Firebase\JWT\JWT;
 
@@ -28,6 +29,16 @@ function authLogin(): void {
         jsonResponse(['success' => false, 'message' => 'Email and password are required'], 400);
     }
 
+    // Brute-force protection: max 10 failed attempts per IP per 15 minutes
+    $ip = getClientIp();
+    $failKey = 'login_fail_' . md5($ip . $email);
+    if (function_exists('apcu_fetch')) {
+        $fails = (int) apcu_fetch($failKey);
+        if ($fails >= 10) {
+            jsonResponse(['success' => false, 'message' => 'Too many failed attempts. Please try again in 15 minutes.'], 429);
+        }
+    }
+
     try {
         $db   = getDB();
         $stmt = $db->prepare('SELECT * FROM users WHERE email = ? AND is_active = 1 LIMIT 1');
@@ -35,8 +46,17 @@ function authLogin(): void {
         $user = $stmt->fetch();
 
         if (!$user || !password_verify($password, $user['password_hash'])) {
+            // Increment fail counter
+            if (function_exists('apcu_fetch')) {
+                $fails = (int) apcu_fetch($failKey);
+                if ($fails === 0) apcu_store($failKey, 1, 900);
+                else apcu_inc($failKey);
+            }
             jsonResponse(['success' => false, 'message' => 'Invalid credentials'], 401);
         }
+
+        // Clear fail counter on success
+        if (function_exists('apcu_delete')) apcu_delete($failKey);
 
         // Update last login
         $db->prepare('UPDATE users SET last_login = NOW() WHERE id = ?')->execute([$user['id']]);
@@ -117,12 +137,7 @@ function authRegister(): void {
     }
 
     try {
-        $sacDb = new PDO(
-            'mysql:host=localhost;port=3306;dbname=u222318185_svf_parish;charset=utf8mb4',
-            'u222318185_svf_user',
-            'kNooCkk@0228a1',
-            [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC]
-        );
+        $sacDb = getSacramentsDB();
 
         $sacRecord = null;
 
@@ -318,12 +333,7 @@ function authForgotPassword(): void {
         }
 
         // Step 2: Verify identity against sacraments DB
-        $sacDb = new PDO(
-            'mysql:host=localhost;port=3306;dbname=u222318185_svf_parish;charset=utf8mb4',
-            'u222318185_svf_user',
-            'kNooCkk@0228a1',
-            [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC]
-        );
+        $sacDb = getSacramentsDB();
 
         // Convert birthday to DB format — handle multiple formats in DB
         $ts = strtotime($birthday);

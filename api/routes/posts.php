@@ -22,6 +22,10 @@ function handlePosts(string $method, ?string $id, ?string $action): void {
 function listPosts(): void {
     $user = authenticate();
 
+    $page  = max(1, (int)($_GET['page']  ?? 1));
+    $limit = min(50, max(1, (int)($_GET['limit'] ?? 20)));
+    $offset = ($page - 1) * $limit;
+
     try {
         $db   = getDB();
         $stmt = $db->prepare(
@@ -36,9 +40,9 @@ function listPosts(): void {
              JOIN users u ON p.user_id = u.id
              WHERE p.is_approved = 1
              ORDER BY p.is_pinned DESC, p.created_at DESC
-             LIMIT 50'
+             LIMIT ? OFFSET ?'
         );
-        $stmt->execute([$user['id']]);
+        $stmt->execute([$user['id'], $limit, $offset]);
 
         jsonResponse(['success' => true, 'data' => $stmt->fetchAll()]);
     } catch (PDOException $e) {

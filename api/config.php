@@ -35,6 +35,12 @@ define('VAPID_PUBLIC_KEY', $env['VAPID_PUBLIC_KEY'] ?? '');
 define('VAPID_PRIVATE_KEY',$env['VAPID_PRIVATE_KEY'] ?? '');
 define('VAPID_EMAIL',    $env['VAPID_EMAIL']        ?? '');
 
+// Sacraments (SVF parish) read-only database
+define('SAC_DB_HOST',     $env['SAC_DB_HOST']     ?? 'localhost');
+define('SAC_DB_NAME',     $env['SAC_DB_NAME']     ?? '');
+define('SAC_DB_USER',     $env['SAC_DB_USER']     ?? '');
+define('SAC_DB_PASSWORD', $env['SAC_DB_PASSWORD'] ?? '');
+
 // GCash parish info (displayed to users for manual top-up)
 define('GCASH_NUMBER',  $env['GCASH_NUMBER']  ?? '');
 define('GCASH_NAME',    $env['GCASH_NAME']    ?? '');
