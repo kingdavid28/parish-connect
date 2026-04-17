@@ -84,9 +84,6 @@ function checkAndAwardBadges(string $userId): void {
         $db = getDB();
 
         // Gather metrics
-        $pts = (int)($db->prepare('SELECT total_points FROM user_points WHERE user_id = ?')
-            ->execute([$userId]) ? $db->query("SELECT total_points FROM user_points WHERE user_id = '$userId' LIMIT 1")->fetchColumn() : 0);
-
         $ptStmt = $db->prepare('SELECT total_points FROM user_points WHERE user_id = ? LIMIT 1');
         $ptStmt->execute([$userId]);
         $pts = (int)($ptStmt->fetchColumn() ?: 0);

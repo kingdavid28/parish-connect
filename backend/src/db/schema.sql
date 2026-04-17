@@ -27,6 +27,7 @@ CREATE TABLE IF NOT EXISTS posts (
   user_id VARCHAR(36) NOT NULL,
   content TEXT NOT NULL,
   type ENUM('community', 'baptism_anniversary', 'parish_event', 'research') NOT NULL DEFAULT 'community',
+  image_url VARCHAR(500) NULL,
   event_date VARCHAR(100),
   event_location VARCHAR(255),
   baptism_year INT,
@@ -134,7 +135,8 @@ CREATE TABLE IF NOT EXISTS messages (
   id VARCHAR(36) PRIMARY KEY,
   sender_id VARCHAR(36) NOT NULL,
   receiver_id VARCHAR(36) NOT NULL,
-  content TEXT NOT NULL,
+  content TEXT NOT NULL DEFAULT '',
+  image_url VARCHAR(500) NULL,
   is_read TINYINT(1) DEFAULT 0,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (sender_id) REFERENCES users(id) ON DELETE CASCADE,
@@ -161,3 +163,48 @@ CREATE TABLE IF NOT EXISTS push_subscriptions (
 );
 
 CREATE INDEX idx_push_subscriptions_user ON push_subscriptions(user_id);
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- Group Chats
+-- ─────────────────────────────────────────────────────────────────────────────
+
+CREATE TABLE IF NOT EXISTS group_chats (
+  id         VARCHAR(36)  NOT NULL PRIMARY KEY,
+  name       VARCHAR(100) NOT NULL,
+  avatar     VARCHAR(500) NULL,
+  created_by VARCHAR(36)  NOT NULL,
+  created_at DATETIME     DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS group_members (
+  group_id   VARCHAR(36) NOT NULL,
+  user_id    VARCHAR(36) NOT NULL,
+  role       ENUM('admin','member') NOT NULL DEFAULT 'member',
+  joined_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (group_id, user_id),
+  FOREIGN KEY (group_id) REFERENCES group_chats(id) ON DELETE CASCADE,
+  FOREIGN KEY (user_id)  REFERENCES users(id)       ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS group_messages (
+  id         VARCHAR(36)  NOT NULL PRIMARY KEY,
+  group_id   VARCHAR(36)  NOT NULL,
+  sender_id  VARCHAR(36)  NOT NULL,
+  content    TEXT         NOT NULL DEFAULT '',
+  image_url  VARCHAR(500) NULL,
+  created_at DATETIME     DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (group_id)  REFERENCES group_chats(id) ON DELETE CASCADE,
+  FOREIGN KEY (sender_id) REFERENCES users(id)       ON DELETE CASCADE
+);
+
+CREATE INDEX idx_group_members_group  ON group_members(group_id);
+CREATE INDEX idx_group_members_user   ON group_members(user_id);
+CREATE INDEX idx_group_messages_group ON group_messages(group_id);
+CREATE INDEX idx_group_messages_time  ON group_messages(group_id, created_at);
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- ALTER statements for existing deployments (safe to run on already-migrated DBs)
+-- ─────────────────────────────────────────────────────────────────────────────
+ALTER TABLE messages  ADD COLUMN IF NOT EXISTS image_url VARCHAR(500) NULL AFTER content;
+ALTER TABLE posts     ADD COLUMN IF NOT EXISTS image_url VARCHAR(500) NULL AFTER type;

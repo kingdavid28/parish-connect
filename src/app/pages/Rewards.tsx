@@ -204,7 +204,9 @@ export default function Rewards() {
                                         </p>
                                     </div>
                                 </div>
-                                <span className="text-sm font-semibold text-green-600">+{tx.points} GBless</span>
+                                <span className={`text-sm font-semibold ${tx.points >= 0 ? "text-green-600" : "text-red-500"}`}>
+                                    {tx.points >= 0 ? "+" : ""}{tx.points} GBless
+                                </span>
                             </div>
                         ))}
                     </div>

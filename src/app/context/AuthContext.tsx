@@ -63,7 +63,6 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 const TOKEN_KEY = "parish_token";
 const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000/api";
 
-// Read token from either storage
 function getStoredToken(): string | null {
   return localStorage.getItem(TOKEN_KEY) || sessionStorage.getItem(TOKEN_KEY);
 }
@@ -88,6 +87,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [token, setToken] = useState<string | null>(() => getStoredToken());
   const [isLoading, setIsLoading] = useState(true);
 
+  const clearAuth = useCallback(() => {
+    setUser(null);
+    setToken(null);
+    clearStoredToken();
+  }, []);
+
   // On mount, verify stored token with the backend
   useEffect(() => {
     if (!token) {
@@ -108,13 +113,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       })
       .catch(() => clearAuth())
       .finally(() => setIsLoading(false));
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const clearAuth = useCallback(() => {
-    setUser(null);
-    setToken(null);
-    clearStoredToken();
-  }, []);
+  // Global 401 interceptor — when any API call returns 401 mid-session,
+  // the JWT has expired. Clear auth so ProtectedRoute redirects to /login.
+  useEffect(() => {
+    const originalFetch = window.fetch;
+    window.fetch = async (...args: Parameters<typeof fetch>) => {
+      const response = await originalFetch(...args);
+      if (response.status === 401) {
+        const url = typeof args[0] === "string" ? args[0] : (args[0] as Request).url;
+        // Don't clear on login/register — those legitimately return 401 for bad creds
+        if (!url.includes("/auth/login") && !url.includes("/auth/register")) {
+          clearAuth();
+        }
+      }
+      return response;
+    };
+    return () => {
+      window.fetch = originalFetch;
+    };
+  }, [clearAuth]);
 
   const login = useCallback(async (email: string, password: string, rememberMe = false) => {
     const res = await fetch(`${API_BASE}/auth/login`, {
@@ -138,10 +157,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     clearAuth();
   }, [clearAuth]);
 
-  const hasPermission = useCallback((permission: Permission): boolean => {
-    if (!user) return false;
-    return (ROLE_PERMISSIONS[user.role] || []).includes(permission);
-  }, [user]);
+  const hasPermission = useCallback(
+    (permission: Permission): boolean => {
+      if (!user) return false;
+      return (ROLE_PERMISSIONS[user.role] || []).includes(permission);
+    },
+    [user]
+  );
 
   if (isLoading) {
     return (
@@ -155,17 +177,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <AuthContext.Provider value={{
-      user,
-      token,
-      login,
-      logout,
-      isAuthenticated: !!user,
-      isAdmin: user?.role === "admin" || user?.role === "superadmin",
-      isSuperAdmin: user?.role === "superadmin",
-      isLoading,
-      hasPermission,
-    }}>
+    <AuthContext.Provider
+      value={{
+        user,
+        token,
+        login,
+        logout,
+        isAuthenticated: !!user,
+        isAdmin: user?.role === "admin" || user?.role === "superadmin",
+        isSuperAdmin: user?.role === "superadmin",
+        isLoading,
+        hasPermission,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );

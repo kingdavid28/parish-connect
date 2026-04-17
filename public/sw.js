@@ -1,12 +1,59 @@
-// Parish Connect Service Worker - Push Notifications
-const CACHE_NAME = 'parish-connect-v1';
+// Parish Connect Service Worker - Push Notifications + App Shell Cache
+const CACHE_NAME = 'parish-connect-v2';
+
+// App shell assets to pre-cache for offline support
+const PRECACHE_URLS = [
+    '/parish-connect/',
+    '/parish-connect/manifest.json',
+    '/parish-connect/parish-connect-logo.png',
+];
 
 self.addEventListener('install', (e) => {
+    e.waitUntil(
+        caches.open(CACHE_NAME).then((cache) => cache.addAll(PRECACHE_URLS))
+    );
     self.skipWaiting();
 });
 
 self.addEventListener('activate', (e) => {
-    e.waitUntil(clients.claim());
+    // Remove old caches on activation
+    e.waitUntil(
+        caches.keys().then((keys) =>
+            Promise.all(keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k)))
+        ).then(() => clients.claim())
+    );
+});
+
+// Network-first for API calls, cache-first for static assets
+self.addEventListener('fetch', (e) => {
+    const url = new URL(e.request.url);
+
+    // Skip non-GET and cross-origin requests
+    if (e.request.method !== 'GET') return;
+    if (!url.pathname.startsWith('/parish-connect')) return;
+
+    // API calls: network-first, no cache
+    if (url.pathname.includes('/api/')) return;
+
+    // Static assets: cache-first
+    e.respondWith(
+        caches.match(e.request).then((cached) => {
+            if (cached) return cached;
+            return fetch(e.request).then((response) => {
+                // Only cache successful same-origin responses
+                if (response.ok && response.type === 'basic') {
+                    const clone = response.clone();
+                    caches.open(CACHE_NAME).then((cache) => cache.put(e.request, clone));
+                }
+                return response;
+            }).catch(() => {
+                // If offline and navigating, serve the app shell
+                if (e.request.mode === 'navigate') {
+                    return caches.match('/parish-connect/');
+                }
+            });
+        })
+    );
 });
 
 self.addEventListener('push', (e) => {

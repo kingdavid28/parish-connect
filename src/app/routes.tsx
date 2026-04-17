@@ -1,25 +1,36 @@
-import { createBrowserRouter, Navigate } from "react-router";
+import { createBrowserRouter } from "react-router";
+import React, { lazy, Suspense } from "react";
 import Layout from "./components/Layout";
 import ProtectedRoute from "./components/ProtectedRoute";
 import Login from "./components/Login";
 import Signup from "./components/Signup";
-import Feed from "./pages/Feed";
-import Profile from "./pages/Profile";
-import ParishRecords from "./pages/ParishRecords";
-import Membership from "./pages/Membership";
-import Settings from "./pages/Settings";
-import AdminManagement from "./pages/AdminManagement";
-import Messages from "./pages/Messages";
-import ForgotPassword from "./pages/ForgotPassword";
-import QRCodePage from "./pages/QRCode";
-import NotFound from "./pages/NotFound";
-import Rewards from "./pages/Rewards";
-import Wallet from "./pages/Wallet";
+import { PageLoading } from "./components/LoadingState";
+
+// Lazy-load all page-level components so the initial bundle is small
+const Feed = lazy(() => import("./pages/Feed"));
+const Profile = lazy(() => import("./pages/Profile"));
+const ParishRecords = lazy(() => import("./pages/ParishRecords"));
+const Membership = lazy(() => import("./pages/Membership"));
+const Settings = lazy(() => import("./pages/Settings"));
+const AdminManagement = lazy(() => import("./pages/AdminManagement"));
+const Messages = lazy(() => import("./pages/Messages"));
+const ForgotPassword = lazy(() => import("./pages/ForgotPassword"));
+const QRCodePage = lazy(() => import("./pages/QRCode"));
+const NotFound = lazy(() => import("./pages/NotFound"));
+const Rewards = lazy(() => import("./pages/Rewards"));
+const Wallet = lazy(() => import("./pages/Wallet"));
+
+// Wrap lazy pages in Suspense
+const withSuspense = (Component: React.ComponentType) => (
+  <Suspense fallback={<PageLoading />}>
+    <Component />
+  </Suspense>
+);
 
 export const router = createBrowserRouter([
   { path: "/login", Component: Login },
   { path: "/signup", Component: Signup },
-  { path: "/forgot-password", Component: ForgotPassword },
+  { path: "/forgot-password", element: withSuspense(ForgotPassword) },
   {
     path: "/",
     element: (
@@ -28,24 +39,26 @@ export const router = createBrowserRouter([
       </ProtectedRoute>
     ),
     children: [
-      { index: true, Component: Feed },
-      { path: "profile/:id", Component: Profile },
-      { path: "messages", Component: Messages },
-      { path: "records", Component: ParishRecords },
-      { path: "qrcode", Component: QRCodePage },
-      { path: "membership", Component: Membership },
-      { path: "settings", Component: Settings },
-      { path: "rewards", Component: Rewards },
-      { path: "wallet", Component: Wallet },
+      { index: true, element: withSuspense(Feed) },
+      { path: "profile/:id", element: withSuspense(Profile) },
+      { path: "messages", element: withSuspense(Messages) },
+      { path: "records", element: withSuspense(ParishRecords) },
+      { path: "qrcode", element: withSuspense(QRCodePage) },
+      { path: "membership", element: withSuspense(Membership) },
+      { path: "settings", element: withSuspense(Settings) },
+      { path: "rewards", element: withSuspense(Rewards) },
+      { path: "wallet", element: withSuspense(Wallet) },
       {
         path: "admin",
         element: (
           <ProtectedRoute requireAdmin>
-            <AdminManagement />
+            <Suspense fallback={<PageLoading />}>
+              <AdminManagement />
+            </Suspense>
           </ProtectedRoute>
         ),
       },
     ],
   },
-  { path: "*", Component: NotFound },
+  { path: "*", element: withSuspense(NotFound) },
 ], { basename: import.meta.env.PROD ? "/parish-connect" : "/" });

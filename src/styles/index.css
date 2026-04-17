@@ -25,3 +25,24 @@
   -webkit-overflow-scrolling: touch;
   padding-bottom: max(env(safe-area-inset-bottom, 0px), 24px);
 }
+
+/*
+ * iOS keyboard scroll fix
+ * On iOS Safari, focusing an input inside a scroll container does not
+ * automatically scroll it into view when the keyboard appears.
+ * Setting scroll-behavior on the html element allows programmatic
+ * scrollIntoView() calls to animate smoothly.
+ */
+html {
+  scroll-behavior: smooth;
+}
+
+/*
+ * Prevent inputs from zooming on iOS (requires font-size >= 16px).
+ * iOS Safari zooms in when tapping an input smaller than 16px.
+ */
+input,
+textarea,
+select {
+  font-size: max(16px, 1rem);
+}

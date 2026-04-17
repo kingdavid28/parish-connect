@@ -74,9 +74,6 @@ export default function Signup() {
 
     setIsLoading(true);
     try {
-      // Format birthday as YYYY-MM-DD for the API
-      const birthdayStr = format(birthday, "yyyy-MM-dd");
-
       const res = await fetch(`${API_BASE}/auth/register`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -84,7 +81,8 @@ export default function Signup() {
           name: form.name.trim(),
           email: form.email.trim(),
           password: form.password,
-          birthday: birthdayStr,
+          // birthday is optional — only send if the user selected one
+          ...(birthday ? { birthday: format(birthday, "yyyy-MM-dd") } : {}),
           fatherFirstName: form.fatherFirstName.trim(),
         }),
       });

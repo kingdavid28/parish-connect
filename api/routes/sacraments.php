@@ -112,7 +112,7 @@ function searchSacraments(): void {
 }
 
 function getSacrament(string $id): void {
-    authenticate();
+    $user = authenticate();
 
     try {
         $db   = getSacramentsDB();
@@ -122,6 +122,19 @@ function getSacrament(string $id): void {
 
         if (!$record) {
             jsonResponse(['success' => false, 'message' => 'Record not found'], 404);
+        }
+
+        // Non-superadmins can only view records that match their own name
+        if ($user['role'] !== 'superadmin') {
+            $mainDb   = getDB();
+            $nameStmt = $mainDb->prepare('SELECT name FROM users WHERE id = ? LIMIT 1');
+            $nameStmt->execute([$user['id']]);
+            $userRow  = $nameStmt->fetch();
+            $userName = $userRow['name'] ?? '';
+
+            if (strcasecmp($record['name'] ?? '', $userName) !== 0) {
+                jsonResponse(['success' => false, 'message' => 'Forbidden'], 403);
+            }
         }
 
         jsonResponse(['success' => true, 'data' => $record]);

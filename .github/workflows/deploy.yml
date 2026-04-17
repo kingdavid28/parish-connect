@@ -7,6 +7,7 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -17,16 +18,31 @@ jobs:
           node-version: '20'
           cache: 'npm'
 
-      - name: Install Dependencies
+      - name: Install Node Dependencies
         run: npm install
 
       - name: Build Frontend
+        env:
+          VITE_API_BASE_URL: https://sanvicenteferrerparish-franciscan.com/parish-connect/api
+          VITE_VAPID_PUBLIC_KEY: ${{ secrets.VITE_VAPID_PUBLIC_KEY }}
         run: npm run build
 
-      - name: Deploy via SSH (rsync)
+      # Copy the SPA .htaccess into dist so it gets deployed with the frontend
+      - name: Copy .htaccess into dist
+        run: cp parish-connect.htaccess dist/.htaccess
+
+      # Copy public assets that Vite doesn't hash (logo, sw.js, manifest.json, background)
+      - name: Copy public assets into dist
+        run: |
+          cp public/parish-connect-logo.png dist/parish-connect-logo.png
+          cp public/background-viewport.png dist/background-viewport.png
+          cp public/sw.js dist/sw.js
+          cp public/manifest.json dist/manifest.json
+
+      - name: Deploy Frontend via SSH (rsync)
         uses: burnett01/rsync-deployments@7.0.1
         with:
-          switches: -avzr --delete --exclude='.env' --exclude='.env.example' --exclude='uploads/' --exclude='node_modules/'
+          switches: -avzr --delete --exclude='.env' --exclude='.env.example' --exclude='uploads/'
           path: dist/
           remote_path: /home/u222318185/public_html/parish-connect/
           remote_host: 82.29.188.70
@@ -37,6 +53,7 @@ jobs:
       - name: Deploy API via SSH (rsync)
         uses: burnett01/rsync-deployments@7.0.1
         with:
+          # Exclude .env (managed on server), uploads (user content), vendor (installed on server)
           switches: -avzr --exclude='.env' --exclude='.env.example' --exclude='uploads/' --exclude='vendor/'
           path: api/
           remote_path: /home/u222318185/public_html/parish-connect/api/
@@ -44,3 +61,15 @@ jobs:
           remote_port: 65002
           remote_user: u222318185
           remote_key: ${{ secrets.HOSTINGER_SSH_KEY }}
+
+      # Run composer install on the server so vendor/ is always up to date
+      - name: Install PHP Dependencies on Server
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 82.29.188.70
+          port: 65002
+          username: u222318185
+          key: ${{ secrets.HOSTINGER_SSH_KEY }}
+          script: |
+            cd /home/u222318185/public_html/parish-connect/api
+            composer install --no-dev --optimize-autoloader --no-interaction

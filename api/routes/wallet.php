@@ -475,6 +475,12 @@ function adminReviewTopup(): void {
             jsonResponse(['success' => false, 'message' => 'Request not found or already reviewed'], 404);
         }
 
+        // Admins cannot approve/reject their own top-up requests
+        if ($topup['user_id'] === $admin['id']) {
+            $db->rollBack();
+            jsonResponse(['success' => false, 'message' => 'You cannot review your own top-up request'], 403);
+        }
+
         $db->prepare(
             'UPDATE gbless_topup_requests
              SET status = ?, admin_note = ?, reviewed_by = ?, reviewed_at = NOW()
@@ -537,6 +543,12 @@ function adminReviewCashout(): void {
         if (!$cashout) {
             $db->rollBack();
             jsonResponse(['success' => false, 'message' => 'Request not found or already reviewed'], 404);
+        }
+
+        // Admins cannot approve/reject their own cash-out requests
+        if ($cashout['user_id'] === $admin['id']) {
+            $db->rollBack();
+            jsonResponse(['success' => false, 'message' => 'You cannot review your own cash-out request'], 403);
         }
 
         $db->prepare(

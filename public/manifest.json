@@ -1,0 +1,26 @@
+{
+    "name": "Parish Connect",
+    "short_name": "Parish",
+    "description": "Your parish community app — San Vicente Ferrer Parish",
+    "start_url": "/parish-connect/",
+    "scope": "/parish-connect/",
+    "display": "standalone",
+    "orientation": "portrait-primary",
+    "background_color": "#ffffff",
+    "theme_color": "#2563eb",
+    "lang": "en",
+    "icons": [
+        {
+            "src": "/parish-connect/parish-connect-logo.png",
+            "sizes": "192x192",
+            "type": "image/png",
+            "purpose": "any maskable"
+        },
+        {
+            "src": "/parish-connect/parish-connect-logo.png",
+            "sizes": "512x512",
+            "type": "image/png",
+            "purpose": "any maskable"
+        }
+    ]
+}

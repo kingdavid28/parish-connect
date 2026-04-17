@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/../db.php';
 require_once __DIR__ . '/../middleware/auth.php';
+require_once __DIR__ . '/push.php';
 
 function handleGroups(string $method, ?string $id, ?string $action): void {
     match (true) {
@@ -156,10 +157,33 @@ function sendGroupMessage(string $groupId): void {
         $db->prepare('INSERT INTO group_messages (id, group_id, sender_id, content, image_url) VALUES (?, ?, ?, ?, ?)')
            ->execute([$id, $groupId, $user['id'], $content ?: '', $imageUrl]);
 
+        // Fetch sender info for the response
+        $senderStmt = $db->prepare('SELECT name, avatar FROM users WHERE id = ? LIMIT 1');
+        $senderStmt->execute([$user['id']]);
+        $sender = $senderStmt->fetch();
+
+        // Notify all other group members via push
+        $membersStmt = $db->prepare(
+            'SELECT user_id FROM group_members WHERE group_id = ? AND user_id != ?'
+        );
+        $membersStmt->execute([$groupId, $user['id']]);
+        $groupNameStmt = $db->prepare('SELECT name FROM group_chats WHERE id = ? LIMIT 1');
+        $groupNameStmt->execute([$groupId]);
+        $groupRow = $groupNameStmt->fetch();
+        $preview = $content ? mb_strimwidth($content, 0, 80, '…') : '📷 Image';
+        foreach ($membersStmt->fetchAll() as $member) {
+            sendPushToUser($member['user_id'], [
+                'title' => ($sender['name'] ?? 'Someone') . ' in ' . ($groupRow['name'] ?? 'group'),
+                'body'  => $preview,
+                'tag'   => 'group-' . $groupId,
+                'url'   => '/parish-connect/messages',
+            ]);
+        }
+
         jsonResponse(['success' => true, 'data' => [
             'id' => $id, 'sender_id' => $user['id'], 'content' => $content ?: '',
             'image_url' => $imageUrl, 'created_at' => date('Y-m-d H:i:s'),
-            'sender_name' => '', 'sender_avatar' => '',
+            'sender_name' => $sender['name'] ?? '', 'sender_avatar' => $sender['avatar'] ?? '',
         ]], 201);
     } catch (PDOException $e) {
         error_log('Send group message error: ' . $e->getMessage());

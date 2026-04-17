@@ -127,6 +127,8 @@ export default function Wallet() {
     const [submittingGift, setSubmittingGift] = useState(false);
     const [searchingUsers, setSearchingUsers] = useState(false);
 
+    const [loadError, setLoadError] = useState(false);
+
     useEffect(() => {
         Promise.all([fetchSummary(), fetchGcashInfo()]).finally(() => setLoading(false));
     }, []);
@@ -136,26 +138,43 @@ export default function Wallet() {
     }, [tab]);
 
     const fetchSummary = async () => {
-        const res = await fetch(`${API}/wallet`, { headers: { Authorization: `Bearer ${getToken()}` } });
-        const data = await res.json();
-        if (data.success) setSummary(data.data);
+        try {
+            const res = await fetch(`${API}/wallet`, { headers: { Authorization: `Bearer ${getToken()}` } });
+            const data = await res.json();
+            if (data.success) { setSummary(data.data); setLoadError(false); }
+        } catch {
+            setLoadError(true);
+            toast.error("Could not load wallet. Check your connection.");
+        }
     };
 
     const fetchGcashInfo = async () => {
-        const res = await fetch(`${API}/wallet/gcash-info`, { headers: { Authorization: `Bearer ${getToken()}` } });
-        const data = await res.json();
-        if (data.success) setGcashInfo(data.data);
+        try {
+            const res = await fetch(`${API}/wallet/gcash-info`, { headers: { Authorization: `Bearer ${getToken()}` } });
+            const data = await res.json();
+            if (data.success) setGcashInfo(data.data);
+        } catch {
+            // Non-critical — GCash info just won't show
+        }
     };
 
     const fetchHistory = async () => {
-        const res = await fetch(`${API}/wallet/history`, { headers: { Authorization: `Bearer ${getToken()}` } });
-        const data = await res.json();
-        if (data.success) setHistory(data.data);
+        try {
+            const res = await fetch(`${API}/wallet/history`, { headers: { Authorization: `Bearer ${getToken()}` } });
+            const data = await res.json();
+            if (data.success) setHistory(data.data);
+            else setHistory({ transactions: [], topups: [], cashouts: [] });
+        } catch {
+            toast.error("Could not load history. Check your connection.");
+            setHistory({ transactions: [], topups: [], cashouts: [] });
+        }
     };
 
     const handleTopup = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!topupRef.trim() || !topupSender.trim() || !topupAmount) return;
+        if (!topupRef.trim()) { toast.error("GCash reference number is required"); return; }
+        if (!topupSender.trim()) { toast.error("GCash sender name is required"); return; }
+        if (!topupAmount || parseFloat(topupAmount) <= 0) { toast.error("Please enter a valid amount"); return; }
         setSubmittingTopup(true);
         try {
             const formData = new FormData();
@@ -192,7 +211,9 @@ export default function Wallet() {
 
     const handleCashout = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!cashoutAmount || !cashoutNumber || !cashoutName) return;
+        if (!cashoutAmount || parseInt(cashoutAmount) <= 0) { toast.error("Please enter a valid GBless amount"); return; }
+        if (!cashoutNumber.trim()) { toast.error("GCash number is required"); return; }
+        if (!cashoutName.trim()) { toast.error("GCash registered name is required"); return; }
         setSubmittingCashout(true);
         try {
             const res = await fetch(`${API}/wallet/cashout`, {
@@ -226,7 +247,8 @@ export default function Wallet() {
 
     const handleGift = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!giftRecipient || !giftAmount) return;
+        if (!giftRecipient) { toast.error("Please select a recipient"); return; }
+        if (!giftAmount || parseInt(giftAmount) < 100) { toast.error("Minimum gift is 100 GBless"); return; }
         setSubmittingGift(true);
         try {
             const res = await fetch(`${API}/wallet/gift`, {
@@ -263,6 +285,17 @@ export default function Wallet() {
                     <p className="text-sm text-gray-500">Buy, gift, and cash out GBless Points</p>
                 </div>
             </div>
+
+            {/* Offline / load error banner */}
+            {loadError && (
+                <div className="flex items-center justify-between gap-3 bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm text-red-700">
+                    <span>Could not load wallet data. You may be offline.</span>
+                    <Button size="sm" variant="outline" className="shrink-0 text-red-600 border-red-300"
+                        onClick={() => { setLoading(true); Promise.all([fetchSummary(), fetchGcashInfo()]).finally(() => setLoading(false)); }}>
+                        Retry
+                    </Button>
+                </div>
+            )}
 
             {/* Balance card */}
             <Card className="bg-gradient-to-br from-yellow-400 to-yellow-500 text-white border-0">
@@ -306,7 +339,8 @@ export default function Wallet() {
                             <CardContent className="space-y-4">
                                 <div className="flex flex-col sm:flex-row gap-4 items-center">
                                     {gcashInfo.gcash_qr_url && (
-                                        <img src={gcashInfo.gcash_qr_url} alt="GCash QR" className="w-40 h-40 rounded-xl border object-contain bg-white" />
+                                        <img src={gcashInfo.gcash_qr_url} alt="GCash QR" className="w-40 h-40 rounded-xl border object-contain bg-white"
+                                            decoding="async" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
                                     )}
                                     <div className="space-y-2 text-sm">
                                         <div>

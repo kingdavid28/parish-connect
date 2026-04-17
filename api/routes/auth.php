@@ -41,6 +41,10 @@ function authLogin(): void {
         // Update last login
         $db->prepare('UPDATE users SET last_login = NOW() WHERE id = ?')->execute([$user['id']]);
 
+        // Award daily login points (idempotent — once per day)
+        require_once __DIR__ . '/rewards.php';
+        awardPoints($user['id'], 'daily_login', null);
+
         // Audit log
         $db->prepare(
             'INSERT INTO audit_logs (id, user_id, action, ip_address) VALUES (?, ?, ?, ?)'

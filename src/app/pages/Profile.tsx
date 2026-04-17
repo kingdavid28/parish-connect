@@ -381,8 +381,9 @@ export default function Profile() {
                   </div>
                   <p className="text-gray-800 whitespace-pre-wrap">{post.content}</p>
                   {post.image_url && (
-                    <div className="mt-3 rounded-lg overflow-hidden bg-gray-50">
-                      <img src={post.image_url} alt="Post image" className="w-full object-contain max-h-[500px]" loading="lazy" />
+                    <div className="mt-3 rounded-lg overflow-hidden bg-gray-100">
+                      <img src={post.image_url} alt="Post image" className="w-full object-contain max-h-[500px]" loading="lazy" decoding="async"
+                        onError={(e) => { (e.currentTarget.parentElement as HTMLElement).style.display = 'none'; }} />
                     </div>
                   )}
                   <div className="flex items-center gap-4 mt-4 pt-3 border-t text-sm text-gray-500">

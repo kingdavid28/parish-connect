@@ -89,6 +89,8 @@ export default function Messages() {
     const openDirectChat = async (conv: Conversation) => {
         setActiveChat({ id: conv.id, name: conv.name, avatar: conv.avatar });
         setChatType('direct');
+        // Clear unread count immediately in the sidebar
+        setConversations(prev => prev.map(c => c.id === conv.id ? { ...c, unread_count: 0 } : c));
         try {
             setLoadingMsgs(true);
             const res = await fetch(`${API}/messages/${conv.id}`, { headers: { 'Authorization': `Bearer ${getToken()}` } });
@@ -124,6 +126,9 @@ export default function Messages() {
             if (data.success) {
                 setMessages([...messages, { ...data.data, sender_name: user?.name || '', sender_avatar: user?.avatar || '' }]);
                 setNewMessage(''); clearImage();
+                // Refresh conversation list so last_message and unread counts update
+                if (chatType === 'direct') fetchConversations();
+                else fetchGroups();
             } else toast.error(data.message || 'Failed to send');
         } catch { toast.error('Failed to send'); }
     };
