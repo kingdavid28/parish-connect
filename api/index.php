@@ -237,5 +237,12 @@ if ($resource === 'families' || $resource === 'ministries') {
     exit;
 }
 
+// Audit log (admin only)
+if ($resource === 'audit') {
+    require_once __DIR__ . '/routes/audit.php';
+    handleAudit($method, $id);
+    exit;
+}
+
 // 404 Not Found
 jsonResponse(['success' => false, 'message' => 'Not found'], 404);

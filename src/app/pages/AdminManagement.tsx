@@ -57,11 +57,28 @@ import {
   Loader,
   AlertCircle,
   Wallet as WalletIcon,
+  ClipboardList,
+  ChevronLeft,
+  ChevronRight,
+  Filter,
 } from "lucide-react";
 import { toast } from "sonner";
-import { format } from "date-fns";
+import { format, formatDistanceToNow } from "date-fns";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
 import AdminWallet from "./AdminWallet";
+
+interface AuditLog {
+  id: string;
+  action: string;
+  target_type: string | null;
+  target_id: string | null;
+  target_name: string | null;
+  ip_address: string | null;
+  created_at: string;
+  user_name: string | null;
+  user_email: string | null;
+  user_role: string | null;
+}
 
 interface User {
   id: string;
@@ -103,8 +120,42 @@ export default function AdminManagement() {
   const canDeleteAdmin = hasPermission(Permission.DELETE_ADMIN);
   const canDeleteUser = hasPermission(Permission.DELETE_USER);
   const canEditUser = hasPermission(Permission.EDIT_USER);
+  const canViewAudit = hasPermission(Permission.VIEW_AUDIT_LOG);
 
   const getToken = () => localStorage.getItem('parish_token') || sessionStorage.getItem('parish_token');
+
+  // ── Audit log state ────────────────────────────────────────────────────────
+  const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
+  const [auditLoading, setAuditLoading] = useState(false);
+  const [auditTotal, setAuditTotal] = useState(0);
+  const [auditPage, setAuditPage] = useState(1);
+  const [auditHasMore, setAuditHasMore] = useState(false);
+  const [auditActions, setAuditActions] = useState<string[]>([]);
+  const [auditFilterAction, setAuditFilterAction] = useState("");
+  const [auditFilterFrom, setAuditFilterFrom] = useState("");
+  const [auditFilterTo, setAuditFilterTo] = useState("");
+
+  const fetchAuditLogs = async (page = 1) => {
+    setAuditLoading(true);
+    try {
+      const params = new URLSearchParams({ page: String(page), limit: '50' });
+      if (auditFilterAction) params.set('action', auditFilterAction);
+      if (auditFilterFrom) params.set('from', auditFilterFrom);
+      if (auditFilterTo) params.set('to', auditFilterTo);
+      const res = await fetch(`${API_BASE_URL}/audit?${params}`, {
+        headers: { Authorization: `Bearer ${getToken()}` },
+      });
+      const data = await res.json();
+      if (data.success) {
+        setAuditLogs(data.data.logs);
+        setAuditTotal(data.data.total);
+        setAuditPage(data.data.page);
+        setAuditHasMore(data.data.hasMore);
+        if (data.data.actions?.length) setAuditActions(data.data.actions);
+      }
+    } catch { toast.error('Failed to load audit logs'); }
+    finally { setAuditLoading(false); }
+  };
 
   const handleEditUser = async () => {
     if (!userToEdit) return;
@@ -295,10 +346,11 @@ export default function AdminManagement() {
           </div>
         </div>
 
-        <Tabs defaultValue="users">
+        <Tabs defaultValue="users" onValueChange={(v) => { if (v === 'audit' && auditLogs.length === 0) fetchAuditLogs(1); }}>
           <TabsList className="mb-6">
             <TabsTrigger value="users"><Shield className="h-4 w-4 mr-1.5" />Users</TabsTrigger>
             <TabsTrigger value="wallet"><WalletIcon className="h-4 w-4 mr-1.5" />GBless Wallet</TabsTrigger>
+            {canViewAudit && <TabsTrigger value="audit"><ClipboardList className="h-4 w-4 mr-1.5" />Audit Log</TabsTrigger>}
           </TabsList>
           <TabsContent value="users">
 
@@ -700,6 +752,112 @@ export default function AdminManagement() {
           <TabsContent value="wallet">
             <AdminWallet />
           </TabsContent>
+
+          {/* ── AUDIT LOG TAB ─────────────────────────────────────────────── */}
+          {canViewAudit && (
+            <TabsContent value="audit" className="space-y-4">
+              {/* Filters */}
+              <Card>
+                <CardContent className="pt-5 pb-4">
+                  <div className="flex flex-wrap gap-3 items-end">
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium text-gray-500">Action</label>
+                      <Select value={auditFilterAction || "all"} onValueChange={(v) => setAuditFilterAction(v === 'all' ? '' : v)}>
+                        <SelectTrigger className="w-48 h-9"><SelectValue placeholder="All actions" /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All actions</SelectItem>
+                          {auditActions.map((a) => <SelectItem key={a} value={a}>{a.replace(/_/g, ' ')}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium text-gray-500">From</label>
+                      <Input type="date" className="h-9 w-40" value={auditFilterFrom} onChange={(e) => setAuditFilterFrom(e.target.value)} />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium text-gray-500">To</label>
+                      <Input type="date" className="h-9 w-40" value={auditFilterTo} onChange={(e) => setAuditFilterTo(e.target.value)} />
+                    </div>
+                    <Button size="sm" onClick={() => fetchAuditLogs(1)} disabled={auditLoading}>
+                      <Filter className="h-4 w-4 mr-2" />Apply
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={() => { setAuditFilterAction(''); setAuditFilterFrom(''); setAuditFilterTo(''); setTimeout(() => fetchAuditLogs(1), 0); }}>
+                      Clear
+                    </Button>
+                  </div>
+                  <p className="text-xs text-gray-400 mt-2">{auditTotal.toLocaleString()} total entries</p>
+                </CardContent>
+              </Card>
+
+              {/* Table */}
+              <Card>
+                <CardContent className="p-0">
+                  {auditLoading ? (
+                    <div className="flex justify-center py-12"><Loader className="h-6 w-6 animate-spin" /></div>
+                  ) : auditLogs.length === 0 ? (
+                    <div className="text-center py-12">
+                      <ClipboardList className="h-12 w-12 text-gray-300 mx-auto mb-3" />
+                      <p className="text-gray-500">No audit log entries found</p>
+                    </div>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead className="border-b bg-gray-50">
+                          <tr>
+                            <th className="text-left px-4 py-3 font-medium text-gray-600">When</th>
+                            <th className="text-left px-4 py-3 font-medium text-gray-600">User</th>
+                            <th className="text-left px-4 py-3 font-medium text-gray-600">Action</th>
+                            <th className="text-left px-4 py-3 font-medium text-gray-600">Target</th>
+                            <th className="text-left px-4 py-3 font-medium text-gray-600">IP</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y">
+                          {auditLogs.map((log) => (
+                            <tr key={log.id} className="hover:bg-gray-50">
+                              <td className="px-4 py-3 whitespace-nowrap">
+                                <p className="text-xs text-gray-500">{format(new Date(log.created_at), 'MMM d, yyyy HH:mm')}</p>
+                                <p className="text-xs text-gray-400">{formatDistanceToNow(new Date(log.created_at), { addSuffix: true })}</p>
+                              </td>
+                              <td className="px-4 py-3">
+                                <p className="font-medium">{log.user_name ?? <span className="text-gray-400 italic">system</span>}</p>
+                                {log.user_email && <p className="text-xs text-gray-400">{log.user_email}</p>}
+                              </td>
+                              <td className="px-4 py-3">
+                                <Badge variant="secondary" className="font-mono text-xs">
+                                  {log.action.replace(/_/g, ' ')}
+                                </Badge>
+                              </td>
+                              <td className="px-4 py-3 text-xs text-gray-500">
+                                {log.target_name
+                                  ? <><span className="font-medium text-gray-700">{log.target_name}</span><br /><span className="text-gray-400">{log.target_type}</span></>
+                                  : log.target_type ?? '—'}
+                              </td>
+                              <td className="px-4 py-3 text-xs text-gray-400 font-mono">{log.ip_address ?? '—'}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* Pagination */}
+              {auditTotal > 50 && (
+                <div className="flex items-center justify-between">
+                  <p className="text-sm text-gray-500">Page {auditPage} of {Math.ceil(auditTotal / 50)}</p>
+                  <div className="flex gap-2">
+                    <Button variant="outline" size="sm" disabled={auditPage <= 1 || auditLoading} onClick={() => fetchAuditLogs(auditPage - 1)}>
+                      <ChevronLeft className="h-4 w-4" />Previous
+                    </Button>
+                    <Button variant="outline" size="sm" disabled={!auditHasMore || auditLoading} onClick={() => fetchAuditLogs(auditPage + 1)}>
+                      Next<ChevronRight className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </TabsContent>
+          )}
         </Tabs>
       </div>
     </div>

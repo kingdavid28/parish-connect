@@ -217,6 +217,19 @@ function authRegister(): void {
         )->execute([generateUuid(), $id, 'register', getClientIp()]);
 
         jsonResponse(['success' => true, 'message' => 'Account created successfully'], 201);
+
+        // Welcome email (best-effort, non-blocking)
+        require_once __DIR__ . '/mailer.php';
+        sendEmail(
+            $email,
+            'Welcome to Parish Connect 🙏',
+            '<p>Dear ' . htmlspecialchars($name) . ',</p>'
+            . '<p>Welcome to <strong>Parish Connect</strong> — your San Vicente Ferrer Parish community app.</p>'
+            . '<p>You can now log in and connect with fellow parishioners, view sacramental records, earn GBless points, and more.</p>'
+            . '<p>God bless you!</p>'
+            . '<p>— San Vicente Ferrer Parish</p>',
+            $name
+        );
     } catch (PDOException $e) {
         error_log('Register error: ' . $e->getMessage());
         jsonResponse(['success' => false, 'message' => 'Internal server error'], 500);

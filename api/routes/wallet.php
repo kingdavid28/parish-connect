@@ -497,6 +497,24 @@ function adminReviewTopup(): void {
                 'tag'   => 'topup-approved-' . $requestId,
                 'url'   => '/parish-connect/wallet',
             ]);
+
+            // Email notification
+            $userStmt = $db->prepare('SELECT name, email FROM users WHERE id = ? LIMIT 1');
+            $userStmt->execute([$topup['user_id']]);
+            $recipient = $userStmt->fetch();
+            if ($recipient) {
+                require_once __DIR__ . '/../mailer.php';
+                sendEmail(
+                    $recipient['email'],
+                    '✅ Your GBless Top-up Has Been Approved',
+                    '<p>Hi ' . htmlspecialchars($recipient['name']) . ',</p>'
+                    . '<p>Your top-up request of <strong>₱' . number_format((float)$topup['amount_php'], 2) . '</strong> has been approved.</p>'
+                    . '<p><strong>' . number_format((int)$topup['gbless_amount']) . ' GBless</strong> has been added to your wallet.</p>'
+                    . '<p>Thank you for your contribution to the parish community!</p>'
+                    . '<p>— Parish Connect</p>',
+                    $recipient['name']
+                );
+            }
         } else {
             sendPushToUser($topup['user_id'], [
                 'title' => '❌ Top-up Rejected',
@@ -504,6 +522,24 @@ function adminReviewTopup(): void {
                 'tag'   => 'topup-rejected-' . $requestId,
                 'url'   => '/parish-connect/wallet',
             ]);
+
+            // Email notification
+            $userStmt = $db->prepare('SELECT name, email FROM users WHERE id = ? LIMIT 1');
+            $userStmt->execute([$topup['user_id']]);
+            $recipient = $userStmt->fetch();
+            if ($recipient) {
+                require_once __DIR__ . '/../mailer.php';
+                sendEmail(
+                    $recipient['email'],
+                    '❌ Your GBless Top-up Was Not Approved',
+                    '<p>Hi ' . htmlspecialchars($recipient['name']) . ',</p>'
+                    . '<p>Unfortunately your top-up request of <strong>₱' . number_format((float)$topup['amount_php'], 2) . '</strong> was not approved.</p>'
+                    . ($note ? '<p>Reason: ' . htmlspecialchars($note) . '</p>' : '')
+                    . '<p>Please contact the parish office if you have questions.</p>'
+                    . '<p>— Parish Connect</p>',
+                    $recipient['name']
+                );
+            }
         }
 
         $db->commit();

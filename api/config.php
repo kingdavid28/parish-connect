@@ -45,3 +45,11 @@ define('SAC_DB_PASSWORD', $env['SAC_DB_PASSWORD'] ?? '');
 define('GCASH_NUMBER',  $env['GCASH_NUMBER']  ?? '');
 define('GCASH_NAME',    $env['GCASH_NAME']    ?? '');
 define('GCASH_QR_URL',  $env['GCASH_QR_URL']  ?? '');
+
+// Email (SMTP)
+define('MAIL_HOST',         $env['MAIL_HOST']         ?? '');
+define('MAIL_PORT',         (int)($env['MAIL_PORT']   ?? 587));
+define('MAIL_USERNAME',     $env['MAIL_USERNAME']     ?? '');
+define('MAIL_PASSWORD',     $env['MAIL_PASSWORD']     ?? '');
+define('MAIL_FROM_ADDRESS', $env['MAIL_FROM_ADDRESS'] ?? '');
+define('MAIL_FROM_NAME',    $env['MAIL_FROM_NAME']    ?? 'Parish Connect');
