@@ -230,5 +230,12 @@ if ($resource === 'sacraments') {
     exit;
 }
 
+// Family groups & ministries
+if ($resource === 'families' || $resource === 'ministries') {
+    require_once __DIR__ . '/routes/community.php';
+    handleCommunity($method, $resource, $id, $action);
+    exit;
+}
+
 // 404 Not Found
 jsonResponse(['success' => false, 'message' => 'Not found'], 404);

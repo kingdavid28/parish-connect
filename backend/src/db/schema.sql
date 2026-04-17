@@ -208,3 +208,60 @@ CREATE INDEX idx_group_messages_time  ON group_messages(group_id, created_at);
 -- ─────────────────────────────────────────────────────────────────────────────
 ALTER TABLE messages  ADD COLUMN IF NOT EXISTS image_url VARCHAR(500) NULL AFTER content;
 ALTER TABLE posts     ADD COLUMN IF NOT EXISTS image_url VARCHAR(500) NULL AFTER type;
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- Family Groups
+-- ─────────────────────────────────────────────────────────────────────────────
+
+CREATE TABLE IF NOT EXISTS family_groups (
+  id          VARCHAR(36)  NOT NULL PRIMARY KEY,
+  name        VARCHAR(100) NOT NULL,
+  description TEXT         NULL,
+  created_by  VARCHAR(36)  NOT NULL,
+  created_at  DATETIME     DEFAULT CURRENT_TIMESTAMP,
+  updated_at  DATETIME     DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS family_group_members (
+  group_id     VARCHAR(36)  NOT NULL,
+  user_id      VARCHAR(36)  NOT NULL,
+  relationship ENUM('parent','child','spouse','sibling','grandparent','grandchild','relative','other')
+               NOT NULL DEFAULT 'other',
+  joined_at    DATETIME DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (group_id, user_id),
+  FOREIGN KEY (group_id) REFERENCES family_groups(id) ON DELETE CASCADE,
+  FOREIGN KEY (user_id)  REFERENCES users(id)         ON DELETE CASCADE
+);
+
+CREATE INDEX idx_fgm_group ON family_group_members(group_id);
+CREATE INDEX idx_fgm_user  ON family_group_members(user_id);
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- Ministries
+-- ─────────────────────────────────────────────────────────────────────────────
+
+CREATE TABLE IF NOT EXISTS ministries (
+  id            VARCHAR(36)  NOT NULL PRIMARY KEY,
+  name          VARCHAR(100) NOT NULL,
+  description   TEXT         NULL,
+  schedule      VARCHAR(255) NULL,
+  contact_name  VARCHAR(100) NULL,
+  contact_email VARCHAR(255) NULL,
+  created_by    VARCHAR(36)  NOT NULL,
+  created_at    DATETIME     DEFAULT CURRENT_TIMESTAMP,
+  updated_at    DATETIME     DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS ministry_members (
+  ministry_id VARCHAR(36) NOT NULL,
+  user_id     VARCHAR(36) NOT NULL,
+  joined_at   DATETIME DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (ministry_id, user_id),
+  FOREIGN KEY (ministry_id) REFERENCES ministries(id) ON DELETE CASCADE,
+  FOREIGN KEY (user_id)     REFERENCES users(id)      ON DELETE CASCADE
+);
+
+CREATE INDEX idx_mm_ministry ON ministry_members(ministry_id);
+CREATE INDEX idx_mm_user     ON ministry_members(user_id);
