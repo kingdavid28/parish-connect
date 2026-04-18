@@ -65,6 +65,8 @@
    */
   .viewport-content {
     @apply relative z-10;
+    overflow-x: hidden;
+    width: 100%;
   }
 
   /**

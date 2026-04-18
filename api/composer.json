@@ -1,7 +1,7 @@
 {
   "require": {
-    "firebase/php-jwt": "^6.10",
-    "minishlink/web-push": "^9.0",
+    "firebase/php-jwt": "^7.0",
+    "minishlink/web-push": "^8.0",
     "phpmailer/phpmailer": "^6.9"
   }
 }

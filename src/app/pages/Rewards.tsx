@@ -125,36 +125,36 @@ export default function Rewards() {
         <div className="max-w-3xl mx-auto px-4 py-6 pb-24 md:pb-6 space-y-6">
             {/* Header */}
             <div className="flex items-center gap-3">
-                <div className="bg-yellow-500 p-2 rounded-lg">
+                <div className="bg-yellow-500 p-2 rounded-lg shrink-0">
                     <Trophy className="h-6 w-6 text-white" />
                 </div>
-                <div>
+                <div className="min-w-0">
                     <h1 className="text-2xl font-semibold">Rewards</h1>
-                    <p className="text-sm text-gray-500">Earn GBless Points by engaging with your parish community</p>
+                    <p className="text-sm text-gray-500 leading-tight">Earn GBless Points by engaging with your parish community</p>
                 </div>
             </div>
 
             {/* Stats row */}
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-3 gap-2">
                 <Card>
-                    <CardContent className="pt-5 text-center">
-                        <Star className="h-6 w-6 text-yellow-500 mx-auto mb-1" />
-                        <p className="text-2xl font-bold">{myRewards?.total_points ?? 0}</p>
-                        <p className="text-xs text-gray-500">GBless Points</p>
+                    <CardContent className="pt-4 pb-3 px-2 text-center">
+                        <Star className="h-5 w-5 text-yellow-500 mx-auto mb-1" />
+                        <p className="text-xl font-bold leading-tight truncate">{myRewards?.total_points ?? 0}</p>
+                        <p className="text-[10px] text-gray-500 leading-tight">GBless Points</p>
                     </CardContent>
                 </Card>
                 <Card>
-                    <CardContent className="pt-5 text-center">
-                        <TrendingUp className="h-6 w-6 text-blue-500 mx-auto mb-1" />
-                        <p className="text-2xl font-bold">#{myRewards?.rank ?? "—"}</p>
-                        <p className="text-xs text-gray-500">Parish Rank</p>
+                    <CardContent className="pt-4 pb-3 px-2 text-center">
+                        <TrendingUp className="h-5 w-5 text-blue-500 mx-auto mb-1" />
+                        <p className="text-xl font-bold leading-tight">#{myRewards?.rank ?? "—"}</p>
+                        <p className="text-[10px] text-gray-500 leading-tight">Parish Rank</p>
                     </CardContent>
                 </Card>
                 <Card>
-                    <CardContent className="pt-5 text-center">
-                        <Medal className="h-6 w-6 text-purple-500 mx-auto mb-1" />
-                        <p className="text-2xl font-bold">{earnedBadges.length}</p>
-                        <p className="text-xs text-gray-500">Badges Earned</p>
+                    <CardContent className="pt-4 pb-3 px-2 text-center">
+                        <Medal className="h-5 w-5 text-purple-500 mx-auto mb-1" />
+                        <p className="text-xl font-bold leading-tight">{earnedBadges.length}</p>
+                        <p className="text-[10px] text-gray-500 leading-tight">Badges Earned</p>
                     </CardContent>
                 </Card>
             </div>

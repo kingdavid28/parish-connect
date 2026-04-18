@@ -190,25 +190,59 @@ export default function Navbar() {
       {/* Mobile Bottom Tab Bar - hidden when keyboard is open */}
       {!keyboardOpen && (
         <div className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-gray-200 safe-area-bottom">
-          <div className="flex justify-around items-center h-16 px-2">
-            {visibleNavLinks.slice(0, 5).map((link) => {
-              const Icon = link.icon;
-              const active = isActive(link.path);
-              return (
-                <Link
-                  key={link.path}
-                  to={link.path}
-                  className={`flex flex-col items-center justify-center gap-0.5 flex-1 py-1 rounded-lg transition-colors ${active ? "text-blue-600" : "text-gray-400 hover:text-gray-600"
-                    }`}
-                >
-                  <div className={`p-1.5 rounded-full transition-colors ${active ? "bg-blue-50" : ""}`}>
-                    <Icon className="h-5 w-5" />
-                  </div>
-                  <span className="text-[10px] font-medium">{link.label}</span>
-                </Link>
-              );
-            })}
-          </div>
+          {visibleNavLinks.length <= 5 ? (
+            /* Equal-width grid for ≤5 tabs — no scrolling */
+            <div className="grid h-16 px-1" style={{ gridTemplateColumns: `repeat(${visibleNavLinks.length}, 1fr)` }}>
+              {visibleNavLinks.map((link) => {
+                const Icon = link.icon;
+                const active = isActive(link.path);
+                return (
+                  <Link
+                    key={link.path}
+                    to={link.path}
+                    className={`flex flex-col items-center justify-center gap-0.5 py-1 rounded-lg transition-colors ${active ? "text-blue-600" : "text-gray-400"
+                      }`}
+                  >
+                    <div className={`p-1.5 rounded-full transition-colors ${active ? "bg-blue-50" : ""}`}>
+                      <Icon className="h-5 w-5" />
+                    </div>
+                    <span className="text-[10px] font-medium">{link.label}</span>
+                  </Link>
+                );
+              })}
+            </div>
+          ) : (
+            /* Horizontally scrollable for >5 tabs (admins) — scroll stays inside nav only */
+            <div
+              className="flex items-center h-16 px-1"
+              style={{
+                overflowX: "auto",
+                overflowY: "hidden",
+                overscrollBehavior: "contain",
+                WebkitOverflowScrolling: "touch",
+                scrollbarWidth: "none",
+                msOverflowStyle: "none",
+              }}
+            >
+              {visibleNavLinks.map((link) => {
+                const Icon = link.icon;
+                const active = isActive(link.path);
+                return (
+                  <Link
+                    key={link.path}
+                    to={link.path}
+                    className={`flex flex-col items-center justify-center gap-0.5 min-w-[64px] shrink-0 py-1 px-1 rounded-lg transition-colors ${active ? "text-blue-600" : "text-gray-400"
+                      }`}
+                  >
+                    <div className={`p-1.5 rounded-full transition-colors ${active ? "bg-blue-50" : ""}`}>
+                      <Icon className="h-5 w-5" />
+                    </div>
+                    <span className="text-[10px] font-medium">{link.label}</span>
+                  </Link>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
 

@@ -149,14 +149,14 @@ function listUsers(): void {
         $parentIdRow = $parentIdStmt->fetch();
         if ($parentIdRow) $parentId = $parentIdRow['id'];
 
-        // Parent superadmin is invisible to everyone except themselves
-        if (!$isParentSuperAdmin && $parentId) {
+        // Parent superadmin is invisible to regular admins and parishioners, but visible to all superadmins
+        if ($user['role'] !== 'superadmin' && $parentId) {
             $sql .= " AND id != ?";
         }
 
         $sql .= ' ORDER BY created_at DESC';
         $stmt = $db->prepare($sql);
-        if (!$isParentSuperAdmin && $parentId) {
+        if ($user['role'] !== 'superadmin' && $parentId) {
             $stmt->execute([$parentId]);
         } else {
             $stmt->execute();

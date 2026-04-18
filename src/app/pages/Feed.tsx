@@ -5,7 +5,6 @@ import { Avatar, AvatarImage, AvatarFallback } from "../components/ui/avatar";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Textarea } from "../components/ui/textarea";
-import { Tabs, TabsList, TabsTrigger } from "../components/ui/tabs";
 import { Badge } from "../components/ui/badge";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
@@ -234,81 +233,92 @@ export default function Feed() {
   const filteredPosts = activeTab === "all" ? posts : posts.filter((p) => p.type === activeTab);
 
   return (
-    <div className="max-w-3xl mx-auto px-4 py-6 pb-24 md:pb-6">
+    <div className="w-full max-w-2xl mx-auto px-3 py-4 pb-24 md:pb-6 overflow-x-hidden">
       {/* Create Post */}
-      <Card className="mb-6">
-        <CardContent className="pt-6">
-          <div className="flex items-start space-x-4">
-            <Avatar>
+      <Card className="mb-4 overflow-hidden">
+        <CardContent className="p-3">
+          <div className="flex gap-2">
+            <Avatar className="shrink-0 h-9 w-9 mt-0.5">
               <AvatarImage src={user?.avatar} alt={user?.name} />
               <AvatarFallback>{user?.name[0]}</AvatarFallback>
             </Avatar>
-            <div className="flex-1">
+            <div className="flex-1 min-w-0">
               <Textarea
                 placeholder="Share with your parish community..."
                 value={newPostContent}
                 onChange={(e) => setNewPostContent(e.target.value)}
-                className="mb-3 min-h-[100px]"
+                className="mb-2 min-h-[72px] w-full resize-none text-sm"
               />
-              {/* Image Preview */}
               {imagePreview && (
-                <div className="relative mb-3 inline-block">
-                  <img src={imagePreview} alt="Preview" className="max-h-48 rounded-lg object-cover" />
-                  <button onClick={clearImage} className="absolute top-1 right-1 bg-black/60 text-white rounded-full p-1 hover:bg-black/80">
-                    <X className="h-4 w-4" />
+                <div className="relative mb-2">
+                  <img src={imagePreview} alt="Preview" className="w-full max-h-40 rounded-lg object-cover" />
+                  <button onClick={clearImage} className="absolute top-1 right-1 bg-black/60 text-white rounded-full p-1">
+                    <X className="h-3 w-3" />
                   </button>
                 </div>
               )}
               <input ref={fileInputRef} type="file" accept="image/jpeg,image/png,image/gif,image/webp" className="hidden" onChange={handleImageSelect} />
-              <div className="flex justify-between items-center">
-                <div className="flex space-x-2">
-                  <Button variant="outline" size="sm" onClick={() => fileInputRef.current?.click()}>
-                    <ImageIcon className="h-4 w-4 mr-2" />
-                    Photo
-                  </Button>
-                  <Button
-                    variant={postType === "parish_event" ? "default" : "outline"}
-                    size="sm"
+              <div className="flex items-center justify-between">
+                {/* Left: icon-only action buttons */}
+                <div className="flex items-center gap-1">
+                  <button onClick={() => fileInputRef.current?.click()} title="Add photo"
+                    className="p-2 rounded-lg text-gray-500 hover:bg-gray-100 hover:text-gray-700 transition-colors">
+                    <ImageIcon className="h-4 w-4" />
+                  </button>
+                  <button
                     onClick={() => setPostType(postType === "parish_event" ? "community" : "parish_event")}
-                  >
-                    <Calendar className="h-4 w-4 mr-2" />
-                    Event
-                  </Button>
-                  <Button
-                    variant={postType === "research" ? "default" : "outline"}
-                    size="sm"
+                    title="Parish Event"
+                    className={`p-2 rounded-lg transition-colors ${postType === "parish_event" ? "bg-blue-100 text-blue-600" : "text-gray-500 hover:bg-gray-100 hover:text-gray-700"}`}>
+                    <Calendar className="h-4 w-4" />
+                  </button>
+                  <button
                     onClick={() => setPostType(postType === "research" ? "community" : "research")}
-                  >
-                    <BookOpen className="h-4 w-4 mr-2" />
-                    Research
-                  </Button>
-                </div>
-                <div className="flex items-center gap-2">
+                    title="Research"
+                    className={`p-2 rounded-lg transition-colors ${postType === "research" ? "bg-blue-100 text-blue-600" : "text-gray-500 hover:bg-gray-100 hover:text-gray-700"}`}>
+                    <BookOpen className="h-4 w-4" />
+                  </button>
                   {postType !== "community" && (
-                    <Badge variant="secondary" className="flex items-center gap-1">
+                    <span className="inline-flex items-center gap-1 text-xs bg-blue-50 text-blue-700 px-2 py-1 rounded-full">
                       {getPostIcon(postType)}
-                      {getPostTypeLabel(postType)}
-                      <X className="h-3 w-3 ml-1 cursor-pointer" onClick={() => setPostType("community")} />
-                    </Badge>
+                      <span className="max-w-[60px] truncate">{getPostTypeLabel(postType)}</span>
+                      <X className="h-3 w-3 cursor-pointer shrink-0" onClick={() => setPostType("community")} />
+                    </span>
                   )}
-                  <Button onClick={handleCreatePost}>Post</Button>
                 </div>
+                {/* Right: Post button */}
+                <Button onClick={handleCreatePost} size="sm" className="h-8 px-4 shrink-0">
+                  Post
+                </Button>
               </div>
             </div>
           </div>
         </CardContent>
       </Card>
 
-      {/* Feed Filters */}
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="mb-6">
-        <TabsList className="grid w-full grid-cols-5">
-          <TabsTrigger value="all">All</TabsTrigger>
-          <TabsTrigger value="community">Community</TabsTrigger>
-          <TabsTrigger value="parish_event">Events</TabsTrigger>
-          <TabsTrigger value="baptism_anniversary">Baptisms</TabsTrigger>
-          <TabsTrigger value="research">Research</TabsTrigger>
-        </TabsList>
-      </Tabs>
+      {/* Feed Filters — horizontally scrollable pill row */}
+      <div
+        className="flex gap-2 mb-4 overflow-x-auto"
+        style={{ scrollbarWidth: "none", msOverflowStyle: "none", WebkitOverflowScrolling: "touch", overscrollBehaviorX: "contain" } as React.CSSProperties}
+      >
+        {[
+          { value: "all", label: "All" },
+          { value: "community", label: "Community" },
+          { value: "parish_event", label: "Events" },
+          { value: "baptism_anniversary", label: "Baptisms" },
+          { value: "research", label: "Research" },
+        ].map((tab) => (
+          <button
+            key={tab.value}
+            onClick={() => setActiveTab(tab.value)}
+            className={`shrink-0 px-4 py-1.5 rounded-full text-sm font-medium transition-colors whitespace-nowrap border ${activeTab === tab.value
+              ? "bg-blue-600 text-white border-blue-600"
+              : "bg-white text-gray-600 border-gray-200 hover:bg-gray-50"
+              }`}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
 
       {loading && (
         <div className="flex justify-center items-center py-12">
@@ -328,22 +338,22 @@ export default function Feed() {
         {filteredPosts.map((post) => (
           <Card key={post.id} className="hover:shadow-md transition-shadow">
             <CardHeader>
-              <div className="flex items-start justify-between">
-                <div className="flex items-center space-x-3">
-                  <Avatar>
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex items-center space-x-3 min-w-0">
+                  <Avatar className="shrink-0">
                     <AvatarImage src={post.author_avatar} alt={post.author_name} loading="lazy" />
                     <AvatarFallback>{post.author_name?.[0] ?? '?'}</AvatarFallback>
                   </Avatar>
-                  <div>
-                    <p className="font-medium">{post.author_name}</p>
+                  <div className="min-w-0">
+                    <p className="font-medium truncate">{post.author_name}</p>
                     <p className="text-sm text-gray-500">
                       {formatDistanceToNow(new Date(post.created_at + 'Z'), { addSuffix: true })}
                     </p>
                   </div>
                 </div>
-                <Badge variant="secondary" className="flex items-center gap-1">
+                <Badge variant="secondary" className="flex items-center gap-1 shrink-0 text-xs">
                   {getPostIcon(post.type)}
-                  {getPostTypeLabel(post.type)}
+                  <span className="hidden sm:inline">{getPostTypeLabel(post.type)}</span>
                 </Badge>
               </div>
             </CardHeader>
