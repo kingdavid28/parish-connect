@@ -53,3 +53,6 @@ define('MAIL_USERNAME',     $env['MAIL_USERNAME']     ?? '');
 define('MAIL_PASSWORD',     $env['MAIL_PASSWORD']     ?? '');
 define('MAIL_FROM_ADDRESS', $env['MAIL_FROM_ADDRESS'] ?? '');
 define('MAIL_FROM_NAME',    $env['MAIL_FROM_NAME']    ?? 'Parish Connect');
+
+// Groq AI (auto-post cron)
+define('GROQ_API_KEY', $env['GROQ_API_KEY'] ?? '');
