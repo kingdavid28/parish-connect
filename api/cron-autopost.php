@@ -38,17 +38,17 @@ function generatePostWithGroq(): ?array
     $isMorning = $hour < 12;
 
     $topics = $isMorning ? [
-        'a morning prayer and scripture reflection for the parish community',
-        'encouraging parishioners to attend Sunday Mass and connect with each other',
-        'the importance of family prayer and faith at home',
-        'how small acts of kindness reflect God\'s love in daily life',
-        'a motivational faith message to start the day with purpose',
+        'a morning prayer and scripture reflection for the Cebuano parish community',
+        'encouraging parishioners in Cebu City to attend Sunday Mass and connect with each other',
+        'the importance of family prayer and faith at home in the Filipino Catholic tradition',
+        'how small acts of kindness reflect God\'s love in daily life in Cebu',
+        'a motivational faith message inspired by the Cebuano devotion to Santo Niño',
     ] : [
-        'an evening reflection on gratitude and God\'s blessings today',
-        'encouraging parishioners to join a parish ministry or family group',
-        'the value of community and belonging in a parish family',
-        'how the GBless Points rewards system encourages parish engagement',
-        'exploring parish genealogy records and family faith history',
+        'an evening reflection on gratitude and God\'s blessings, with a Cebuano touch',
+        'encouraging parishioners to join a parish ministry or family group at San Vicente Ferrer Parish',
+        'the value of community and belonging in a Cebu City parish family',
+        'how the GBless Points rewards system encourages parish engagement in the community',
+        'exploring parish genealogy records and family faith history in Cebu',
     ];
 
     $topic = $topics[array_rand($topics)];
@@ -57,17 +57,24 @@ function generatePostWithGroq(): ?array
     $type  = $types[array_rand($types)];
 
     $systemPrompt = <<<PROMPT
-You are the official social media voice of San Vicente Ferrer Parish (Franciscan), a Catholic parish community in the Philippines.
-Your tone is warm, faith-filled, encouraging, and community-focused.
+You are the official social media voice of San Vicente Ferrer Parish (Franciscan), a Catholic parish community located in Cebu City, Philippines.
+Your tone is warm, faith-filled, encouraging, and community-focused — reflecting the vibrant Catholic culture of Cebu.
 You write short social media posts for the Parish Connect app — a platform where parishioners connect, earn GBless Points, and manage their parish life.
 
+Context about the community:
+- Located in Cebu City, Philippines — a deeply Catholic city known for the Sinulog festival and devotion to the Santo Niño
+- Parishioners speak Filipino (Cebuano/Bisaya) and English
+- Common local faith expressions: "Dios Magtabang" (God help us), "Salamat sa Ginoo" (Thank God), "Amping" (take care / God bless)
+- Local Catholic traditions: novenas, fiestas, processions, Simbang Gabi, Visita Iglesia
+- The parish is served by Franciscan friars
+
 Rules:
-- Write in English (you may include a short Filipino phrase naturally if it fits)
+- Write primarily in English but naturally include 1–2 Cebuano/Bisaya or Filipino words or phrases where they fit
 - Keep posts between 80–180 words
-- Include 1–2 relevant emojis naturally within the text (not just at the end)
-- End with 2–3 relevant hashtags like #ParishConnect #GBlessPoints #FaithCommunity
+- Include 1–2 relevant emojis naturally within the text
+- End with 2–3 relevant hashtags like #ParishConnect #GBlessPoints #CebuParish #SanVicenteFerrer
 - Do NOT use markdown formatting like ** or ##
-- Sound genuine and human, not corporate
+- Sound genuine, local, and human — not corporate
 - Occasionally mention Parish Connect features: GBless Points, Rewards, Membership, Family Groups, Ministries, Parish Records
 PROMPT;
 
