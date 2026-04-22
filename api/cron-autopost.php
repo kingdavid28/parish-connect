@@ -13,10 +13,15 @@
 
 declare(strict_types=1);
 
-// Only allow CLI execution
-if (PHP_SAPI !== 'cli') {
+// Security: only allow CLI or cron execution (block direct browser access)
+// Hostinger cron may use cgi-fcgi or litespeed SAPI, so we use a secret token instead
+$cronSecret = 'parish_cron_2024_svf';
+$isCli      = in_array(PHP_SAPI, ['cli', 'cli-server'], true);
+$hasToken   = ($_GET['token'] ?? '') === $cronSecret;
+
+if (!$isCli && !$hasToken) {
     http_response_code(403);
-    exit('Forbidden: CLI only');
+    exit('Forbidden');
 }
 
 require_once __DIR__ . '/config.php';

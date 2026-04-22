@@ -244,5 +244,11 @@ if ($resource === 'audit') {
     exit;
 }
 
+// Auto-post cron (HTTP trigger with secret token)
+if ($resource === 'cron-autopost') {
+    require_once __DIR__ . '/cron-autopost.php';
+    exit;
+}
+
 // 404 Not Found
 jsonResponse(['success' => false, 'message' => 'Not found'], 404);
