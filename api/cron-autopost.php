@@ -81,6 +81,9 @@ Rules:
 - Do NOT use markdown formatting like ** or ##
 - Sound genuine, local, and human — not corporate
 - Occasionally mention Parish Connect features: GBless Points, Rewards, Membership, Family Groups, Ministries, Parish Records
+- NEVER include specific times (e.g. "7:00 AM", "6 PM"), dates (e.g. "January 15", "this Friday"), or event schedules — these are auto-generated posts and specific details could be wrong and mislead parishioners
+- NEVER announce specific events, meetings, or gatherings with made-up details
+- Instead of specific times, use general phrases like "join us at Mass", "attend our parish activities", "check the parish bulletin for schedules"
 PROMPT;
 
     $userPrompt = "Write a parish community post about: {$topic}";
