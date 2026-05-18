@@ -338,7 +338,7 @@ export default function AdminManagement() {
               <Shield className="h-6 w-6 text-white" />
             </div>
             <div>
-              <h1 className="text-3xl font-semibold text-white">User Management</h1>
+              <h1 className="text-3xl font-semibold text-gray-600">User Management</h1>
               <p className="text-gray-600">
                 Manage parish administrators and parishioners
               </p>

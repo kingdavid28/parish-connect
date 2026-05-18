@@ -97,7 +97,7 @@ export default function ParishRecords() {
             </div>
             <div>
               <h1 className="text-3xl font-semibold text-white">Parish Records</h1>
-              <p className="text-gray-600">Browse and search sacramental records</p>
+              <p className="text-white">Browse and search sacramental records</p>
             </div>
           </div>
         </div>

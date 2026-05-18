@@ -182,7 +182,7 @@ export default function Messages() {
                     <div className="bg-blue-600 p-2 rounded-lg"><MessageCircle className="h-6 w-6 text-white" /></div>
                     <div>
                         <h1 className="text-3xl font-semibold text-white">Messages</h1>
-                        <p className="text-gray-400">Direct messages and group chats</p>
+                        <p className="text-white">Direct messages and group chats</p>
                     </div>
                 </div>
                 <Button onClick={openCreateGroup} size="sm"><Plus className="h-4 w-4 mr-2" />New Group</Button>

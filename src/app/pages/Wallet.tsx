@@ -282,7 +282,7 @@ export default function Wallet() {
                 </div>
                 <div>
                     <h1 className="text-2xl font-semibold text-white">GBless Wallet</h1>
-                    <p className="text-sm text-gray-500">Buy, gift, and cash out GBless Points</p>
+                    <p className="text-sm text-white">Buy, gift, and cash out GBless Points</p>
                 </div>
             </div>
 
