@@ -344,7 +344,7 @@ export default function Membership() {
               <Users className="h-6 w-6 text-white" />
             </div>
             <div>
-              <h1 className="text-2xl sm:text-3xl font-semibold">Parish Membership</h1>
+              <h1 className="text-2xl sm:text-3xl font-semibold text-white">Parish Membership</h1>
               <p className="text-gray-600 text-sm sm:text-base">Connect with fellow parishioners and manage memberships</p>
             </div>
           </div>

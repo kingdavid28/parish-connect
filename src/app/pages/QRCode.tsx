@@ -85,7 +85,7 @@ export default function QRCodePage() {
                 <div className="inline-flex items-center justify-center w-14 h-14 bg-blue-600 rounded-2xl mb-4">
                     <QrCode className="h-7 w-7 text-white" />
                 </div>
-                <h1 className="text-2xl font-semibold text-gray-900">App QR Code</h1>
+                <h1 className="text-2xl font-semibold text-white">App QR Code</h1>
                 <p className="text-gray-500 mt-1 text-sm">Share this QR code to invite parishioners</p>
             </div>
 

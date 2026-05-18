@@ -281,7 +281,7 @@ export default function Wallet() {
                     <WalletIcon className="h-6 w-6 text-white" />
                 </div>
                 <div>
-                    <h1 className="text-2xl font-semibold">GBless Wallet</h1>
+                    <h1 className="text-2xl font-semibold text-white">GBless Wallet</h1>
                     <p className="text-sm text-gray-500">Buy, gift, and cash out GBless Points</p>
                 </div>
             </div>

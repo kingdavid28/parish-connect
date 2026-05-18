@@ -96,7 +96,7 @@ export default function ParishRecords() {
               <BookOpen className="h-6 w-6 text-white" />
             </div>
             <div>
-              <h1 className="text-3xl font-semibold">Parish Records</h1>
+              <h1 className="text-3xl font-semibold text-white">Parish Records</h1>
               <p className="text-gray-600">Browse and search sacramental records</p>
             </div>
           </div>

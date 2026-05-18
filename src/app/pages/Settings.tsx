@@ -195,7 +195,7 @@ export default function Settings() {
               <SettingsIcon className="h-6 w-6 text-white" />
             </div>
             <div>
-              <h1 className="text-3xl font-semibold">Settings</h1>
+              <h1 className="text-3xl font-semibold text-white">Settings</h1>
               <p className="text-gray-600">Manage your account and preferences</p>
             </div>
           </div>

@@ -129,7 +129,7 @@ export default function Rewards() {
                     <Trophy className="h-6 w-6 text-white" />
                 </div>
                 <div className="min-w-0">
-                    <h1 className="text-2xl font-semibold">Rewards</h1>
+                    <h1 className="text-2xl font-semibold text-white">Rewards</h1>
                     <p className="text-sm text-gray-500 leading-tight">Earn GBless Points by engaging with your parish community</p>
                 </div>
             </div>
