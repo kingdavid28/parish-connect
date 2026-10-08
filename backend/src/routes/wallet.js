@@ -103,12 +103,18 @@ router.get("/", authenticate, async (req, res) => {
 
 // GET /api/wallet/gcash-info
 router.get("/gcash-info", authenticate, (req, res) => {
+  // QR URL may be a frontend-hosted relative path — make it absolute via APP_URL
+  // so the <img> resolves regardless of which app route the user is on.
+  const qr = config.gcash.qrUrl;
+  const qrAbsolute = qr && !/^https?:\/\//.test(qr)
+    ? `${config.appUrl}${config.appBasePath || ""}/${qr.replace(/^\.?\//, "")}`
+    : qr;
   res.json({
     success: true,
     data: {
       gcash_number: config.gcash.number,
       gcash_name: config.gcash.name,
-      gcash_qr_url: config.gcash.qrUrl,
+      gcash_qr_url: qrAbsolute,
       rate_label: `₱1 = ${fmt(GBLESS_PER_PHP)} GBless`,
       note: "Send your GCash payment to the number above, then submit your reference number below. Admin will credit your GBless within 24 hours.",
     },

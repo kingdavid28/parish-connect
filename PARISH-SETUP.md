@@ -268,9 +268,10 @@ and GCash values. No code changes needed — branding comes from `/api/config`.
       would need Express 5, low practical risk)
 
 **Still needs you:**
-- [ ] Free-tier accounts: CockroachDB Cloud, Render, Cloudflare, Brevo,
-      cron-job.org (optional: Groq)
-- [ ] Paste `DATABASE_URL` → `cd backend && npm run migrate && npm run seed-admin`
+- [x] CockroachDB Cloud account + cluster created (`raw-goblin-34935`, ap-southeast-1)
+- [x] `DATABASE_URL` set → `npm run migrate` applied all 23 tables to `defaultdb`
+- [x] Superadmin seeded (`reycelrcentino@gmail.com` / `kingAdmin`) — verified via live login → JWT
+- [ ] Remaining accounts: Render (API host), Cloudflare (Pages + R2), Brevo (SMTP), cron-job.org (optional: Groq)
 - [ ] GCash number + registered name (the QR image masks them by design)
 - [ ] Deployment URLs → `APP_URL`, `ALLOWED_ORIGINS`, `VITE_API_BASE_URL`
 - [ ] Sacramental records digitization (Parish Records → Add Record),
