@@ -42,7 +42,7 @@ interface Post {
   image_url?: string;
 }
 
-const API_BASE_URL = '/parish-connect/api';
+import { API as API_BASE_URL, APP_URL } from "../config";
 const getToken = () => localStorage.getItem('parish_token') || sessionStorage.getItem('parish_token');
 
 export default function Feed() {
@@ -230,6 +230,37 @@ export default function Feed() {
     }
   };
 
+  const safeFormatDate = (dateString: string) => {
+    try {
+      // Handle various date formats including Safari's strict parsing
+      let date: Date;
+      
+      // Try standard parsing first
+      date = new Date(dateString);
+      
+      // If invalid, try ISO format parsing (Safari is stricter)
+      if (isNaN(date.getTime())) {
+        // Try parsing with timezone handling
+        const isoString = dateString.replace(/ /, 'T');
+        date = new Date(isoString);
+      }
+      
+      // If still invalid, try manual parsing
+      if (isNaN(date.getTime())) {
+        const parsed = Date.parse(dateString);
+        if (!isNaN(parsed)) {
+          date = new Date(parsed);
+        }
+      }
+      
+      if (isNaN(date.getTime())) return 'Invalid date';
+      return formatDistanceToNow(date, { addSuffix: true });
+    } catch (error) {
+      console.error('Date parsing error:', error, dateString);
+      return 'Invalid date';
+    }
+  };
+
   const filteredPosts = activeTab === "all" ? posts : posts.filter((p) => p.type === activeTab);
 
   return (
@@ -347,7 +378,7 @@ export default function Feed() {
                   <div className="min-w-0">
                     <p className="font-medium truncate">{post.author_name}</p>
                     <p className="text-sm text-gray-500">
-                      {formatDistanceToNow(new Date(post.created_at + 'Z'), { addSuffix: true })}
+                      {safeFormatDate(post.created_at)}
                     </p>
                   </div>
                 </div>
@@ -388,7 +419,7 @@ export default function Feed() {
                   </Button>
                 </div>
                 <Button variant="ghost" size="sm" onClick={async () => {
-                  const shareUrl = `${window.location.origin}/parish-connect`;
+                  const shareUrl = APP_URL;
                   const shareText = `${post.author_name}: ${post.content.slice(0, 100)}${post.content.length > 100 ? '...' : ''}`;
                   if (navigator.share) {
                     try {
@@ -421,7 +452,7 @@ export default function Feed() {
                         <div className="flex items-center gap-2 mb-1">
                           <span className="text-sm font-medium">{comment.author_name}</span>
                           <span className="text-xs text-gray-400">
-                            {formatDistanceToNow(new Date(comment.created_at + 'Z'), { addSuffix: true })}
+                            {safeFormatDate(comment.created_at)}
                           </span>
                         </div>
                         <p className="text-sm text-gray-700">{comment.content}</p>

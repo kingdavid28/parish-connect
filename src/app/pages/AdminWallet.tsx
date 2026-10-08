@@ -17,9 +17,40 @@ import {
 import { formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
 
-const API = "/parish-connect/api";
+import { API } from "../config";
 const getToken = () =>
     localStorage.getItem("parish_token") || sessionStorage.getItem("parish_token");
+
+const safeFormatDate = (dateString: string) => {
+    try {
+        // Handle various date formats including Safari's strict parsing
+        let date: Date;
+        
+        // Try standard parsing first
+        date = new Date(dateString);
+        
+        // If invalid, try ISO format parsing (Safari is stricter)
+        if (isNaN(date.getTime())) {
+            // Try parsing with timezone handling
+            const isoString = dateString.replace(/ /, 'T');
+            date = new Date(isoString);
+        }
+        
+        // If still invalid, try manual parsing
+        if (isNaN(date.getTime())) {
+            const parsed = Date.parse(dateString);
+            if (!isNaN(parsed)) {
+                date = new Date(parsed);
+            }
+        }
+        
+        if (isNaN(date.getTime())) return 'Invalid date';
+        return formatDistanceToNow(date, { addSuffix: true });
+    } catch (error) {
+        console.error('Date parsing error:', error, dateString);
+        return 'Invalid date';
+    }
+};
 
 interface TopupRequest {
     id: string;
@@ -167,7 +198,7 @@ export default function AdminWallet() {
                                                 <span className="text-gray-500">Sender</span>
                                                 <span>{t.gcash_sender}</span>
                                                 <span className="text-gray-500">Submitted</span>
-                                                <span className="text-gray-400 text-xs">{formatDistanceToNow(new Date(t.created_at + "Z"), { addSuffix: true })}</span>
+                                                <span className="text-gray-400 text-xs">{safeFormatDate(t.created_at)}</span>
                                             </div>
                                             {/* Receipt screenshot */}
                                             {t.receipt_url ? (
@@ -237,7 +268,7 @@ export default function AdminWallet() {
                                                 <span className="text-gray-500">Account Name</span>
                                                 <span>{c.gcash_name}</span>
                                                 <span className="text-gray-500">Submitted</span>
-                                                <span className="text-gray-400 text-xs">{formatDistanceToNow(new Date(c.created_at + "Z"), { addSuffix: true })}</span>
+                                                <span className="text-gray-400 text-xs">{safeFormatDate(c.created_at)}</span>
                                             </div>
                                             <div className="mt-2 bg-orange-50 border border-orange-200 rounded px-3 py-2 text-xs text-orange-700">
                                                 ⚠️ GBless has been reserved from user's balance. Send ₱{parseFloat(String(c.amount_php)).toFixed(2)} to <strong>{c.gcash_number}</strong> ({c.gcash_name}) before approving.

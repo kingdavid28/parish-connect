@@ -15,7 +15,7 @@ import {
 import { formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
 
-const API = "/parish-connect/api";
+import { API } from "../config";
 const getToken = () =>
     localStorage.getItem("parish_token") || sessionStorage.getItem("parish_token");
 
@@ -87,6 +87,37 @@ const TX_ICONS: Record<string, string> = {
     kudos_received: "💛", kudos_sent: "💛", follow_received: "🤝", daily_login: "☀️",
     topup_approved: "💰", gift_received: "🎁", gift_sent: "🎁",
     cashout_reserved: "💸", cashout_refunded: "↩️",
+};
+
+const safeFormatDate = (dateString: string) => {
+    try {
+        // Handle various date formats including Safari's strict parsing
+        let date: Date;
+        
+        // Try standard parsing first
+        date = new Date(dateString);
+        
+        // If invalid, try ISO format parsing (Safari is stricter)
+        if (isNaN(date.getTime())) {
+            // Try parsing with timezone handling
+            const isoString = dateString.replace(/ /, 'T');
+            date = new Date(isoString);
+        }
+        
+        // If still invalid, try manual parsing
+        if (isNaN(date.getTime())) {
+            const parsed = Date.parse(dateString);
+            if (!isNaN(parsed)) {
+                date = new Date(parsed);
+            }
+        }
+        
+        if (isNaN(date.getTime())) return 'Invalid date';
+        return formatDistanceToNow(date, { addSuffix: true });
+    } catch (error) {
+        console.error('Date parsing error:', error, dateString);
+        return 'Invalid date';
+    }
 };
 
 function StatusBadge({ status }: { status: string }) {
@@ -569,7 +600,7 @@ export default function Wallet() {
                                             <div key={t.id} className="flex items-center justify-between border rounded-lg px-4 py-3 bg-white">
                                                 <div>
                                                     <p className="text-sm font-medium">₱{parseFloat(String(t.amount_php)).toFixed(2)} → {Number(t.gbless_amount).toLocaleString()} GBless</p>
-                                                    <p className="text-xs text-gray-400">Ref: {t.gcash_ref} · {formatDistanceToNow(new Date(t.created_at + "Z"), { addSuffix: true })}</p>
+                                                    <p className="text-xs text-gray-400">Ref: {t.gcash_ref} · {safeFormatDate(t.created_at)}</p>
                                                     {t.admin_note && <p className="text-xs text-gray-500 mt-0.5">Note: {t.admin_note}</p>}
                                                 </div>
                                                 <StatusBadge status={t.status} />
@@ -588,7 +619,7 @@ export default function Wallet() {
                                             <div key={c.id} className="flex items-center justify-between border rounded-lg px-4 py-3 bg-white">
                                                 <div>
                                                     <p className="text-sm font-medium">{Number(c.gbless_amount).toLocaleString()} GBless → ₱{parseFloat(String(c.amount_php)).toFixed(2)}</p>
-                                                    <p className="text-xs text-gray-400">To: {c.gcash_number} · {formatDistanceToNow(new Date(c.created_at + "Z"), { addSuffix: true })}</p>
+                                                    <p className="text-xs text-gray-400">To: {c.gcash_number} · {safeFormatDate(c.created_at)}</p>
                                                     {c.admin_note && <p className="text-xs text-gray-500 mt-0.5">Note: {c.admin_note}</p>}
                                                 </div>
                                                 <StatusBadge status={c.status} />
@@ -612,7 +643,7 @@ export default function Wallet() {
                                                 <div>
                                                     <p className="text-sm font-medium">{TX_LABELS[tx.action] ?? tx.action}</p>
                                                     {tx.ref_name && <p className="text-xs text-gray-400">{tx.ref_name}</p>}
-                                                    <p className="text-xs text-gray-400">{formatDistanceToNow(new Date(tx.created_at + "Z"), { addSuffix: true })}</p>
+                                                    <p className="text-xs text-gray-400">{safeFormatDate(tx.created_at)}</p>
                                                 </div>
                                             </div>
                                             <span className={`text-sm font-semibold ${tx.points >= 0 ? "text-green-600" : "text-red-500"}`}>

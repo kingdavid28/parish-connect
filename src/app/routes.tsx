@@ -5,6 +5,7 @@ import ProtectedRoute from "./components/ProtectedRoute";
 import Login from "./components/Login";
 import Signup from "./components/Signup";
 import { PageLoading } from "./components/LoadingState";
+import { BASE_PATH } from "./config";
 
 // Lazy-load all page-level components so the initial bundle is small
 const Feed = lazy(() => import("./pages/Feed"));
@@ -61,4 +62,4 @@ export const router = createBrowserRouter([
     ],
   },
   { path: "*", element: withSuspense(NotFound) },
-], { basename: import.meta.env.PROD ? "/parish-connect" : "/" });
+], { basename: BASE_PATH || "/" });

@@ -16,8 +16,29 @@ import { toast } from "sonner";
 
 function safeTimeAgo(dateStr: string): string {
     try {
-        const d = new Date(dateStr.includes('T') || dateStr.includes('Z') ? dateStr : dateStr + 'Z');
-        return isNaN(d.getTime()) ? '' : formatDistanceToNow(d, { addSuffix: true });
+        // Handle various date formats including Safari's strict parsing
+        let date: Date;
+        
+        // Try standard parsing first
+        date = new Date(dateStr);
+        
+        // If invalid, try ISO format parsing (Safari is stricter)
+        if (isNaN(date.getTime())) {
+            // Try parsing with timezone handling
+            const isoString = dateStr.replace(/ /, 'T');
+            date = new Date(isoString);
+        }
+        
+        // If still invalid, try manual parsing
+        if (isNaN(date.getTime())) {
+            const parsed = Date.parse(dateStr);
+            if (!isNaN(parsed)) {
+                date = new Date(parsed);
+            }
+        }
+        
+        if (isNaN(date.getTime())) return '';
+        return formatDistanceToNow(date, { addSuffix: true });
     } catch { return ''; }
 }
 
@@ -33,9 +54,9 @@ interface Msg {
     id: string; sender_id: string; content: string; image_url?: string;
     created_at: string; sender_name: string; sender_avatar: string;
 }
-interface UserItem { id: string; name: string; avatar: string; }
+interface UserItem { id: string; name: string; avatar: string; role?: string; }
 
-const API = '/parish-connect/api';
+import { API } from "../config";
 const getToken = () => localStorage.getItem('parish_token') || sessionStorage.getItem('parish_token');
 
 export default function Messages() {
@@ -55,6 +76,9 @@ export default function Messages() {
     const [groupName, setGroupName] = useState("");
     const [availableUsers, setAvailableUsers] = useState<UserItem[]>([]);
     const [selectedMembers, setSelectedMembers] = useState<string[]>([]);
+    const [showNewMessage, setShowNewMessage] = useState(false);
+    const [userSearch, setUserSearch] = useState("");
+    const [usersLoaded, setUsersLoaded] = useState(false);
 
     // Chat state (shared)
     const [messages, setMessages] = useState<Msg[]>([]);
@@ -86,23 +110,38 @@ export default function Messages() {
         } catch { } finally { setLoadingGroups(false); }
     };
 
-    const openDirectChat = async (conv: Conversation) => {
-        setActiveChat({ id: conv.id, name: conv.name, avatar: conv.avatar });
-        setChatType('direct');
-        // Clear unread count immediately in the sidebar
-        setConversations(prev => prev.map(c => c.id === conv.id ? { ...c, unread_count: 0 } : c));
+    const loadDirectMessages = async (partnerId: string) => {
         try {
             setLoadingMsgs(true);
-            const res = await fetch(`${API}/messages/${conv.id}`, { headers: { 'Authorization': `Bearer ${getToken()}` } });
+            const res = await fetch(`${API}/messages/${partnerId}`, { headers: { 'Authorization': `Bearer ${getToken()}` } });
             const data = await res.json();
             if (data.success) setMessages(data.data || []);
         } catch { toast.error('Failed to load messages'); }
         finally { setLoadingMsgs(false); }
     };
 
+    const openDirectChat = async (conv: Conversation) => {
+        setActiveChat({ id: conv.id, name: conv.name, avatar: conv.avatar });
+        setChatType('direct');
+        setMessages([]);
+        // Clear unread count immediately in the sidebar
+        setConversations(prev => prev.map(c => c.id === conv.id ? { ...c, unread_count: 0 } : c));
+        loadDirectMessages(conv.id);
+    };
+
+    const startDirectChat = (u: UserItem) => {
+        setShowNewMessage(false);
+        setActiveChat({ id: u.id, name: u.name, avatar: u.avatar });
+        setChatType('direct');
+        setMessages([]);
+        setConversations(prev => prev.map(c => c.id === u.id ? { ...c, unread_count: 0 } : c));
+        loadDirectMessages(u.id);
+    };
+
     const openGroupChat = async (group: GroupChat) => {
         setActiveChat({ id: group.id, name: group.name, avatar: group.avatar || '' });
         setChatType('group');
+        setMessages([]);
         try {
             setLoadingMsgs(true);
             const res = await fetch(`${API}/groups/${group.id}`, { headers: { 'Authorization': `Bearer ${getToken()}` } });
@@ -144,14 +183,27 @@ export default function Messages() {
     };
     const clearImage = () => { setSelectedImage(null); setImagePreview(null); if (fileInputRef.current) fileInputRef.current.value = ''; };
 
-    const openCreateGroup = async () => {
-        setShowCreateGroup(true);
-        setGroupName(""); setSelectedMembers([]);
+    const fetchAvailableUsers = async () => {
+        setUsersLoaded(false);
         try {
             const res = await fetch(`${API}/users/search?all=1`, { headers: { 'Authorization': `Bearer ${getToken()}` } });
             const data = await res.json();
             if (data.success) setAvailableUsers((data.data || []).filter((u: UserItem) => u.id !== user?.id));
         } catch { setAvailableUsers([]); }
+        finally { setUsersLoaded(true); }
+    };
+
+    const openCreateGroup = async () => {
+        setShowCreateGroup(true);
+        setGroupName(""); setSelectedMembers([]);
+        fetchAvailableUsers();
+    };
+
+    const openNewMessage = () => {
+        setShowNewMessage(true);
+        setUserSearch("");
+        setAvailableUsers([]);
+        fetchAvailableUsers();
     };
 
     const handleCreateGroup = async () => {
@@ -185,7 +237,11 @@ export default function Messages() {
                         <p className="text-white">Direct messages and group chats</p>
                     </div>
                 </div>
-                <Button onClick={openCreateGroup} size="sm"><Plus className="h-4 w-4 mr-2" />New Group</Button>
+                {tab === 'direct' ? (
+                    <Button onClick={openNewMessage} size="sm"><Plus className="h-4 w-4 mr-2" />New Message</Button>
+                ) : (
+                    <Button onClick={openCreateGroup} size="sm"><Plus className="h-4 w-4 mr-2" />New Group</Button>
+                )}
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 min-h-[500px]">
@@ -203,6 +259,7 @@ export default function Messages() {
                                 <div className="text-center py-8 px-4">
                                     <MessageCircle className="h-10 w-10 text-gray-300 mx-auto mb-2" />
                                     <p className="text-gray-500 text-sm">No conversations yet</p>
+                                    <Button size="sm" variant="outline" className="mt-2" onClick={openNewMessage}>Start a conversation</Button>
                                 </div>
                             )}
                             {conversations.map((conv) => (
@@ -345,6 +402,39 @@ export default function Messages() {
                     <DialogFooter>
                         <Button variant="outline" onClick={() => setShowCreateGroup(false)}>Cancel</Button>
                         <Button onClick={handleCreateGroup}>Create Group</Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* New Direct Message Dialog */}
+            <Dialog open={showNewMessage} onOpenChange={setShowNewMessage}>
+                <DialogContent className="max-w-md">
+                    <DialogHeader><DialogTitle>New Message</DialogTitle></DialogHeader>
+                    <div className="space-y-4 py-4">
+                        <div className="space-y-2">
+                            <Label>Search members</Label>
+                            <Input placeholder="Type a name..." value={userSearch} onChange={(e) => setUserSearch(e.target.value)} />
+                        </div>
+                        <div className="max-h-64 overflow-y-auto border rounded-lg">
+                            {!usersLoaded && <div className="flex justify-center py-6"><Loader className="h-5 w-5 animate-spin" /></div>}
+                            {usersLoaded && availableUsers.length === 0 && <p className="text-sm text-gray-400 p-3">No users available</p>}
+                            {usersLoaded && availableUsers.length > 0 && availableUsers.filter((u) => u.name?.toLowerCase().includes(userSearch.toLowerCase())).length === 0 && (
+                                <p className="text-sm text-gray-400 p-3">No members match "{userSearch}"</p>
+                            )}
+                            {availableUsers
+                                .filter((u) => u.name?.toLowerCase().includes(userSearch.toLowerCase()))
+                                .map((u) => (
+                                    <button key={u.id} onClick={() => startDirectChat(u)}
+                                        className="w-full flex items-center gap-3 p-2 hover:bg-gray-50 text-left">
+                                        <Avatar className="h-8 w-8"><AvatarImage src={u.avatar} /><AvatarFallback>{u.name?.[0] ?? '?'}</AvatarFallback></Avatar>
+                                        <span className="text-sm flex-1">{u.name}</span>
+                                        {u.role && <Badge variant="secondary" className="text-xs capitalize">{u.role}</Badge>}
+                                    </button>
+                                ))}
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setShowNewMessage(false)}>Cancel</Button>
                     </DialogFooter>
                 </DialogContent>
             </Dialog>

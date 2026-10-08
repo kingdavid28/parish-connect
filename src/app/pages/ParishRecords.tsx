@@ -14,10 +14,12 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from "../components/ui/popover";
 import { Calendar as CalendarPicker } from "../components/ui/calendar";
 import {
-  Search, Download, Eye, Lock, BookOpen, Calendar, User, MapPin, Shield, Loader, CalendarIcon, X,
+  Search, Download, Eye, Lock, BookOpen, Calendar, User, MapPin, Shield, Loader, CalendarIcon, X, Plus, Pencil, Trash2,
 } from "lucide-react";
+import { Label } from "../components/ui/label";
 import { format } from "date-fns";
 import { toast } from "sonner";
+import { useParishConfig } from "../context/ParishConfigContext";
 
 interface SacramentRecord {
   id: string;
@@ -34,11 +36,19 @@ interface SacramentRecord {
   confirm_sponsor: string;
 }
 
-const API = '/parish-connect/api';
+import { API } from "../config";
 const getToken = () => localStorage.getItem('parish_token') || sessionStorage.getItem('parish_token');
+
+const EMPTY_FORM = {
+  name: "", birthday: "", parents_name: "", baptized_by: "", canonical_book: "",
+  baptismal_date: "", godparents_name: "", confirmed_by: "", confirmbook_no: "",
+  confirmed_date: "", confirm_sponsor: "",
+};
 
 export default function ParishRecords() {
   const { isAdmin, isSuperAdmin } = useAuth();
+  const { features } = useParishConfig();
+  const recordsEnabled = features.records !== "off";
   const [records, setRecords] = useState<SacramentRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
@@ -48,6 +58,86 @@ export default function ParishRecords() {
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(false);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [editingRecord, setEditingRecord] = useState<SacramentRecord | null>(null);
+  const [form, setForm] = useState(EMPTY_FORM);
+  const [saving, setSaving] = useState(false);
+
+  const openAddDialog = () => {
+    setEditingRecord(null);
+    setForm(EMPTY_FORM);
+    setEditDialogOpen(true);
+  };
+
+  const openEditDialog = (record: SacramentRecord) => {
+    setEditingRecord(record);
+    setForm({
+      name: record.name || "", birthday: record.birthday || "",
+      parents_name: record.parents_name || "", baptized_by: record.baptized_by || "",
+      canonical_book: record.canonical_book || "", baptismal_date: record.baptismal_date || "",
+      godparents_name: record.godparents_name || "", confirmed_by: record.confirmed_by || "",
+      confirmbook_no: record.confirmbook_no || "", confirmed_date: record.confirmed_date || "",
+      confirm_sponsor: record.confirm_sponsor || "",
+    });
+    setEditDialogOpen(true);
+  };
+
+  const saveRecord = async () => {
+    if (!form.name.trim()) { toast.error("Name is required"); return; }
+    setSaving(true);
+    try {
+      const url = editingRecord ? `${API}/sacraments/${editingRecord.id}` : `${API}/sacraments`;
+      const res = await fetch(url, {
+        method: editingRecord ? "PUT" : "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${getToken()}` },
+        body: JSON.stringify(form),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        toast.error(data.message || "Failed to save record");
+        return;
+      }
+      toast.success(editingRecord ? "Record updated" : "Record added");
+      setEditDialogOpen(false);
+      fetchRecords(page);
+    } catch {
+      toast.error("Failed to save record");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const deleteRecord = async (record: SacramentRecord) => {
+    if (!window.confirm(`Delete the record for "${record.name}"? This cannot be undone.`)) return;
+    try {
+      const res = await fetch(`${API}/sacraments/${record.id}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${getToken()}` },
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        toast.error(data.message || "Failed to delete record");
+        return;
+      }
+      toast.success("Record deleted");
+      fetchRecords(page);
+    } catch {
+      toast.error("Failed to delete record");
+    }
+  };
+
+  const field = (key: keyof typeof EMPTY_FORM, label: string, placeholder = "") => (
+    <div className="space-y-1.5" key={key}>
+      <Label htmlFor={`rec-${key}`} className="text-xs">{label}</Label>
+      <Input
+        id={`rec-${key}`}
+        value={form[key]}
+        placeholder={placeholder}
+        onChange={(e) => setForm((f) => ({ ...f, [key]: e.target.value }))}
+        disabled={saving}
+      />
+    </div>
+  );
 
   const fetchRecords = async (p = 1) => {
     try {
@@ -82,8 +172,29 @@ export default function ParishRecords() {
 
   const safeDate = (d: string) => {
     try {
-      const date = new Date(d);
-      return isNaN(date.getTime()) ? d : format(date, "MMM d, yyyy");
+      // Handle various date formats including Safari's strict parsing
+      let date: Date;
+      
+      // Try standard parsing first
+      date = new Date(d);
+      
+      // If invalid, try ISO format parsing (Safari is stricter)
+      if (isNaN(date.getTime())) {
+        // Try parsing with timezone handling
+        const isoString = d.replace(/ /, 'T');
+        date = new Date(isoString);
+      }
+      
+      // If still invalid, try manual parsing
+      if (isNaN(date.getTime())) {
+        const parsed = Date.parse(d);
+        if (!isNaN(parsed)) {
+          date = new Date(parsed);
+        }
+      }
+      
+      if (isNaN(date.getTime())) return d || 'N/A';
+      return format(date, "MMM d, yyyy");
     } catch { return d || 'N/A'; }
   };
 
@@ -100,8 +211,22 @@ export default function ParishRecords() {
               <p className="text-white">Browse and search sacramental records</p>
             </div>
           </div>
+          {isAdmin && recordsEnabled && (
+            <Button onClick={openAddDialog} className="bg-blue-600 hover:bg-blue-700">
+              <Plus className="h-4 w-4 mr-2" />Add Record
+            </Button>
+          )}
         </div>
       </div>
+
+      {!recordsEnabled ? (
+        <Card>
+          <CardContent className="py-12 text-center">
+            <Lock className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+            <p className="text-gray-600">Sacramental records are not enabled for this parish</p>
+          </CardContent>
+        </Card>
+      ) : (
 
       <Tabs defaultValue="baptism" className="space-y-6">
         <TabsList>
@@ -110,8 +235,8 @@ export default function ParishRecords() {
         </TabsList>
 
         <TabsContent value="baptism" className="space-y-4">
-          {/* Search - only for superadmins */}
-          {isSuperAdmin && (
+          {/* Search - only for admins */}
+          {isAdmin && (
             <Card>
               <CardContent className="pt-6">
                 <div className="flex flex-col md:flex-row gap-4">
@@ -163,7 +288,7 @@ export default function ParishRecords() {
             </Card>
           )}
 
-          {!isSuperAdmin && (
+          {!isAdmin && (
             <Card>
               <CardContent className="pt-6">
                 <div className="flex items-center gap-2 text-sm text-gray-600">
@@ -203,6 +328,17 @@ export default function ParishRecords() {
                           <TableCell>{safeDate(record.baptismal_date)}</TableCell>
                           <TableCell className="text-sm text-gray-600">{record.parents_name || 'N/A'}</TableCell>
                           <TableCell className="text-right">
+                            <div className="flex justify-end gap-1">
+                              {isAdmin && (
+                                <>
+                                  <Button variant="ghost" size="sm" onClick={() => openEditDialog(record)}>
+                                    <Pencil className="h-4 w-4" />
+                                  </Button>
+                                  <Button variant="ghost" size="sm" onClick={() => deleteRecord(record)}>
+                                    <Trash2 className="h-4 w-4 text-red-500" />
+                                  </Button>
+                                </>
+                              )}
                             <Dialog>
                               <DialogTrigger asChild>
                                 <Button variant="ghost" size="sm" onClick={() => setSelectedRecord(record)}>
@@ -261,6 +397,7 @@ export default function ParishRecords() {
                                 )}
                               </DialogContent>
                             </Dialog>
+                            </div>
                           </TableCell>
                         </TableRow>
                       ))}
@@ -313,6 +450,56 @@ export default function ParishRecords() {
           </Card>
         </TabsContent>
       </Tabs>
+      )}
+
+      {/* Add / Edit record dialog (admins) */}
+      <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{editingRecord ? "Edit Record" : "Add Sacramental Record"}</DialogTitle>
+            <DialogDescription>
+              {editingRecord ? `Update the record for ${editingRecord.name}` : "Enter a new baptismal record. Confirmation fields are optional."}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-5">
+            <div>
+              <h4 className="font-medium mb-2 flex items-center gap-2">
+                <User className="h-4 w-4" />Personal Information
+              </h4>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {field("name", "Full Name *")}
+                {field("birthday", "Birthday", "YYYY-MM-DD")}
+                {field("parents_name", "Parents' Names")}
+              </div>
+            </div>
+            <div>
+              <h4 className="font-medium mb-2">Baptism Details</h4>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {field("baptismal_date", "Baptismal Date", "YYYY-MM-DD")}
+                {field("baptized_by", "Baptized By")}
+                {field("godparents_name", "Godparents")}
+                {field("canonical_book", "Canonical Book")}
+              </div>
+            </div>
+            <div>
+              <h4 className="font-medium mb-2">Confirmation Details (optional)</h4>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {field("confirmed_date", "Confirmed Date", "YYYY-MM-DD")}
+                {field("confirmed_by", "Confirmed By")}
+                {field("confirm_sponsor", "Sponsor")}
+                {field("confirmbook_no", "Confirmation Book No.")}
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="outline" onClick={() => setEditDialogOpen(false)} disabled={saving}>Cancel</Button>
+              <Button onClick={saveRecord} disabled={saving}>
+                {saving && <Loader className="h-4 w-4 mr-2 animate-spin" />}
+                {editingRecord ? "Save Changes" : "Add Record"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

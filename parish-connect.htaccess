@@ -1,14 +1,47 @@
-Options -MultiViews
-RewriteEngine On
-RewriteBase /parish-connect/
+Options -MultiViews -Indexes
 
-# Don't rewrite requests to the api/ folder — let PHP handle them
-RewriteCond %{REQUEST_URI} ^/parish-connect/api/ [NC]
-RewriteRule ^ - [L]
+# Set proper MIME types for JavaScript files
+<IfModule mod_mime.c>
+    AddType application/javascript .js
+    AddType application/javascript .mjs
+    AddType text/css .css
+    AddType application/json .json
+    AddType application/manifest+json .webmanifest
+    AddType image/svg+xml .svg
+</IfModule>
 
-# Don't rewrite actual files or directories
-RewriteCond %{REQUEST_FILENAME} !-f
-RewriteCond %{REQUEST_FILENAME} !-d
+# Ensure proper Content-Type headers
+<IfModule mod_headers.c>
+    <FilesMatch "\.(js|mjs)$">
+        Header set Content-Type "application/javascript; charset=UTF-8"
+        Header unset X-Powered-By
+    </FilesMatch>
+    <FilesMatch "\.css$">
+        Header set Content-Type "text/css; charset=UTF-8"
+    </FilesMatch>
+    <FilesMatch "\.json$">
+        Header set Content-Type "application/json; charset=UTF-8"
+    </FilesMatch>
+</IfModule>
 
-# Send everything else to React app
-RewriteRule ^ index.html [QSA,L]
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    
+    # Don't rewrite requests to the api/ folder — let PHP handle them
+    RewriteCond %{REQUEST_URI} ^/parish-connect/api/ [NC]
+    RewriteRule ^ - [L]
+    
+    # Don't rewrite actual files (assets, images, etc.)
+    RewriteCond %{REQUEST_FILENAME} -f
+    RewriteRule ^ - [L]
+    
+    # Don't rewrite directories
+    RewriteCond %{REQUEST_FILENAME} -d
+    RewriteRule ^ - [L]
+    
+    # Send everything else to React app (for SPA routing)
+    RewriteRule ^ index.html [QSA,L]
+</IfModule>
+
+# Ensure UTF-8 encoding
+AddDefaultCharset UTF-8

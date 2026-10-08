@@ -9,7 +9,7 @@ import { Trophy, Star, Zap, Medal, Loader, TrendingUp } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
 
-const API = "/parish-connect/api";
+import { API } from "../config";
 const getToken = () =>
     localStorage.getItem("parish_token") || sessionStorage.getItem("parish_token");
 
@@ -62,6 +62,37 @@ const ACTION_ICONS: Record<string, string> = {
     kudos_sent: "💛",
     follow_received: "🤝",
     daily_login: "☀️",
+};
+
+const safeFormatDate = (dateString: string) => {
+    try {
+        // Handle various date formats including Safari's strict parsing
+        let date: Date;
+        
+        // Try standard parsing first
+        date = new Date(dateString);
+        
+        // If invalid, try ISO format parsing (Safari is stricter)
+        if (isNaN(date.getTime())) {
+            // Try parsing with timezone handling
+            const isoString = dateString.replace(/ /, 'T');
+            date = new Date(isoString);
+        }
+        
+        // If still invalid, try manual parsing
+        if (isNaN(date.getTime())) {
+            const parsed = Date.parse(dateString);
+            if (!isNaN(parsed)) {
+                date = new Date(parsed);
+            }
+        }
+        
+        if (isNaN(date.getTime())) return 'Invalid date';
+        return formatDistanceToNow(date, { addSuffix: true });
+    } catch (error) {
+        console.error('Date parsing error:', error, dateString);
+        return 'Invalid date';
+    }
 };
 
 export default function Rewards() {
@@ -200,7 +231,7 @@ export default function Rewards() {
                                     <div>
                                         <p className="text-sm font-medium">{ACTION_LABELS[tx.action] ?? tx.action}</p>
                                         <p className="text-xs text-gray-400">
-                                            {formatDistanceToNow(new Date(tx.created_at + "Z"), { addSuffix: true })}
+                                            {safeFormatDate(tx.created_at)}
                                         </p>
                                     </div>
                                 </div>
@@ -226,7 +257,7 @@ export default function Rewards() {
                                             <p className="text-xs text-gray-500">{b.description}</p>
                                             {b.earned_at && (
                                                 <p className="text-xs text-yellow-600 mt-1">
-                                                    {formatDistanceToNow(new Date(b.earned_at + "Z"), { addSuffix: true })}
+                                                    {safeFormatDate(b.earned_at)}
                                                 </p>
                                             )}
                                         </div>

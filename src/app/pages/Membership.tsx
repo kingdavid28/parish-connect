@@ -27,6 +27,37 @@ import {
 import { format } from "date-fns";
 import { toast } from "sonner";
 
+const safeFormatDate = (dateString: string) => {
+  try {
+    // Handle various date formats including Safari's strict parsing
+    let date: Date;
+    
+    // Try standard parsing first
+    date = new Date(dateString);
+    
+    // If invalid, try ISO format parsing (Safari is stricter)
+    if (isNaN(date.getTime())) {
+      // Try parsing with timezone handling
+      const isoString = dateString.replace(/ /, 'T');
+      date = new Date(isoString);
+    }
+    
+    // If still invalid, try manual parsing
+    if (isNaN(date.getTime())) {
+      const parsed = Date.parse(dateString);
+      if (!isNaN(parsed)) {
+        date = new Date(parsed);
+      }
+    }
+    
+    if (isNaN(date.getTime())) return 'Invalid date';
+    return format(date, "MMM yyyy");
+  } catch (error) {
+    console.error('Date parsing error:', error, dateString);
+    return 'Invalid date';
+  }
+};
+
 interface Member {
   id: string;
   name: string;
@@ -65,7 +96,7 @@ interface Ministry {
   created_at: string;
 }
 
-const API = '/parish-connect/api';
+import { API } from "../config";
 const getToken = () => localStorage.getItem('parish_token') || sessionStorage.getItem('parish_token');
 
 const RELATIONSHIP_LABELS: Record<string, string> = {
@@ -467,7 +498,7 @@ export default function Membership() {
                             <div className="flex items-center text-sm text-gray-600">
                               <Calendar className="h-4 w-4 mr-2 flex-shrink-0" />
                               <span className="truncate">
-                                Member since {format(new Date(member.member_since || member.created_at), "MMM yyyy")}
+                                Member since {safeFormatDate(member.member_since || member.created_at)}
                               </span>
                             </div>
                           )}

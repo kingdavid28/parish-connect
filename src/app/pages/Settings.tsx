@@ -1,4 +1,5 @@
 import React, { useState, useRef } from "react";
+import { API } from "../config";
 import { useAuth } from "../context/AuthContext";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "../components/ui/card";
 import { Input } from "../components/ui/input";
@@ -58,7 +59,7 @@ export default function Settings() {
   const [eventReminders, setEventReminders] = useState(true);
   const [researchUpdates, setResearchUpdates] = useState(true);
 
-  const API_BASE_URL = '/parish-connect/api';
+  const API_BASE_URL = API;
   const getToken = () => localStorage.getItem('parish_token') || sessionStorage.getItem('parish_token');
 
   const handleAvatarClick = () => {

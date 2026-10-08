@@ -7,9 +7,10 @@ import { Label } from "./ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/card";
 import { Alert, AlertDescription } from "./ui/alert";
 import { AlertCircle, Eye, EyeOff } from "lucide-react";
-import logo from "/public/parish-connect-logo.png";
+import { useParishConfig } from "../context/ParishConfigContext";
 
 export default function Login() {
+  const { parish } = useParishConfig();
   const { login, isAuthenticated } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
@@ -59,7 +60,7 @@ export default function Login() {
         <CardHeader className="space-y-1 text-center">
           <div className="flex justify-center mb-2">
             <img
-              src={logo}
+              src={parish.logoUrl}
               alt="Parish Connect"
               className="h-20 w-auto object-contain"
               width={80}

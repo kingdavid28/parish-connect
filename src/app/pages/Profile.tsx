@@ -43,13 +43,34 @@ interface UserRewards {
   badges: { slug: string; name: string; icon: string; earned: boolean }[];
 }
 
-const API = '/parish-connect/api';
+import { API } from "../config";
 const getToken = () => localStorage.getItem('parish_token') || sessionStorage.getItem('parish_token');
 
 function safeTimeAgo(d: string): string {
   try {
-    const date = new Date(d.includes('T') || d.includes('Z') ? d : d + 'Z');
-    return isNaN(date.getTime()) ? '' : formatDistanceToNow(date, { addSuffix: true });
+    // Handle various date formats including Safari's strict parsing
+    let date: Date;
+    
+    // Try standard parsing first
+    date = new Date(d);
+    
+    // If invalid, try ISO format parsing (Safari is stricter)
+    if (isNaN(date.getTime())) {
+      // Try parsing with timezone handling
+      const isoString = d.replace(/ /, 'T');
+      date = new Date(isoString);
+    }
+    
+    // If still invalid, try manual parsing
+    if (isNaN(date.getTime())) {
+      const parsed = Date.parse(d);
+      if (!isNaN(parsed)) {
+        date = new Date(parsed);
+      }
+    }
+    
+    if (isNaN(date.getTime())) return '';
+    return formatDistanceToNow(date, { addSuffix: true });
   } catch { return ''; }
 }
 
@@ -263,7 +284,7 @@ export default function Profile() {
                   {(profileData.member_since || profileData.created_at) && (
                     <div className="flex items-center gap-1">
                       <Calendar className="h-4 w-4" />
-                      Member since {format(new Date(profileData.member_since || profileData.created_at!), "MMM d, yyyy")}
+                      Member since {safeTimeAgo(profileData.member_since || profileData.created_at!)}
                     </div>
                   )}
                 </div>

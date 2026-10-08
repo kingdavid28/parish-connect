@@ -20,11 +20,12 @@ if (sentryDsn) {
   });
 }
 
-// Register service worker for push notifications
+// Register service worker for push notifications (path follows the deploy base)
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
+    const base = import.meta.env.BASE_URL;
     navigator.serviceWorker
-      .register("/parish-connect/sw.js", { scope: "/parish-connect/" })
+      .register(`${base}sw.js`, { scope: base })
       .catch((err) => console.error("SW registration failed:", err));
   });
 }

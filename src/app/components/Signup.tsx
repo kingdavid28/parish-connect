@@ -10,9 +10,9 @@ import { AlertCircle, Eye, EyeOff, CheckCircle2, XCircle, CalendarIcon } from "l
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 import { Calendar } from "./ui/calendar";
 import { format } from "date-fns";
-import logo from "/public/parish-connect-logo.png";
+import { useParishConfig } from "../context/ParishConfigContext";
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000/api";
+import { API as API_BASE } from "../config";
 
 interface PasswordRule {
   label: string;
@@ -27,6 +27,7 @@ const PASSWORD_RULES: PasswordRule[] = [
 ];
 
 export default function Signup() {
+  const { parish, verifyParishRecords } = useParishConfig();
   const { login, isAuthenticated } = useAuth();
   const navigate = useNavigate();
 
@@ -67,7 +68,7 @@ export default function Signup() {
     setError("");
 
     if (!form.name.trim()) { setError("Full name is required."); return; }
-    if (!form.fatherFirstName.trim()) { setError("Father's first name is required for verification."); return; }
+    if (verifyParishRecords && !form.fatherFirstName.trim()) { setError("Father's first name is required for verification."); return; }
     if (form.password !== form.confirm) { setError("Passwords do not match."); return; }
     if (passwordStrength < 3) { setError("Please choose a stronger password."); return; }
     if (!agreedToTerms) { setError("You must agree to the terms to continue."); return; }
@@ -83,7 +84,7 @@ export default function Signup() {
           password: form.password,
           // birthday is optional — only send if the user selected one
           ...(birthday ? { birthday: format(birthday, "yyyy-MM-dd") } : {}),
-          fatherFirstName: form.fatherFirstName.trim(),
+          ...(verifyParishRecords ? { fatherFirstName: form.fatherFirstName.trim() } : {}),
         }),
       });
 
@@ -107,7 +108,7 @@ export default function Signup() {
       <Card className="w-full max-w-md shadow-lg">
         <CardHeader className="space-y-1 text-center">
           <div className="flex justify-center mb-2">
-            <img src={logo} alt="Parish Connect" className="h-20 w-auto object-contain" width={80} height={80} />
+            <img src={parish.logoUrl} alt="Parish Connect" className="h-20 w-auto object-contain" width={80} height={80} />
           </div>
           <CardTitle className="text-2xl">Create Account</CardTitle>
           <CardDescription>Join your parish community today</CardDescription>
@@ -126,10 +127,13 @@ export default function Signup() {
             <div className="space-y-2">
               <Label htmlFor="name">Full Name</Label>
               <Input id="name" type="text" placeholder="Juan dela Cruz" value={form.name} onChange={set("name")} required autoComplete="name" disabled={isLoading} />
-              <p className="text-xs text-gray-500">Use your exact name as it appears in the parish sacramental records.</p>
+              {verifyParishRecords && (
+                <p className="text-xs text-gray-500">Use your exact name as it appears in the parish sacramental records.</p>
+              )}
             </div>
 
             {/* Birthday */}
+            {verifyParishRecords && (
             <div className="space-y-2">
               <Label>Birthday <span className="text-gray-400 font-normal text-xs">(optional if not in records)</span></Label>
               <Popover open={calendarOpen} onOpenChange={setCalendarOpen}>
@@ -152,13 +156,16 @@ export default function Signup() {
                 </PopoverContent>
               </Popover>
             </div>
+            )}
 
-            {/* Father's First Name */}
+            {/* Father's First Name — only when the parish verifies against records */}
+            {verifyParishRecords && (
             <div className="space-y-2">
               <Label htmlFor="fatherFirstName">Father's First Name</Label>
               <Input id="fatherFirstName" type="text" placeholder="e.g. Jose" value={form.fatherFirstName} onChange={set("fatherFirstName")} required disabled={isLoading} />
               <p className="text-xs text-gray-500">For identity verification. Must match parish records.</p>
             </div>
+            )}
 
             {/* Email */}
             <div className="space-y-2">

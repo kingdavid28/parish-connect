@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Button } from "./ui/button";
 import { toast } from "sonner";
 
-const API = "/parish-connect/api";
+import { API } from "../config";
 const PRAISE_COST = 15; // must match POINTS['kudos_received'] in rewards.php
 
 const getToken = () =>

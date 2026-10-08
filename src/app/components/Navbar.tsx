@@ -1,10 +1,9 @@
 import { useState, useEffect } from "react";
 import { Link, useLocation } from "react-router";
 import { useAuth } from "../context/AuthContext";
+import { useParishConfig } from "../context/ParishConfigContext";
 import { Button } from "./ui/button";
 import { Avatar, AvatarImage, AvatarFallback } from "./ui/avatar";
-
-const logo = import.meta.env.BASE_URL + "parish-connect-logo.png";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator,
   DropdownMenuTrigger, DropdownMenuLabel, DropdownMenuShortcut,
@@ -21,6 +20,7 @@ import { toast } from "sonner";
 
 export default function Navbar() {
   const { user, logout, isAuthenticated, isAdmin } = useAuth();
+  const { parish } = useParishConfig();
   const location = useLocation();
   const [showLogoutDialog, setShowLogoutDialog] = useState(false);
   const [keyboardOpen, setKeyboardOpen] = useState(false);
@@ -42,6 +42,7 @@ export default function Navbar() {
     { path: "/records", label: "Records", icon: BookOpen, showFor: "all" },
     { path: "/rewards", label: "Rewards", icon: Trophy, showFor: "all" },
     { path: "/wallet", label: "Wallet", icon: WalletIcon, showFor: "all" },
+    { path: user?.id ? `/profile/${user.id}` : "/", label: "Profile", icon: UserCircle, showFor: "all", isProfile: true },
     { path: "/membership", label: "Members", icon: Users, showFor: "admin" },
     { path: "/admin", label: "Manage", icon: Shield, showFor: "admin" },
   ];
@@ -52,7 +53,12 @@ export default function Navbar() {
     return false;
   });
 
-  const isActive = (path: string) => location.pathname === path;
+  const isActive = (path: string) => {
+    if (path.includes('/profile/') && location.pathname.startsWith('/profile/')) {
+      return true;
+    }
+    return location.pathname === path;
+  };
 
   const getInitials = (name: string) =>
     name.split(" ").map((n) => n[0]).join("").toUpperCase();
@@ -84,10 +90,10 @@ export default function Navbar() {
           <div className="flex justify-between items-center h-14">
             {/* Logo */}
             <Link to="/" className="flex items-center gap-2">
-              <img src={logo} alt="Parish Connect" className="h-9 w-auto object-contain" width={36} height={36} />
+              <img src={parish.logoUrl} alt="Parish Connect" className="h-9 w-auto object-contain" width={36} height={36} />
               <div className="hidden sm:block leading-tight">
                 <span className="text-lg font-semibold text-gray-900">Parish Connect</span>
-                <span className="block text-[10px] text-gray-400 -mt-0.5">sanvicenteferrerparish-franciscans</span>
+                <span className="block text-[10px] text-gray-400 -mt-0.5">{parish.name}</span>
               </div>
             </Link>
 

@@ -1,6 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-
-const API_BASE = "/parish-connect/api";
+import { API as API_BASE } from "../config";
 
 function getToken(): string | null {
     return localStorage.getItem("parish_token") || sessionStorage.getItem("parish_token");

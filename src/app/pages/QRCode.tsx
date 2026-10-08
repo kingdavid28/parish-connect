@@ -5,15 +5,17 @@ import { Button } from "../components/ui/button";
 import { Badge } from "../components/ui/badge";
 import { Download, QrCode, Share2, Copy, Check } from "lucide-react";
 import { toast } from "sonner";
+import { useParishConfig } from "../context/ParishConfigContext";
 
-const APP_URL = "https://sanvicenteferrerparish-franciscan.com/parish-connect";
 const APP_NAME = "Parish Connect";
-const PARISH_NAME = "San Vicente Ferrer Parish - Franciscans";
 
 export default function QRCodePage() {
     const canvasRef = useRef<HTMLDivElement>(null);
     const [copied, setCopied] = useState(false);
     const [size, setSize] = useState(256);
+    const { parish, appUrl } = useParishConfig();
+    const PARISH_NAME = parish.name;
+    const ACCENT = parish.accentColor || "#2563eb";
 
     const downloadQR = () => {
         const canvas = canvasRef.current?.querySelector("canvas");
@@ -33,8 +35,8 @@ export default function QRCodePage() {
         ctx.fillStyle = "#ffffff";
         ctx.fillRect(0, 0, branded.width, branded.height);
 
-        // Blue header bar
-        ctx.fillStyle = "#2563eb";
+        // Accent-color header bar
+        ctx.fillStyle = ACCENT;
         ctx.fillRect(0, 0, branded.width, 48);
 
         // App name in header
@@ -58,14 +60,14 @@ export default function QRCodePage() {
 
         // Download
         const link = document.createElement("a");
-        link.download = "parish-connect-qr.png";
+        link.download = `${parish.id || "parish"}-qr.png`;
         link.href = branded.toDataURL("image/png");
         link.click();
         toast.success("QR code downloaded!");
     };
 
     const copyLink = async () => {
-        await navigator.clipboard.writeText(APP_URL);
+        await navigator.clipboard.writeText(appUrl);
         setCopied(true);
         toast.success("Link copied!");
         setTimeout(() => setCopied(false), 2000);
@@ -73,7 +75,7 @@ export default function QRCodePage() {
 
     const shareApp = async () => {
         if (navigator.share) {
-            await navigator.share({ title: APP_NAME, text: `Join ${PARISH_NAME} on Parish Connect`, url: APP_URL });
+            await navigator.share({ title: APP_NAME, text: `Join ${PARISH_NAME} on Parish Connect`, url: appUrl });
         } else {
             copyLink();
         }
@@ -94,12 +96,12 @@ export default function QRCodePage() {
                     {/* QR Code */}
                     <div ref={canvasRef} className="p-4 bg-white rounded-2xl shadow-inner border border-gray-100">
                         <QRCodeCanvas
-                            value={APP_URL}
+                            value={appUrl}
                             size={size}
                             level="H"
                             includeMargin={false}
                             imageSettings={{
-                                src: import.meta.env.BASE_URL + "parish-connect-logo.png",
+                                src: parish.logoUrl,
                                 height: 48,
                                 width: 48,
                                 excavate: true,
@@ -110,7 +112,7 @@ export default function QRCodePage() {
                     {/* URL */}
                     <div className="w-full text-center">
                         <Badge variant="secondary" className="text-xs px-3 py-1 font-mono break-all">
-                            {APP_URL}
+                            {appUrl}
                         </Badge>
                     </div>
 

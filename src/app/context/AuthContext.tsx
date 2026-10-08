@@ -61,7 +61,7 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 const TOKEN_KEY = "parish_token";
-const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000/api";
+import { API as API_BASE } from "../config";
 
 function getStoredToken(): string | null {
   return localStorage.getItem(TOKEN_KEY) || sessionStorage.getItem(TOKEN_KEY);

@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "build": "vite build",
+    "build:san-raphael": "vite build --mode san-raphael",
     "dev": "vite",
     "test": "vitest --run",
     "test:watch": "vitest",

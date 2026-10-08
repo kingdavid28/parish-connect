@@ -126,7 +126,7 @@
 
   body {
     @apply bg-background text-foreground;
-    background-image: url('/parish-connect/background-viewport.png');
+    /* Set at runtime by ParishConfigContext (per-parish background) */
     background-size: cover;
     background-position: center center;
     background-repeat: no-repeat;
@@ -138,7 +138,7 @@
     content: '';
     position: fixed;
     inset: 0;
-    background-color: rgba(255, 255, 255, 0.82);
+    background-color: rgba(255, 255, 255, 0.50);
     pointer-events: none;
     z-index: 0;
   }
@@ -199,4 +199,20 @@
     font-weight: var(--font-weight-normal);
     line-height: 1.5;
   }
+}
+
+/* ─── Per-parish accent color ────────────────────────────────────────────────
+   --parish-accent is set at runtime by ParishConfigContext from GET /api/config.
+   The blue-* scale is re-derived from it so existing `blue-*` utilities
+   (buttons, badges, active nav) re-theme automatically per parish. */
+:root {
+  --parish-accent: #2563eb;
+  --color-blue-50:  color-mix(in oklch, var(--parish-accent), white 93%);
+  --color-blue-100: color-mix(in oklch, var(--parish-accent), white 85%);
+  --color-blue-200: color-mix(in oklch, var(--parish-accent), white 70%);
+  --color-blue-500: color-mix(in oklch, var(--parish-accent), white 18%);
+  --color-blue-600: var(--parish-accent);
+  --color-blue-700: color-mix(in oklch, var(--parish-accent), black 18%);
+  --color-blue-800: color-mix(in oklch, var(--parish-accent), black 34%);
+  --color-blue-900: color-mix(in oklch, var(--parish-accent), black 46%);
 }

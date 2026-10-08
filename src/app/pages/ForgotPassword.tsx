@@ -10,9 +10,9 @@ import { Calendar } from "../components/ui/calendar";
 import { AlertCircle, CalendarIcon, CheckCircle2, Eye, EyeOff, XCircle } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
-import logo from "/public/parish-connect-logo.png";
+import { useParishConfig } from "../context/ParishConfigContext";
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000/api";
+import { API as API_BASE } from "../config";
 
 const PASSWORD_RULES = [
     { label: "At least 8 characters", test: (p: string) => p.length >= 8 },
@@ -22,6 +22,7 @@ const PASSWORD_RULES = [
 ];
 
 export default function ForgotPassword() {
+    const { parish } = useParishConfig();
     const navigate = useNavigate();
     const [step, setStep] = useState<1 | 2>(1);
     const [email, setEmail] = useState("");
@@ -104,7 +105,7 @@ export default function ForgotPassword() {
             <Card className="w-full max-w-md shadow-lg">
                 <CardHeader className="space-y-1 text-center">
                     <div className="flex justify-center mb-2">
-                        <img src={logo} alt="Parish Connect" className="h-20 w-auto object-contain" width={80} height={80} />
+                        <img src={parish.logoUrl} alt="Parish Connect" className="h-20 w-auto object-contain" width={80} height={80} />
                     </div>
                     <CardTitle className="text-2xl">Reset Password</CardTitle>
                     <CardDescription>

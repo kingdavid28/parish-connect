@@ -67,6 +67,68 @@ import { format, formatDistanceToNow } from "date-fns";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
 import AdminWallet from "./AdminWallet";
 
+const safeFormatDate = (dateString: string) => {
+    try {
+        // Handle various date formats including Safari's strict parsing
+        let date: Date;
+        
+        // Try standard parsing first
+        date = new Date(dateString);
+        
+        // If invalid, try ISO format parsing (Safari is stricter)
+        if (isNaN(date.getTime())) {
+            // Try parsing with timezone handling
+            const isoString = dateString.replace(/ /, 'T');
+            date = new Date(isoString);
+        }
+        
+        // If still invalid, try manual parsing
+        if (isNaN(date.getTime())) {
+            const parsed = Date.parse(dateString);
+            if (!isNaN(parsed)) {
+                date = new Date(parsed);
+            }
+        }
+        
+        if (isNaN(date.getTime())) return 'Invalid date';
+        return formatDistanceToNow(date, { addSuffix: true });
+    } catch (error) {
+        console.error('Date parsing error:', error, dateString);
+        return 'Invalid date';
+    }
+};
+
+const safeParseDate = (dateString: string): Date | null => {
+    try {
+        // Handle various date formats including Safari's strict parsing
+        let date: Date;
+        
+        // Try standard parsing first
+        date = new Date(dateString);
+        
+        // If invalid, try ISO format parsing (Safari is stricter)
+        if (isNaN(date.getTime())) {
+            // Try parsing with timezone handling
+            const isoString = dateString.replace(/ /, 'T');
+            date = new Date(isoString);
+        }
+        
+        // If still invalid, try manual parsing
+        if (isNaN(date.getTime())) {
+            const parsed = Date.parse(dateString);
+            if (!isNaN(parsed)) {
+                date = new Date(parsed);
+            }
+        }
+        
+        if (isNaN(date.getTime())) return null;
+        return date;
+    } catch (error) {
+        console.error('Date parsing error:', error, dateString);
+        return null;
+    }
+};
+
 interface AuditLog {
   id: string;
   action: string;
@@ -92,7 +154,7 @@ interface User {
   last_login?: string;
 }
 
-const API_BASE_URL = '/parish-connect/api';
+import { API as API_BASE_URL } from "../config";
 
 export default function AdminManagement() {
   const { user: currentUser, hasPermission, isSuperAdmin } = useAuth();
@@ -506,13 +568,13 @@ export default function AdminManagement() {
                             </TableCell>
                             <TableCell>{getRoleBadge(user.role)}</TableCell>
                             <TableCell className="text-sm text-gray-600">
-                              {user.created_at
-                                ? format(new Date(user.created_at), "MMM d, yyyy")
+                              {user.created_at && safeParseDate(user.created_at)
+                                ? format(safeParseDate(user.created_at)!, "MMM d, yyyy")
                                 : "N/A"}
                             </TableCell>
                             <TableCell className="text-sm text-gray-600">
-                              {user.last_login
-                                ? format(new Date(user.last_login), "MMM d, yyyy")
+                              {user.last_login && safeParseDate(user.last_login)
+                                ? format(safeParseDate(user.last_login)!, "MMM d, yyyy")
                                 : "Never"}
                             </TableCell>
                             <TableCell className="text-right">
@@ -815,8 +877,14 @@ export default function AdminManagement() {
                           {auditLogs.map((log) => (
                             <tr key={log.id} className="hover:bg-gray-50">
                               <td className="px-4 py-3 whitespace-nowrap">
-                                <p className="text-xs text-gray-500">{format(new Date(log.created_at), 'MMM d, yyyy HH:mm')}</p>
-                                <p className="text-xs text-gray-400">{formatDistanceToNow(new Date(log.created_at), { addSuffix: true })}</p>
+                                {safeParseDate(log.created_at) ? (
+                                  <>
+                                    <p className="text-xs text-gray-500">{format(safeParseDate(log.created_at)!, 'MMM d, yyyy HH:mm')}</p>
+                                    <p className="text-xs text-gray-400">{safeFormatDate(log.created_at)}</p>
+                                  </>
+                                ) : (
+                                  <p className="text-xs text-gray-400">Invalid date</p>
+                                )}
                               </td>
                               <td className="px-4 py-3">
                                 <p className="font-medium">{log.user_name ?? <span className="text-gray-400 italic">system</span>}</p>
