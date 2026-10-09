@@ -271,8 +271,10 @@ and GCash values. No code changes needed — branding comes from `/api/config`.
 - [x] CockroachDB Cloud account + cluster created (`raw-goblin-34935`, ap-southeast-1)
 - [x] `DATABASE_URL` set → `npm run migrate` applied all 23 tables to `defaultdb`
 - [x] Superadmin seeded (`reycelrcentino@gmail.com` / `kingAdmin`) — verified via live login → JWT
-- [ ] Remaining accounts: Render (API host), Cloudflare (Pages + R2), Brevo (SMTP), cron-job.org (optional: Groq)
-- [ ] GCash number + registered name (the QR image masks them by design)
-- [ ] Deployment URLs → `APP_URL`, `ALLOWED_ORIGINS`, `VITE_API_BASE_URL`
+- [x] GCash payee set (`09173235981` / REYCEL R. CENTINO) + QR asset hosted
+- [x] API deployed on Render (Singapore) — `https://parish-connectkawayanbiliranapi.onrender.com`, health 200, prod login verified
+- [ ] Cloudflare Pages frontend deploy + `VITE_API_BASE_URL` env → then update
+      `APP_URL` + `ALLOWED_ORIGINS` on Render
+- [ ] Remaining accounts: Cloudflare R2 (uploads), Brevo (SMTP), cron-job.org (optional: Groq)
 - [ ] Sacramental records digitization (Parish Records → Add Record),
       then flip `VERIFY_PARISH_RECORDS=1`
