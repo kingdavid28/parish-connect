@@ -6,12 +6,15 @@ const { uuid } = require("../lib/helpers");
 const router = express.Router();
 
 /**
- * GET /api/cron/autopost?token=CRON_SECRET
+ * GET|POST /api/cron/autopost
  * Called by an external scheduler (cron-job.org, GitHub Actions, etc.)
  * twice daily to publish a community post as the parent superadmin.
+ * Auth: x-cron-secret header (preferred — keeps the secret out of URL
+ * access logs) or ?token=CRON_SECRET query param for simple GET pings.
  */
-router.get("/autopost", async (req, res) => {
-  if (!config.cronSecret || req.query.token !== config.cronSecret) {
+async function autopost(req, res) {
+  const token = req.get("x-cron-secret") || req.query.token;
+  if (!config.cronSecret || token !== config.cronSecret) {
     return res.status(403).json({ success: false, message: "Forbidden" });
   }
 
@@ -49,7 +52,10 @@ router.get("/autopost", async (req, res) => {
     console.error("[AutoPost] Error:", err.message);
     res.status(500).json({ success: false, message: "Auto-post failed" });
   }
-});
+}
+
+router.get("/autopost", autopost);
+router.post("/autopost", autopost);
 
 // ─── Groq AI generator — all parish specifics come from env config ────────────
 

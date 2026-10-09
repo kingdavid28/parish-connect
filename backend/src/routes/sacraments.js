@@ -139,6 +139,86 @@ router.post("/", authenticate, requireRole("admin", "superadmin"), async (req, r
   }
 });
 
+// Column length limits from schema.pg.sql — rejects rather than truncates
+// so registry data is never silently corrupted on import.
+const FIELD_LIMITS = {
+  name: 200, birthday: 100, parents_name: 300, baptized_by: 200,
+  canonical_book: 100, baptismal_date: 100, godparents_name: 300,
+  confirmed_by: 200, confirmbook_no: 100, confirmed_date: 100,
+  confirm_sponsor: 300,
+};
+const BULK_MAX_ROWS = 500;
+
+// POST /api/sacraments/bulk — admin imports many records (CSV import UI)
+// Body: { records: [{ name, birthday, ... }] }
+// Partial success: valid rows insert in one transaction, invalid rows are
+// reported per-row so the admin can fix and re-import just the failures.
+router.post("/bulk", authenticate, requireRole("admin", "superadmin"), async (req, res) => {
+  if (!recordsEnabled(res)) return;
+  const records = Array.isArray(req.body?.records) ? req.body.records : null;
+  if (!records || records.length === 0) {
+    return res.status(400).json({ success: false, message: "records must be a non-empty array" });
+  }
+  if (records.length > BULK_MAX_ROWS) {
+    return res.status(400).json({ success: false, message: `Max ${BULK_MAX_ROWS} records per import` });
+  }
+
+  const valid = [];
+  const errors = [];
+  records.forEach((rec, i) => {
+    const row = typeof rec?.row === "number" ? rec.row : i + 1;
+    if (!rec || typeof rec !== "object" || !String(rec.name || "").trim()) {
+      errors.push({ row, message: "name is required" });
+      return;
+    }
+    const values = [];
+    let bad = null;
+    for (const f of RECORD_FIELDS) {
+      const v = rec[f] != null ? String(rec[f]).trim() : "";
+      if (v.length > FIELD_LIMITS[f]) {
+        bad = `${f} exceeds ${FIELD_LIMITS[f]} characters`;
+        break;
+      }
+      values.push(v || null);
+    }
+    if (bad) errors.push({ row, message: bad });
+    else valid.push({ row, values });
+  });
+
+  if (!valid.length) {
+    return res.status(400).json({
+      success: false, message: "No valid records to import",
+      data: { inserted: 0, failed: errors.length, errors },
+    });
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    for (const { values } of valid) {
+      const id = uuid();
+      await client.query(
+        `INSERT INTO sacramental_records (${RECORD_FIELDS.join(", ")}, id, created_by)
+         VALUES (${RECORD_FIELDS.map((_, j) => `$${j + 1}`).join(", ")}, $${RECORD_FIELDS.length + 1}, $${RECORD_FIELDS.length + 2})`,
+        [...values, id, req.user.id]
+      );
+    }
+    await client.query("COMMIT");
+    await auditLog(req.user.id, "import_sacrament_records", "sacramental_record", String(valid.length), getClientIp(req));
+    res.status(201).json({
+      success: true,
+      message: `Imported ${valid.length} record${valid.length === 1 ? "" : "s"}`,
+      data: { inserted: valid.length, failed: errors.length, errors },
+    });
+  } catch (err) {
+    await client.query("ROLLBACK").catch(() => {});
+    console.error("Bulk import error:", err.message);
+    res.status(500).json({ success: false, message: "Internal server error" });
+  } finally {
+    client.release();
+  }
+});
+
 // PUT /api/sacraments/:id — admin updates a record
 router.put("/:id", authenticate, requireRole("admin", "superadmin"), async (req, res) => {
   if (!recordsEnabled(res)) return;

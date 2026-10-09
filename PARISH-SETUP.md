@@ -197,13 +197,17 @@ The public key is exposed to the frontend via `GET /api/config` — that's fine.
 
 ## Step 6 — Auto-post cron (optional)
 
-The API exposes `POST /api/cron/autopost` (creates a daily announcement post
-from Groq AI or built-in templates).
+The API exposes `GET|POST /api/cron/autopost` (creates a daily announcement
+post from Groq AI if `GROQ_API_KEY` is set, otherwise built-in templates).
 
 On cron-job.org:
-- URL: `https://your-api.onrender.com/api/cron/autopost`
-- Method: **POST**, header `x-cron-secret: <CRON_SECRET>`
+- URL: `https://parish-connectkawayanbiliranapi.onrender.com/api/cron/autopost`
+- Method: **POST**, header `x-cron-secret: <CRON_SECRET>` (header is preferred —
+  it keeps the secret out of URL access logs)
 - Schedule: daily, e.g. 07:00 Asia/Manila
+
+Simple GET pings also work: append `?token=<CRON_SECRET>` to the URL (the
+token will appear in scheduler logs — use the header form where possible).
 
 ---
 
@@ -213,9 +217,9 @@ The new instance stores records **internally** (`sacramental_records` table) —
 no external database needed.
 
 1. **Digitize:** log in as superadmin → **Parish Records** → **Add Record**
-   (or bulk-load via SQL inserts into `sacramental_records` — columns match the
-   old sacristan registry format: name, birthday, parents, baptismal details,
-   confirmation details).
+   one at a time, or **Import CSV** for bulk entry (max 500 rows/import —
+   download the in-app template; columns match the sacristan registry format:
+   name, birthday, parents, baptismal details, confirmation details).
 2. **Verification toggle:** while records are being digitized, set
    `VERIFY_PARISH_RECORDS=0` so parishioners can register without matching a
    record. Flip to `1` once the registry is populated — new signups must then
@@ -243,6 +247,7 @@ each parish's secrets live only on the host.
 - [ ] Brevo SMTP verified; password-reset email received
 - [ ] Frontend on Pages; correct logo/color/name visible at boot
 - [ ] GCash details set (if wallet on)
+- [ ] Registry imported (Parish Records → Import CSV)
 - [ ] `VERIFY_PARISH_RECORDS` — start `0`, flip to `1` after digitization
 - [ ] cron-job.org hitting `/api/cron/autopost` daily (optional)
 
@@ -277,5 +282,15 @@ and GCash values. No code changes needed — branding comes from `/api/config`.
       `VITE_API_BASE_URL` set, `APP_URL`/`ALLOWED_ORIGINS` updated on Render,
       CORS + login verified cross-origin
 - [ ] Remaining accounts: Cloudflare R2 (uploads), Brevo (SMTP), cron-job.org (optional: Groq)
-- [ ] Sacramental records digitization (Parish Records → Add Record),
-      then flip `VERIFY_PARISH_RECORDS=1`
+- [ ] Sacramental records digitization (Parish Records → Add Record or
+      Import CSV for bulk), then flip `VERIFY_PARISH_RECORDS=1`
+
+
+| Layer | URL / Status |
+| --- | --- |
+| Frontend | https://parish-connect-kawayan-biliran.pages.dev — SRA branding, green #16a34a, seal logo/icons |
+| API | https://parish-connectkawayanbiliranapi.onrender.com — health 200 |
+| Database | CockroachDB raw-goblin-34935 (Singapore) — 23 tables, migrated |
+| Auth | kingAdmin / superadmin login verified cross-origin (Pages → Render, CORS header confirmed) |
+| GCash | QR + 09173235981 / REYCEL R. CENTINO serving from the wallet endpoint |
+| Auto-deploys | Push to main → Render rebuilds API, Pages rebuilds frontend |

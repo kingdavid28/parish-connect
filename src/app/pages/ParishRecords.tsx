@@ -14,9 +14,11 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from "../components/ui/popover";
 import { Calendar as CalendarPicker } from "../components/ui/calendar";
 import {
-  Search, Download, Eye, Lock, BookOpen, Calendar, User, MapPin, Shield, Loader, CalendarIcon, X, Plus, Pencil, Trash2,
+  Search, Download, Eye, Lock, BookOpen, Calendar, User, MapPin, Shield, Loader, CalendarIcon, X, Plus, Pencil, Trash2, Upload,
 } from "lucide-react";
 import { Label } from "../components/ui/label";
+import { Textarea } from "../components/ui/textarea";
+import { parseRecordsCsv, RECORDS_CSV_TEMPLATE, type ParsedCsvRow } from "../lib/parseCsv";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import { useParishConfig } from "../context/ParishConfigContext";
@@ -62,6 +64,67 @@ export default function ParishRecords() {
   const [editingRecord, setEditingRecord] = useState<SacramentRecord | null>(null);
   const [form, setForm] = useState(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
+  const [importText, setImportText] = useState("");
+  const [importRows, setImportRows] = useState<ParsedCsvRow[]>([]);
+  const [importErrors, setImportErrors] = useState<{ row: number; message: string }[]>([]);
+  const [importing, setImporting] = useState(false);
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
+
+  const parseImportText = (text: string) => {
+    setImportText(text);
+    const { rows, errors } = parseRecordsCsv(text);
+    setImportRows(rows);
+    setImportErrors(errors);
+  };
+
+  const handleImportFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => parseImportText(String(reader.result || ""));
+    reader.readAsText(file);
+    e.target.value = "";
+  };
+
+  const downloadTemplate = () => {
+    const blob = new Blob([RECORDS_CSV_TEMPLATE], { type: "text/csv" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "sacramental-records-template.csv";
+    a.click();
+    URL.revokeObjectURL(a.href);
+  };
+
+  const submitImport = async () => {
+    setImporting(true);
+    try {
+      const res = await fetch(`${API}/sacraments/bulk`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${getToken()}` },
+        body: JSON.stringify({ records: importRows.map((r) => ({ ...r.data, row: r.row })) }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        toast.error(data.message || "Import failed");
+        if (data?.data?.errors?.length) setImportErrors(data.data.errors);
+        return;
+      }
+      toast.success(data.message);
+      if (data.data?.failed > 0) {
+        setImportErrors(data.data.errors || []);
+        toast.warning(`${data.data.failed} row${data.data.failed === 1 ? "" : "s"} skipped — see details`);
+      } else {
+        setImportOpen(false);
+        setImportText(""); setImportRows([]); setImportErrors([]);
+      }
+      fetchRecords(1);
+    } catch {
+      toast.error("Import failed");
+    } finally {
+      setImporting(false);
+    }
+  };
 
   const openAddDialog = () => {
     setEditingRecord(null);
@@ -212,9 +275,14 @@ export default function ParishRecords() {
             </div>
           </div>
           {isAdmin && recordsEnabled && (
-            <Button onClick={openAddDialog} className="bg-blue-600 hover:bg-blue-700">
-              <Plus className="h-4 w-4 mr-2" />Add Record
-            </Button>
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={() => setImportOpen(true)}>
+                <Upload className="h-4 w-4 mr-2" />Import CSV
+              </Button>
+              <Button onClick={openAddDialog} className="bg-blue-600 hover:bg-blue-700">
+                <Plus className="h-4 w-4 mr-2" />Add Record
+              </Button>
+            </div>
           )}
         </div>
       </div>
@@ -495,6 +563,104 @@ export default function ParishRecords() {
               <Button onClick={saveRecord} disabled={saving}>
                 {saving && <Loader className="h-4 w-4 mr-2 animate-spin" />}
                 {editingRecord ? "Save Changes" : "Add Record"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Bulk CSV import dialog (admins) */}
+      <Dialog open={importOpen} onOpenChange={setImportOpen}>
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Import Records from CSV</DialogTitle>
+            <DialogDescription>
+              Upload a CSV file or paste its contents. The first row must be a header row.
+              Columns: name, birthday, parents_name, baptized_by, canonical_book, baptismal_date,
+              godparents_name, confirmed_by, confirmbook_no, confirmed_date, confirm_sponsor.
+              Quote values containing commas (e.g. "Dela Cruz, Juan"). Max 500 rows per import.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="flex items-center gap-2">
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".csv,text/csv"
+                className="hidden"
+                onChange={handleImportFile}
+              />
+              <Button variant="outline" onClick={() => fileInputRef.current?.click()}>
+                <Upload className="h-4 w-4 mr-2" />Choose CSV file
+              </Button>
+              <Button variant="ghost" onClick={downloadTemplate}>
+                <Download className="h-4 w-4 mr-2" />Download template
+              </Button>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="csv-paste" className="text-xs">Or paste CSV</Label>
+              <Textarea
+                id="csv-paste"
+                value={importText}
+                onChange={(e) => parseImportText(e.target.value)}
+                placeholder="name,birthday,parents_name,..."
+                rows={6}
+                className="font-mono text-xs"
+              />
+            </div>
+
+            {importErrors.length > 0 && (
+              <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg max-h-32 overflow-y-auto">
+                <p className="text-sm font-medium text-amber-900 mb-1">
+                  {importErrors.length} issue{importErrors.length === 1 ? "" : "s"}
+                </p>
+                {importErrors.slice(0, 20).map((e, i) => (
+                  <p key={i} className="text-xs text-amber-800">Row {e.row}: {e.message}</p>
+                ))}
+                {importErrors.length > 20 && (
+                  <p className="text-xs text-amber-700 mt-1">…and {importErrors.length - 20} more</p>
+                )}
+              </div>
+            )}
+
+            {importRows.length > 0 && (
+              <div>
+                <p className="text-sm font-medium mb-2">
+                  Preview — {importRows.length} valid row{importRows.length === 1 ? "" : "s"}
+                  {importRows.length > 10 && ` (showing first 10)`}
+                </p>
+                <div className="border rounded-lg overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="w-12">#</TableHead>
+                        <TableHead>Name</TableHead>
+                        <TableHead>Birthday</TableHead>
+                        <TableHead>Baptismal Date</TableHead>
+                        <TableHead>Parents</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {importRows.slice(0, 10).map((r) => (
+                        <TableRow key={r.row}>
+                          <TableCell className="text-xs text-gray-500">{r.row}</TableCell>
+                          <TableCell className="font-medium">{r.data.name}</TableCell>
+                          <TableCell>{r.data.birthday || "—"}</TableCell>
+                          <TableCell>{r.data.baptismal_date || "—"}</TableCell>
+                          <TableCell className="text-sm text-gray-600">{r.data.parents_name || "—"}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              </div>
+            )}
+
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="outline" onClick={() => setImportOpen(false)} disabled={importing}>Cancel</Button>
+              <Button onClick={submitImport} disabled={importing || importRows.length === 0}>
+                {importing && <Loader className="h-4 w-4 mr-2 animate-spin" />}
+                Import {importRows.length > 0 ? `${importRows.length} record${importRows.length === 1 ? "" : "s"}` : "records"}
               </Button>
             </div>
           </div>
