@@ -273,8 +273,9 @@ and GCash values. No code changes needed — branding comes from `/api/config`.
 - [x] Superadmin seeded (`reycelrcentino@gmail.com` / `kingAdmin`) — verified via live login → JWT
 - [x] GCash payee set (`09173235981` / REYCEL R. CENTINO) + QR asset hosted
 - [x] API deployed on Render (Singapore) — `https://parish-connectkawayanbiliranapi.onrender.com`, health 200, prod login verified
-- [ ] Cloudflare Pages frontend deploy + `VITE_API_BASE_URL` env → then update
-      `APP_URL` + `ALLOWED_ORIGINS` on Render
+- [x] Frontend live on Cloudflare Pages — `https://parish-connect-kawayan-biliran.pages.dev`,
+      `VITE_API_BASE_URL` set, `APP_URL`/`ALLOWED_ORIGINS` updated on Render,
+      CORS + login verified cross-origin
 - [ ] Remaining accounts: Cloudflare R2 (uploads), Brevo (SMTP), cron-job.org (optional: Groq)
 - [ ] Sacramental records digitization (Parish Records → Add Record),
       then flip `VERIFY_PARISH_RECORDS=1`
