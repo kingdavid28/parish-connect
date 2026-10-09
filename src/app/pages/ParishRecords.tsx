@@ -41,6 +41,81 @@ interface SacramentRecord {
 import { API } from "../config";
 const getToken = () => localStorage.getItem('parish_token') || sessionStorage.getItem('parish_token');
 
+// Parses ISO "yyyy-MM-dd" (as a *local* date — no TZ shift) or legacy text
+// dates like "September 24, 1995". Returns undefined for unparseable input.
+const parseToDate = (s: string): Date | undefined => {
+  if (!s) return undefined;
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s.trim());
+  if (m) return new Date(+m[1], +m[2] - 1, +m[3]);
+  const d = new Date(s);
+  if (!isNaN(d.getTime())) return d;
+  const d2 = new Date(s.replace(/ /, "T")); // legacy "yyyy-MM-dd HH:mm:ss"
+  return isNaN(d2.getTime()) ? undefined : d2;
+};
+
+interface DateFieldProps {
+  label: string;
+  required?: boolean;
+  hint?: string;
+  value: string;
+  error?: string;
+  disabled?: boolean;
+  onChange: (iso: string) => void;
+}
+
+function DateField({ label, required, hint, value, error, disabled, onChange }: DateFieldProps) {
+  const [open, setOpen] = useState(false);
+  const selected = parseToDate(value);
+  const errId = `rec-date-${label.replace(/\W+/g, "-").toLowerCase()}-err`;
+  return (
+    <div className="space-y-1.5">
+      <Label className="text-xs">
+        {label}
+        {required && <span className="text-red-500 ml-0.5">*</span>}
+      </Label>
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger asChild>
+          <Button
+            type="button"
+            variant="outline"
+            disabled={disabled}
+            aria-required={required || undefined}
+            aria-invalid={!!error}
+            aria-describedby={error ? errId : undefined}
+            className={`w-full justify-start text-left font-normal ${!value ? "text-muted-foreground" : ""}`}
+          >
+            <CalendarIcon className="mr-2 h-4 w-4" />
+            {value ? (selected ? format(selected, "MMM d, yyyy") : value) : "Pick a date"}
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent className="w-auto p-0" align="start">
+          <CalendarPicker
+            mode="single"
+            selected={selected}
+            onSelect={(d) => { onChange(d ? format(d, "yyyy-MM-dd") : ""); setOpen(false); }}
+            captionLayout="dropdown"
+            fromYear={1900}
+            toYear={new Date().getFullYear()}
+            defaultMonth={selected || new Date(2000, 0)}
+          />
+          {value && (
+            <div className="p-2 border-t">
+              <Button type="button" variant="ghost" size="sm" className="w-full" onClick={() => { onChange(""); setOpen(false); }}>
+                Clear
+              </Button>
+            </div>
+          )}
+        </PopoverContent>
+      </Popover>
+      {error ? (
+        <p id={errId} className="text-xs text-red-600">{error}</p>
+      ) : hint ? (
+        <p className="text-xs text-gray-500">{hint}</p>
+      ) : null}
+    </div>
+  );
+}
+
 const EMPTY_FORM = {
   name: "", birthday: "", parents_name: "", baptized_by: "", canonical_book: "",
   baptismal_date: "", godparents_name: "", confirmed_by: "", confirmbook_no: "",
@@ -63,6 +138,7 @@ export default function ParishRecords() {
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [editingRecord, setEditingRecord] = useState<SacramentRecord | null>(null);
   const [form, setForm] = useState(EMPTY_FORM);
+  const [formErrors, setFormErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [importText, setImportText] = useState("");
@@ -129,11 +205,13 @@ export default function ParishRecords() {
   const openAddDialog = () => {
     setEditingRecord(null);
     setForm(EMPTY_FORM);
+    setFormErrors({});
     setEditDialogOpen(true);
   };
 
   const openEditDialog = (record: SacramentRecord) => {
     setEditingRecord(record);
+    setFormErrors({});
     setForm({
       name: record.name || "", birthday: record.birthday || "",
       parents_name: record.parents_name || "", baptized_by: record.baptized_by || "",
@@ -145,15 +223,46 @@ export default function ParishRecords() {
     setEditDialogOpen(true);
   };
 
+  const validateForm = () => {
+    const errs: Record<string, string> = {};
+    if (!form.name.trim()) errs.name = "Full name is required";
+    if (!form.birthday.trim()) {
+      errs.birthday = "Birthday is required";
+    } else if (!parseToDate(form.birthday)) {
+      errs.birthday = "Unrecognized date — pick from the calendar";
+    }
+    const bday = parseToDate(form.birthday);
+    const bapt = parseToDate(form.baptismal_date);
+    const conf = parseToDate(form.confirmed_date);
+    if (form.baptismal_date.trim() && !bapt) {
+      errs.baptismal_date = "Unrecognized date — pick from the calendar";
+    } else if (bday && bapt && bapt < bday) {
+      errs.baptismal_date = "Must be on or after the birthday";
+    }
+    if (form.confirmed_date.trim() && !conf) {
+      errs.confirmed_date = "Unrecognized date — pick from the calendar";
+    } else if (conf && (bapt || bday) && conf < (bapt || bday)!) {
+      errs.confirmed_date = "Must be on or after baptism";
+    }
+    return errs;
+  };
+
   const saveRecord = async () => {
-    if (!form.name.trim()) { toast.error("Name is required"); return; }
+    const errs = validateForm();
+    if (Object.keys(errs).length) { setFormErrors(errs); return; }
     setSaving(true);
     try {
+      // Normalize parseable dates to ISO so search/verification stay consistent.
+      const payload = { ...form };
+      for (const k of ["birthday", "baptismal_date", "confirmed_date"] as const) {
+        const d = parseToDate(payload[k]);
+        if (d) payload[k] = format(d, "yyyy-MM-dd");
+      }
       const url = editingRecord ? `${API}/sacraments/${editingRecord.id}` : `${API}/sacraments`;
       const res = await fetch(url, {
         method: editingRecord ? "PUT" : "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${getToken()}` },
-        body: JSON.stringify(form),
+        body: JSON.stringify(payload),
       });
       const data = await res.json();
       if (!res.ok || !data.success) {
@@ -189,17 +298,53 @@ export default function ParishRecords() {
     }
   };
 
-  const field = (key: keyof typeof EMPTY_FORM, label: string, placeholder = "") => (
+  const field = (
+    key: keyof typeof EMPTY_FORM,
+    label: string,
+    opts: { placeholder?: string; required?: boolean; hint?: string; autoFocus?: boolean } = {}
+  ) => (
     <div className="space-y-1.5" key={key}>
-      <Label htmlFor={`rec-${key}`} className="text-xs">{label}</Label>
+      <Label htmlFor={`rec-${key}`} className="text-xs">
+        {label}
+        {opts.required && <span className="text-red-500 ml-0.5">*</span>}
+      </Label>
       <Input
         id={`rec-${key}`}
         value={form[key]}
-        placeholder={placeholder}
-        onChange={(e) => setForm((f) => ({ ...f, [key]: e.target.value }))}
+        placeholder={opts.placeholder}
+        autoFocus={opts.autoFocus}
+        autoComplete="off"
+        aria-required={opts.required || undefined}
+        aria-invalid={!!formErrors[key]}
+        aria-describedby={formErrors[key] ? `rec-${key}-err` : undefined}
+        onChange={(e) => {
+          setForm((f) => ({ ...f, [key]: e.target.value }));
+          if (formErrors[key]) setFormErrors((er) => ({ ...er, [key]: "" }));
+        }}
         disabled={saving}
       />
+      {formErrors[key] ? (
+        <p id={`rec-${key}-err`} className="text-xs text-red-600">{formErrors[key]}</p>
+      ) : opts.hint ? (
+        <p className="text-xs text-gray-500">{opts.hint}</p>
+      ) : null}
     </div>
+  );
+
+  const dateField = (k: "birthday" | "baptismal_date" | "confirmed_date", label: string, opts: { required?: boolean; hint?: string } = {}) => (
+    <DateField
+      key={k}
+      label={label}
+      required={opts.required}
+      hint={opts.hint}
+      value={form[k]}
+      error={formErrors[k]}
+      disabled={saving}
+      onChange={(iso) => {
+        setForm((f) => ({ ...f, [k]: iso }));
+        if (formErrors[k]) setFormErrors((er) => ({ ...er, [k]: "" }));
+      }}
+    />
   );
 
   const fetchRecords = async (p = 1) => {
@@ -529,43 +674,46 @@ export default function ParishRecords() {
               {editingRecord ? `Update the record for ${editingRecord.name}` : "Enter a new baptismal record. Confirmation fields are optional."}
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-5">
+          <form
+            className="space-y-5"
+            onSubmit={(e) => { e.preventDefault(); saveRecord(); }}
+          >
             <div>
               <h4 className="font-medium mb-2 flex items-center gap-2">
                 <User className="h-4 w-4" />Personal Information
               </h4>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {field("name", "Full Name *")}
-                {field("birthday", "Birthday", "YYYY-MM-DD")}
-                {field("parents_name", "Parents' Names")}
+                {field("name", "Full Name", { required: true, autoFocus: true, placeholder: "Juan Miguel Dela Cruz" })}
+                {dateField("birthday", "Birthday", { required: true, hint: "Used to verify members at signup" })}
+                {field("parents_name", "Parents' Names", { placeholder: "Pedro Dela Cruz & Maria Reyes", hint: "Father & Mother" })}
               </div>
             </div>
             <div>
               <h4 className="font-medium mb-2">Baptism Details</h4>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {field("baptismal_date", "Baptismal Date", "YYYY-MM-DD")}
-                {field("baptized_by", "Baptized By")}
-                {field("godparents_name", "Godparents")}
-                {field("canonical_book", "Canonical Book")}
+                {dateField("baptismal_date", "Baptismal Date", { hint: "Leave blank if unknown" })}
+                {field("baptized_by", "Baptized By", { placeholder: "Fr. Juan Santos" })}
+                {field("godparents_name", "Godparents", { placeholder: "Ana Cruz & Jose Lim" })}
+                {field("canonical_book", "Canonical Book", { placeholder: "e.g. Book 12, p. 34" })}
               </div>
             </div>
             <div>
               <h4 className="font-medium mb-2">Confirmation Details (optional)</h4>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {field("confirmed_date", "Confirmed Date", "YYYY-MM-DD")}
-                {field("confirmed_by", "Confirmed By")}
-                {field("confirm_sponsor", "Sponsor")}
-                {field("confirmbook_no", "Confirmation Book No.")}
+                {dateField("confirmed_date", "Confirmed Date")}
+                {field("confirmed_by", "Confirmed By", { placeholder: "Bishop García" })}
+                {field("confirm_sponsor", "Sponsor", { placeholder: "Elena Dela Cruz" })}
+                {field("confirmbook_no", "Confirmation Book No.", { placeholder: "e.g. Book 3, p. 12" })}
               </div>
             </div>
             <div className="flex justify-end gap-2 pt-2">
-              <Button variant="outline" onClick={() => setEditDialogOpen(false)} disabled={saving}>Cancel</Button>
-              <Button onClick={saveRecord} disabled={saving}>
+              <Button type="button" variant="outline" onClick={() => setEditDialogOpen(false)} disabled={saving}>Cancel</Button>
+              <Button type="submit" disabled={saving}>
                 {saving && <Loader className="h-4 w-4 mr-2 animate-spin" />}
                 {editingRecord ? "Save Changes" : "Add Record"}
               </Button>
             </div>
-          </div>
+          </form>
         </DialogContent>
       </Dialog>
 

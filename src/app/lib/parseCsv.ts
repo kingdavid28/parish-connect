@@ -161,4 +161,4 @@ export function parseRecordsCsv(text: string): CsvParseResult {
 /** CSV template header + example row for the Import dialog download. */
 export const RECORDS_CSV_TEMPLATE =
   "name,birthday,parents_name,baptized_by,canonical_book,baptismal_date,godparents_name,confirmed_by,confirmbook_no,confirmed_date,confirm_sponsor\n" +
-  '"Dela Cruz, Juan Miguel","January 15, 2005","Dela Cruz, Pedro & Reyes, Maria","Fr. Santos","Book 12 p.34","February 1, 2005","Cruz, Ana & Lim, Jose","Bishop García","Book 3 p.12","May 10, 2018","Dela Cruz, Elena"\n';
+  '"Dela Cruz, Juan Miguel","2005-01-15","Dela Cruz, Pedro & Reyes, Maria","Fr. Santos","Book 12 p.34","2005-02-01","Cruz, Ana & Lim, Jose","Bishop García","Book 3 p.12","2018-05-10","Dela Cruz, Elena"\n';
