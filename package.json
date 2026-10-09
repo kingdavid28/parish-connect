@@ -87,7 +87,8 @@
     "tailwindcss": "4.1.12",
     "vite": "^6.3.6",
     "vitest": "^4.1.4",
-    "web-push": "^3.6.7"
+    "web-push": "^3.6.7",
+    "yaml": "^2.9.1"
   },
   "peerDependencies": {
     "react": "18.3.1",
