@@ -6,11 +6,15 @@ import react from '@vitejs/plugin-react'
 
 // Public base path. Set VITE_BASE_PATH to deploy under a subfolder
 // (e.g. "/parish-connect" → base "/parish-connect/"). Set it to "/" for a
-// domain-root deployment (e.g. Cloudflare Pages).
-const basePath = process.env.VITE_BASE_PATH;
-const base = basePath !== undefined
-  ? (basePath.endsWith('/') ? basePath : `${basePath}/`)
-  : (process.env.NODE_ENV === 'production' ? '/parish-connect/' : '/');
+// domain-root deployment (e.g. Cloudflare Pages). Vite does NOT load .env
+// files into process.env during config eval, so read via loadEnv too.
+function computeBase(mode: string): string {
+  const env = { ...loadEnv(mode, process.cwd(), ''), ...process.env };
+  const basePath = env.VITE_BASE_PATH;
+  return basePath !== undefined
+    ? (basePath.endsWith('/') ? basePath : `${basePath}/`)
+    : (process.env.NODE_ENV === 'production' ? '/parish-connect/' : '/');
+}
 
 /**
  * parishBrandingPlugin — single source of truth for static branding.
@@ -97,7 +101,7 @@ function parishBrandingPlugin(mode: string): Plugin {
 }
 
 export default defineConfig(({ mode }) => ({
-  base,
+  base: computeBase(mode),
   plugins: [
     react(),
     tailwindcss(),
