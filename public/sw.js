@@ -61,40 +61,49 @@ self.addEventListener('fetch', (e) => {
     // Navigations: network-first so deploys reach users immediately;
     // refresh the cached app shell for offline use as a side effect.
     if (e.request.mode === 'navigate') {
-        e.respondWith(
-            fetch(e.request).then((response) => {
-                if (response.ok) {
-                    const clone = response.clone();
-                    e.waitUntil(caches.open(RUNTIME_CACHE).then((cache) => cache.put(`${BASE}/index.html`, clone)));
-                }
-                return response;
-            }).catch(() => caches.match(`${BASE}/index.html`))
-        );
+        e.respondWith(handleNavigate(e));
         return;
     }
 
     // Static assets: cache-first with network fallback.
     // Safe for hashed build output (immutable filenames); images cached
     // at runtime may lag a deploy by one visit — acceptable trade-off.
-    e.respondWith(
-        caches.match(e.request).then((cached) => {
-            if (cached) return cached;
-            return fetch(e.request).then((response) => {
-                // Only cache successful same-origin responses
-                if (response.ok && (response.type === 'basic' || response.type === 'cors')) {
-                    const clone = response.clone();
-                    e.waitUntil(caches.open(RUNTIME_CACHE).then((cache) => cache.put(e.request, clone)));
-                }
-                return response;
-            }).catch(() => {
-                // If offline and navigating, serve the app shell
-                if (e.request.mode === 'navigate') {
-                    return caches.match(`${BASE}/index.html`);
-                }
-            });
-        })
-    );
+    e.respondWith(handleStatic(e));
 });
+
+async function handleNavigate(e) {
+    try {
+        const response = await fetch(e.request);
+        if (response.ok) {
+            const clone = response.clone();
+            const cache = await caches.open(RUNTIME_CACHE);
+            await cache.put(`${BASE}/index.html`, clone);
+        }
+        return response;
+    } catch {
+        return caches.match(`${BASE}/index.html`);
+    }
+}
+
+async function handleStatic(e) {
+    const cached = await caches.match(e.request);
+    if (cached) return cached;
+    try {
+        const response = await fetch(e.request);
+        // Only cache successful same-origin responses
+        if (response.ok && (response.type === 'basic' || response.type === 'cors')) {
+            const clone = response.clone();
+            const cache = await caches.open(RUNTIME_CACHE);
+            await cache.put(e.request, clone);
+        }
+        return response;
+    } catch {
+        // If offline and navigating, serve the app shell
+        if (e.request.mode === 'navigate') {
+            return caches.match(`${BASE}/index.html`);
+        }
+    }
+}
 
 // Push/badge icons come from the per-parish manifest generated at build
 // time — falls back to the generic logo if the manifest can't be read.
