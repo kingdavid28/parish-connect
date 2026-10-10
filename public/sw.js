@@ -65,7 +65,7 @@ self.addEventListener('fetch', (e) => {
             fetch(e.request).then((response) => {
                 if (response.ok) {
                     const clone = response.clone();
-                    caches.open(RUNTIME_CACHE).then((cache) => cache.put(`${BASE}/index.html`, clone));
+                    e.waitUntil(caches.open(RUNTIME_CACHE).then((cache) => cache.put(`${BASE}/index.html`, clone)));
                 }
                 return response;
             }).catch(() => caches.match(`${BASE}/index.html`))
@@ -83,7 +83,7 @@ self.addEventListener('fetch', (e) => {
                 // Only cache successful same-origin responses
                 if (response.ok && (response.type === 'basic' || response.type === 'cors')) {
                     const clone = response.clone();
-                    caches.open(RUNTIME_CACHE).then((cache) => cache.put(e.request, clone));
+                    e.waitUntil(caches.open(RUNTIME_CACHE).then((cache) => cache.put(e.request, clone)));
                 }
                 return response;
             }).catch(() => {
