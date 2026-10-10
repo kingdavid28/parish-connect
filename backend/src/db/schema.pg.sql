@@ -100,6 +100,47 @@ CREATE TABLE IF NOT EXISTS sacramental_records (
 );
 CREATE INDEX IF NOT EXISTS idx_sacramental_records_name ON sacramental_records(name);
 
+-- BEC (Basic Ecclesial Community) monthly dues ledger.
+CREATE TABLE IF NOT EXISTS becs (
+  id         VARCHAR(36)  NOT NULL PRIMARY KEY,
+  name       VARCHAR(150) NOT NULL UNIQUE,
+  created_at TIMESTAMP    DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS donors (
+  id           VARCHAR(36)  NOT NULL PRIMARY KEY,
+  name         VARCHAR(200) NOT NULL,
+  address      VARCHAR(300) NULL,
+  bec_id       VARCHAR(36)  NULL REFERENCES becs(id) ON DELETE SET NULL,
+  gcash_number VARCHAR(20)  NULL,
+  user_id      VARCHAR(36)  NULL REFERENCES users(id) ON DELETE SET NULL,
+  is_active    SMALLINT     DEFAULT 1,
+  notes        TEXT         NULL,
+  created_by   VARCHAR(36)  NULL REFERENCES users(id) ON DELETE SET NULL,
+  created_at   TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
+  updated_at   TIMESTAMP    DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_donors_name ON donors(name);
+CREATE INDEX IF NOT EXISTS idx_donors_bec  ON donors(bec_id);
+
+-- One ledger row per donor per month — upsert on the unique key.
+CREATE TABLE IF NOT EXISTS contributions (
+  id          VARCHAR(36)    NOT NULL PRIMARY KEY,
+  donor_id    VARCHAR(36)    NOT NULL REFERENCES donors(id) ON DELETE CASCADE,
+  year        SMALLINT       NOT NULL,
+  month       SMALLINT       NOT NULL,
+  amount      NUMERIC(12,2)  NOT NULL,
+  method      VARCHAR(20)    NOT NULL DEFAULT 'cash',
+  reference   VARCHAR(120)   NULL,
+  receipt_url VARCHAR(500)   NULL,
+  recorded_by VARCHAR(36)    NULL REFERENCES users(id) ON DELETE SET NULL,
+  created_at  TIMESTAMP      DEFAULT CURRENT_TIMESTAMP,
+  updated_at  TIMESTAMP      DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE (donor_id, year, month)
+);
+CREATE INDEX IF NOT EXISTS idx_contributions_year_month ON contributions(year, month);
+CREATE INDEX IF NOT EXISTS idx_contributions_donor      ON contributions(donor_id);
+
 CREATE TABLE IF NOT EXISTS audit_logs (
   id          VARCHAR(36)  NOT NULL PRIMARY KEY,
   user_id     VARCHAR(36)  NULL REFERENCES users(id) ON DELETE SET NULL,

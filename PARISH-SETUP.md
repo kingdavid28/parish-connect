@@ -209,6 +209,15 @@ On cron-job.org:
 Simple GET pings also work: append `?token=<CRON_SECRET>` to the URL (the
 token will appear in scheduler logs — use the header form where possible).
 
+### BEC dues reminder cron (optional)
+
+`GET|POST /api/cron/contribution-reminder` pushes a notification to every
+active donor linked to an app account who has no contribution recorded for
+the previous month (override with `?year=YYYY&month=M`). Same
+`x-cron-secret` header auth — schedule it monthly on ~the 5th.
+
+The finance module is on by default; set `FEATURE_FINANCE=0` to hide it.
+
 ---
 
 ## Step 7 — Sacramental records

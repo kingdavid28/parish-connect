@@ -2,6 +2,7 @@ const express = require("express");
 const pool = require("../db/pool");
 const config = require("../config");
 const { uuid } = require("../lib/helpers");
+const { sendPushToUser } = require("../lib/push");
 
 const router = express.Router();
 
@@ -56,6 +57,66 @@ async function autopost(req, res) {
 
 router.get("/autopost", autopost);
 router.post("/autopost", autopost);
+
+/**
+ * GET|POST /api/cron/contribution-reminder[?year=&month=]
+ * Pushes a reminder to every active donor linked to a user account who has
+ * no contribution row for the target month (defaults to last month — run
+ * on the ~5th of each month so it always means "previous month dues").
+ * Same auth as /autopost.
+ */
+const MONTH_NAMES = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+
+async function contributionReminder(req, res) {
+  const token = req.get("x-cron-secret") || req.query.token;
+  if (!config.cronSecret || token !== config.cronSecret) {
+    return res.status(403).json({ success: false, message: "Forbidden" });
+  }
+  if (config.features.finance === false) {
+    return res.json({ success: true, data: { sent: 0, skipped: "finance disabled" } });
+  }
+
+  const now = new Date();
+  let year = now.getFullYear();
+  let month = now.getMonth(); // previous month (JS month is 0-based → this is last month)
+  if (month === 0) { month = 12; year -= 1; }
+  if (req.query.year && req.query.month) {
+    year = parseInt(req.query.year, 10);
+    month = parseInt(req.query.month, 10);
+  }
+
+  try {
+    const { rows: unpaid } = await pool.query(
+      `SELECT d.id, d.name, d.user_id FROM donors d
+       WHERE d.is_active = 1 AND d.user_id IS NOT NULL
+         AND NOT EXISTS (
+           SELECT 1 FROM contributions c
+           WHERE c.donor_id = d.id AND c.year = $1 AND c.month = $2
+         )`,
+      [year, month]
+    );
+
+    const label = `${MONTH_NAMES[month - 1]} ${year}`;
+    let sent = 0;
+    for (const donor of unpaid) {
+      await sendPushToUser(donor.user_id, {
+        title: "Monthly Contribution Reminder",
+        body: `Friendly reminder: your ${label} contribution for ${donor.name} hasn't been recorded yet.`,
+        tag: `contrib-${year}-${month}-${donor.id}`,
+        url: `${config.appUrl}${config.appBasePath}/`,
+      });
+      sent++;
+    }
+    console.log(`[ContribReminder] ${label}: pushed ${sent} reminder(s)`);
+    res.json({ success: true, data: { year, month, sent } });
+  } catch (err) {
+    console.error("[ContribReminder] Error:", err.message);
+    res.status(500).json({ success: false, message: "Reminder job failed" });
+  }
+}
+
+router.get("/contribution-reminder", contributionReminder);
+router.post("/contribution-reminder", contributionReminder);
 
 // ─── Groq AI generator — all parish specifics come from env config ────────────
 

@@ -72,6 +72,7 @@ module.exports = {
     records: process.env.RECORDS_MODE || "internal", // "internal" | "off"
     wallet: process.env.FEATURE_WALLET !== "0",
     rewards: process.env.FEATURE_REWARDS !== "0",
+    finance: process.env.FEATURE_FINANCE !== "0",
   },
 
   // Cloudflare R2 (S3-compatible) file storage for uploads

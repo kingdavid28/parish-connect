@@ -55,6 +55,7 @@ export interface FeatureFlags {
   records: string; // "internal" | "off"
   wallet: boolean;
   rewards: boolean;
+  finance: boolean;
 }
 
 /** Build-time parish defaults — may be overridden by GET /api/config at runtime. */
@@ -73,6 +74,7 @@ export const DEFAULT_FEATURES: FeatureFlags = {
   records: env.VITE_RECORDS_MODE || "internal",
   wallet: env.VITE_FEATURE_WALLET !== "0",
   rewards: env.VITE_FEATURE_REWARDS !== "0",
+  finance: env.VITE_FEATURE_FINANCE !== "0",
 };
 
 /** Default: registration requires a matching sacramental record. */

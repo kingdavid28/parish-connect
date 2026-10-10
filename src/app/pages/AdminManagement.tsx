@@ -66,6 +66,7 @@ import { toast } from "sonner";
 import { format, formatDistanceToNow } from "date-fns";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
 import AdminWallet from "./AdminWallet";
+import FinancePanel from "./FinancePanel";
 
 const safeFormatDate = (dateString: string) => {
     try {
@@ -412,6 +413,7 @@ export default function AdminManagement() {
           <TabsList className="mb-6">
             <TabsTrigger value="users"><Shield className="h-4 w-4 mr-1.5" />Users</TabsTrigger>
             <TabsTrigger value="wallet"><WalletIcon className="h-4 w-4 mr-1.5" />GBless Wallet</TabsTrigger>
+            <TabsTrigger value="finance"><ClipboardList className="h-4 w-4 mr-1.5" />BEC Dues</TabsTrigger>
             {canViewAudit && <TabsTrigger value="audit"><ClipboardList className="h-4 w-4 mr-1.5" />Audit Log</TabsTrigger>}
           </TabsList>
           <TabsContent value="users">
@@ -813,6 +815,9 @@ export default function AdminManagement() {
           </TabsContent>
           <TabsContent value="wallet">
             <AdminWallet />
+          </TabsContent>
+          <TabsContent value="finance">
+            <FinancePanel />
           </TabsContent>
 
           {/* ── AUDIT LOG TAB ─────────────────────────────────────────────── */}
