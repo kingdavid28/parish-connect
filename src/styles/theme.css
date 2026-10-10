@@ -133,6 +133,14 @@
     background-attachment: fixed;
   }
 
+  /* iOS can't render background-attachment: fixed properly (zoomed/distorted
+     image) — scroll the photo on small screens instead. */
+  @media (max-width: 768px) {
+    body {
+      background-attachment: scroll;
+    }
+  }
+
   /* Overlay so content stays readable over the background */
   body::before {
     content: '';
