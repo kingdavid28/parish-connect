@@ -4,16 +4,15 @@
 const BASE = new URL(self.registration.scope).pathname.replace(/\/$/, '');
 const ORIGIN = new URL(self.registration.scope).origin;
 
-const CACHE_NAME = 'parish-connect-v4';
-const RUNTIME_CACHE = 'parish-connect-runtime-v4';
+const CACHE_NAME = 'parish-connect-v5';
+const RUNTIME_CACHE = 'parish-connect-runtime-v5';
 
-// App shell assets to pre-cache for offline support
+// Only truly static metadata is pre-cached. index.html is deliberately NOT
+// here: caching it cache-first pins users to a stale app shell — hashed JS/CSS
+// references rot and old branding sticks. Navigations go network-first below
+// with the runtime cache as an offline fallback.
 const PRECACHE_URLS = [
-    `${BASE}/`,
-    `${BASE}/index.html`,
     `${BASE}/manifest.json`,
-    `${BASE}/parish-connect-logo.png`,
-    `${BASE}/background-viewport.png`,
 ];
 
 self.addEventListener('install', (e) => {
@@ -59,7 +58,24 @@ self.addEventListener('fetch', (e) => {
     if (BASE && !url.pathname.startsWith(`${BASE}/`)) return;
     if (!BASE && url.pathname === '/sw.js') { /* fallthrough, allow */ }
 
-    // Static assets: cache-first with network fallback
+    // Navigations: network-first so deploys reach users immediately;
+    // refresh the cached app shell for offline use as a side effect.
+    if (e.request.mode === 'navigate') {
+        e.respondWith(
+            fetch(e.request).then((response) => {
+                if (response.ok) {
+                    const clone = response.clone();
+                    caches.open(RUNTIME_CACHE).then((cache) => cache.put(`${BASE}/index.html`, clone));
+                }
+                return response;
+            }).catch(() => caches.match(`${BASE}/index.html`))
+        );
+        return;
+    }
+
+    // Static assets: cache-first with network fallback.
+    // Safe for hashed build output (immutable filenames); images cached
+    // at runtime may lag a deploy by one visit — acceptable trade-off.
     e.respondWith(
         caches.match(e.request).then((cached) => {
             if (cached) return cached;
@@ -80,6 +96,19 @@ self.addEventListener('fetch', (e) => {
     );
 });
 
+// Push/badge icons come from the per-parish manifest generated at build
+// time — falls back to the generic logo if the manifest can't be read.
+async function parishIcon() {
+    try {
+        const res = await fetch(`${BASE}/manifest.json`);
+        const manifest = await res.json();
+        const src = manifest.icons?.[0]?.src;
+        return src ? new URL(src, ORIGIN + BASE + '/').href : `${BASE}/parish-connect-logo.png`;
+    } catch {
+        return `${BASE}/parish-connect-logo.png`;
+    }
+}
+
 self.addEventListener('push', (e) => {
     if (!e.data) return;
 
@@ -90,19 +119,19 @@ self.addEventListener('push', (e) => {
         data = { title: 'Parish Connect', body: e.data.text() };
     }
 
-    const options = {
-        body: data.body || '',
-        icon: `${BASE}/parish-connect-logo.png`,
-        badge: `${BASE}/parish-connect-logo.png`,
-        tag: data.tag || 'parish-connect',
-        data: { url: data.url || `${BASE}/` },
-        vibrate: [200, 100, 200],
-        requireInteraction: false,
-    };
-
-    e.waitUntil(
-        self.registration.showNotification(data.title || 'Parish Connect', options)
-    );
+    e.waitUntil((async () => {
+        const icon = await parishIcon();
+        const options = {
+            body: data.body || '',
+            icon,
+            badge: icon,
+            tag: data.tag || 'parish-connect',
+            data: { url: data.url || `${BASE}/` },
+            vibrate: [200, 100, 200],
+            requireInteraction: false,
+        };
+        await self.registration.showNotification(data.title || 'Parish Connect', options);
+    })());
 });
 
 self.addEventListener('notificationclick', (e) => {
