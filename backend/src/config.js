@@ -43,6 +43,7 @@ module.exports = {
   // Groq AI (auto-post cron)
   groqApiKey: process.env.GROQ_API_KEY || "",
   cronSecret: process.env.CRON_SECRET || "",
+  groqModel: process.env.GROQ_MODEL || "openai/gpt-oss-20b",
 
   // ── Per-parish branding ──────────────────────────────────────────────────
   parish: {

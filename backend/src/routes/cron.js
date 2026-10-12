@@ -173,13 +173,14 @@ Content Rules:
         Authorization: `Bearer ${config.groqApiKey}`,
       },
       body: JSON.stringify({
-        model: "llama-3.1-8b-instant",
+        model: config.groqModel,
         messages: [
           { role: "system", content: systemPrompt },
           { role: "user", content: `Write a parish community post about: ${topic}` },
         ],
         temperature: 0.85,
-        max_tokens: 300,
+        max_tokens: 500,
+        reasoning_effort: "low",
       }),
       signal: AbortSignal.timeout(15000),
     });
