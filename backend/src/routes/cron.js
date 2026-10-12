@@ -1,4 +1,5 @@
 const express = require("express");
+const crypto = require("crypto");
 const pool = require("../db/pool");
 const config = require("../config");
 const { uuid } = require("../lib/helpers");
@@ -81,8 +82,8 @@ async function contributionReminder(req, res) {
   let month = now.getMonth(); // previous month (JS month is 0-based → this is last month)
   if (month === 0) { month = 12; year -= 1; }
   if (req.query.year && req.query.month) {
-    year = parseInt(req.query.year, 10);
-    month = parseInt(req.query.month, 10);
+    year = Number.parseInt(req.query.year, 10);
+    month = Number.parseInt(req.query.month, 10);
   }
 
   try {
@@ -97,16 +98,13 @@ async function contributionReminder(req, res) {
     );
 
     const label = `${MONTH_NAMES[month - 1]} ${year}`;
-    let sent = 0;
-    for (const donor of unpaid) {
-      await sendPushToUser(donor.user_id, {
-        title: "Monthly Contribution Reminder",
-        body: `Friendly reminder: your ${label} contribution for ${donor.name} hasn't been recorded yet.`,
-        tag: `contrib-${year}-${month}-${donor.id}`,
-        url: `${config.appUrl}${config.appBasePath}/`,
-      });
-      sent++;
-    }
+    await Promise.all(unpaid.map((donor) => sendPushToUser(donor.user_id, {
+      title: "Monthly Contribution Reminder",
+      body: `Friendly reminder: your ${label} contribution for ${donor.name} hasn't been recorded yet.`,
+      tag: `contrib-${year}-${month}-${donor.id}`,
+      url: `${config.appUrl}${config.appBasePath}/`,
+    })));
+    const sent = unpaid.length;
     console.log(`[ContribReminder] ${label}: pushed ${sent} reminder(s)`);
     res.json({ success: true, data: { year, month, sent } });
   } catch (err) {
@@ -143,9 +141,9 @@ async function generatePostWithGroq() {
         "exploring parish records and family faith history",
       ];
 
-  const topic = topics[Math.floor(Math.random() * topics.length)];
+  const topic = topics[crypto.randomInt(topics.length)];
   const types = ["community", "community", "community", "parish_event", "research"];
-  const type = types[Math.floor(Math.random() * types.length)];
+  const type = types[crypto.randomInt(types.length)];
 
   const systemPrompt = `You are the official social media voice of ${p.name}, a Catholic parish community located in ${loc}.
 Your tone is warm, faith-filled, encouraging, and community-focused.
@@ -241,7 +239,7 @@ function getFallbackTemplate(recentContents) {
     (t) => !recentContents.some((r) => t.content.slice(0, 50) === String(r).slice(0, 50))
   );
   const poolArr = available.length ? available : templates;
-  return poolArr[Math.floor(Math.random() * poolArr.length)];
+  return poolArr[crypto.randomInt(poolArr.length)];
 }
 
 module.exports = router;

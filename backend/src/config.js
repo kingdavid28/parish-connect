@@ -6,7 +6,7 @@ require("dotenv").config();
  */
 module.exports = {
   // Server
-  port: parseInt(process.env.PORT || "3000", 10),
+  port: Number.parseInt(process.env.PORT || "3000", 10),
   allowedOrigins: (process.env.ALLOWED_ORIGINS || "http://localhost:5173")
     .split(",")
     .map((o) => o.trim())
@@ -21,7 +21,7 @@ module.exports = {
 
   // Auth
   jwtSecret: process.env.JWT_SECRET || "dev-secret-change-me",
-  jwtExpiresSeconds: parseInt(process.env.JWT_EXPIRES_SECONDS || "604800", 10),
+  jwtExpiresSeconds: Number.parseInt(process.env.JWT_EXPIRES_SECONDS || "604800", 10),
 
   // Web Push / VAPID
   vapid: {
@@ -33,7 +33,7 @@ module.exports = {
   // Email (SMTP)
   mail: {
     host: process.env.MAIL_HOST || "",
-    port: parseInt(process.env.MAIL_PORT || "587", 10),
+    port: Number.parseInt(process.env.MAIL_PORT || "587", 10),
     username: process.env.MAIL_USERNAME || "",
     password: process.env.MAIL_PASSWORD || "",
     fromAddress: process.env.MAIL_FROM_ADDRESS || "",
