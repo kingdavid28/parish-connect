@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect } from "react";
 import { useNavigate, useLocation, Navigate, Link } from "react-router";
 import { useAuth } from "../context/AuthContext";
 import { Button } from "./ui/button";
@@ -22,7 +22,6 @@ export default function Login() {
   const [rememberMe, setRememberMe] = useState(false);
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const pageRef = useRef<HTMLDivElement>(null);
 
   // Scroll the focused input above the keyboard on iOS (which doesn't
   // resize the layout even with interactive-widget=resizes-content).
@@ -40,13 +39,13 @@ export default function Login() {
 
   if (isAuthenticated) return <Navigate to={from} replace />;
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.SubmitEvent<HTMLFormElement>) => {
     e.preventDefault();
     setError("");
     setIsLoading(true);
     try {
       await login(email, password, rememberMe);
-      navigate(from, { replace: true });
+      void navigate(from, { replace: true });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Invalid email or password.");
     } finally {
