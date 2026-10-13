@@ -89,11 +89,14 @@ export default function Navbar() {
         <div className="max-w-7xl mx-auto px-4">
           <div className="flex justify-between items-center h-14">
             {/* Logo */}
-            <Link to="/" className="flex items-center gap-2">
-              <img src={parish.logoUrl} alt="Parish Connect" className="h-9 w-auto object-contain" width={36} height={36} />
-              <div className="hidden sm:block leading-tight">
-                <span className="text-lg font-semibold text-gray-900">Parish Connect</span>
-                <span className="block text-[10px] text-gray-400 -mt-0.5">{parish.name}</span>
+            <Link to="/" className="flex items-center gap-2.5 min-w-0">
+              <img src={parish.logoUrl} alt={parish.name} className="h-10 w-auto object-contain shrink-0" width={40} height={40} />
+              <div className="leading-tight min-w-0">
+                <span className="block text-sm sm:text-base font-semibold text-gray-900 truncate max-w-[150px] sm:max-w-[280px] md:max-w-none">
+                  <span className="sm:hidden">{parish.shortName}</span>
+                  <span className="hidden sm:inline">{parish.name}</span>
+                </span>
+                <span className="block text-[10px] font-medium uppercase tracking-wider -mt-0.5" style={{ color: parish.accentColor }}>Parish Connect</span>
               </div>
             </Link>
 
