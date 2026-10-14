@@ -21,7 +21,8 @@ Node.js / Express API (Render, Railway, or any Node host)
         ├── CockroachDB Serverless (PostgreSQL wire protocol)
         ├── Cloudflare R2 (image uploads: posts, avatars, receipts)
         ├── Web Push (VAPID) + SMTP email (Brevo)
-        └── cron-job.org → POST /api/cron/autopost (daily announcements)
+        └── cron-job.org → /api/health keep-alive, /api/cron/autopost
+            (daily announcements), /api/cron/contribution-reminder (BEC dues)
 ```
 
 The original San Vicente Ferrer deployment (PHP + MySQL on Hostinger) is
@@ -90,20 +91,21 @@ unaffected — this guide is for the **new Node.js backend** in `backend/`.
 | `JWT_SECRET` | `node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"` |
 | `PARISH_ID` | `saint-raphael-kawayan` |
 | `PARISH_NAME` | `Saint Raphael Archangel Parish` |
-| `PARISH_SHORT_NAME` | `Saint Raphael Parish` |
+| `PARISH_SHORT_NAME` | `St. Raphael` (shown in the navbar on mobile) |
 | `PARISH_LOCATION` | `Kawayan, Biliran` |
 | `PARISH_TAGLINE` | e.g. `Faith. Community. Service.` |
 | `PARISH_ACCENT_COLOR` | `#16a34a` (green — from the parish seal) |
 | `PARISH_LOGO_URL` | `brands/san-raphael/logo.png` (frontend-hosted) or an absolute URL |
-| `PARISH_BACKGROUND_URL` | optional background image URL |
+| `PARISH_BACKGROUND_URL` | `brands/san-raphael/background.jpg` (or any absolute URL) |
 | `PARISH_HASHTAGS` | `#SaintRaphaelKawayan #ParishConnect` |
 | `VAPID_*` | generate: `npx web-push generate-vapid-keys` |
 | `MAIL_*` | Brevo SMTP credentials |
-| `GCASH_NUMBER` / `GCASH_NAME` | **pending** — QR masks the number; get from parish |
+| `GCASH_NUMBER` / `GCASH_NAME` | `09173235981` / `REYCEL R. CENTINO` |
 | `GCASH_QR_URL` | `${APP_URL}/brands/san-raphael/gcash-qr.jpg` |
 | `R2_*` | from Step 4 |
 | `CRON_SECRET` | long random string |
-| `GROQ_API_KEY` | optional |
+| `GROQ_API_KEY` | optional — AI autoposts (free at console.groq.com) |
+| `GROQ_MODEL` | optional override — default `openai/gpt-oss-20b` (Groq retires models every few months) |
 
 4. Deploy. Verify: `GET https://your-api.onrender.com/api/health` returns
    `{"success":true}` and `GET /api/config` returns the parish branding JSON.
@@ -195,26 +197,29 @@ The public key is exposed to the frontend via `GET /api/config` — that's fine.
 
 ---
 
-## Step 6 — Auto-post cron (optional)
+## Step 6 — Cron jobs (cron-job.org, free)
 
-The API exposes `GET|POST /api/cron/autopost` (creates a daily announcement
-post from Groq AI if `GROQ_API_KEY` is set, otherwise built-in templates).
+Three jobs, all on cron-job.org:
 
-On cron-job.org:
-- URL: `https://parish-connectkawayanbiliranapi.onrender.com/api/cron/autopost`
-- Method: **POST**, header `x-cron-secret: <CRON_SECRET>` (header is preferred —
-  it keeps the secret out of URL access logs)
-- Schedule: daily, e.g. 07:00 Asia/Manila
+| Job | URL | Method | Schedule | Auth |
+|---|---|---|---|---|
+| Keep-alive | `/api/health` | GET | every 5 min | none |
+| Parish autopost | `/api/cron/autopost` | POST | daily 07:00 | `x-cron-secret` header |
+| BEC dues reminder | `/api/cron/contribution-reminder` | POST | monthly, 5th, 07:00 | `x-cron-secret` header |
 
-Simple GET pings also work: append `?token=<CRON_SECRET>` to the URL (the
-token will appear in scheduler logs — use the header form where possible).
+Notes:
 
-### BEC dues reminder cron (optional)
-
-`GET|POST /api/cron/contribution-reminder` pushes a notification to every
-active donor linked to an app account who has no contribution recorded for
-the previous month (override with `?year=YYYY&month=M`). Same
-`x-cron-secret` header auth — schedule it monthly on ~the 5th.
+- **Keep-alive matters:** free Render sleeps after ~15 min idle and cold
+  starts can outlast cron-job.org's 30s timeout — the sleeping instance's
+  502 HTML page shows as "Failed (output too large)". The 5-min
+  `/api/health` ping keeps the API warm for users *and* cron jobs.
+- `x-cron-secret` header = `CRON_SECRET` (preferred over `?token=` so the
+  secret stays out of URL access logs). Leave Request body empty.
+- `autopost` writes a daily announcement post — Groq AI if `GROQ_API_KEY`
+  is set, rotating fallback templates otherwise.
+- `contribution-reminder` pushes to every **active donor linked to an app
+  account** with no contribution recorded for the previous month
+  (override with `?year=YYYY&month=M`).
 
 The finance module is on by default; set `FEATURE_FINANCE=0` to hide it.
 
@@ -240,6 +245,24 @@ To disable the feature entirely: `RECORDS_MODE=off`.
 
 ---
 
+## Step 8 — BEC monthly dues ledger (admin)
+
+Admin Management → **BEC Dues** tab (requires `admin`/`superadmin`):
+
+1. Add **BECs** (Basic Ecclesial Communities) — e.g. "BEC St. Joseph".
+2. Add **donors** — name + BEC + optional GCash number + optional linked
+   app account. Linking enables push reminders via the Step 6 cron.
+3. Click a donor's **Ledger** → click any month cell → record amount,
+   method (cash/GCash/bank), reference no., optional receipt photo
+   (stored in R2). Re-recording a month overwrites — one row per
+   donor/month enforced by `UNIQUE(donor_id, year, month)`.
+4. The top card shows collected/paid/unpaid totals per month, broken
+   down per BEC. Deactivating a donor stops reminders, keeps the ledger.
+
+Everything is audit-logged (`create_donor`, `record_contribution`, …).
+
+---
+
 ## Environment variable reference
 
 See `backend/.env.example` — every variable is commented. Never commit `.env`;
@@ -247,18 +270,19 @@ each parish's secrets live only on the host.
 
 ## Checklist — Saint Raphael Archangel Parish
 
-- [ ] CockroachDB cluster `sra-kawayan` + `parish_connect` DB created
-- [ ] `npm run migrate` completed (20+ tables)
-- [ ] Superadmin seeded; password changed after first login
-- [ ] API live on Render; `/api/health` + `/api/config` verified
-- [ ] R2 bucket + API token configured; test image upload works
-- [ ] VAPID keys generated; push subscription works in browser
-- [ ] Brevo SMTP verified; password-reset email received
-- [ ] Frontend on Pages; correct logo/color/name visible at boot
-- [ ] GCash details set (if wallet on)
+- [x] CockroachDB cluster `raw-goblin-34935` (ap-southeast-1) + `defaultdb`
+- [x] `npm run migrate` completed (26 tables incl. `becs`, `donors`, `contributions`)
+- [x] Superadmin seeded (`kingAdmin`)
+- [x] API live on Render; `/api/health` + `/api/config` verified
+- [x] R2 bucket `parish-connect-sra-uploads` + API token; test upload verified
+- [x] VAPID keys set on Render; reminder endpoint verified (push delivery
+      pending first linked donor subscription)
+- [x] Brevo SMTP verified — test email sent to `reycelrcentino@gmail.com`
+- [x] Frontend on Pages; logo/color/name verified at boot
+- [x] GCash details set (`09173235981` / REYCEL R. CENTINO)
 - [ ] Registry imported (Parish Records → Import CSV)
-- [ ] `VERIFY_PARISH_RECORDS` — start `0`, flip to `1` after digitization
-- [ ] cron-job.org hitting `/api/cron/autopost` daily (optional)
+- [ ] `VERIFY_PARISH_RECORDS` — currently `0`, flip to `1` after digitization
+- [x] cron-job.org: keep-alive 5-min, autopost daily, dues reminder monthly — all verified 200
 
 ## Onboarding the *next* parish
 
@@ -282,24 +306,22 @@ and GCash values. No code changes needed — branding comes from `/api/config`.
       would need Express 5, low practical risk)
 
 **Still needs you:**
-- [x] CockroachDB Cloud account + cluster created (`raw-goblin-34935`, ap-southeast-1)
-- [x] `DATABASE_URL` set → `npm run migrate` applied all 23 tables to `defaultdb`
-- [x] Superadmin seeded (`reycelrcentino@gmail.com` / `kingAdmin`) — verified via live login → JWT
-- [x] GCash payee set (`09173235981` / REYCEL R. CENTINO) + QR asset hosted
-- [x] API deployed on Render (Singapore) — `https://parish-connectkawayanbiliranapi.onrender.com`, health 200, prod login verified
-- [x] Frontend live on Cloudflare Pages — `https://parish-connect-kawayan-biliran.pages.dev`,
-      `VITE_API_BASE_URL` set, `APP_URL`/`ALLOWED_ORIGINS` updated on Render,
-      CORS + login verified cross-origin
-- [ ] Remaining accounts: Cloudflare R2 (uploads), Brevo (SMTP), cron-job.org (optional: Groq)
 - [ ] Sacramental records digitization (Parish Records → Add Record or
       Import CSV for bulk), then flip `VERIFY_PARISH_RECORDS=1`
+- [ ] Optional housekeeping: delete the test posts created by autopost
+      test runs; delete `test/healthcheck.txt` in the R2 bucket
 
 
 | Layer | URL / Status |
 | --- | --- |
-| Frontend | https://parish-connect-kawayan-biliran.pages.dev — SRA branding, green #16a34a, seal logo/icons |
+| Frontend | https://parish-connect-kawayan-biliran.pages.dev — SRA branding, green #16a34a, seal logo/icons, parish photo background |
 | API | https://parish-connectkawayanbiliranapi.onrender.com — health 200 |
-| Database | CockroachDB raw-goblin-34935 (Singapore) — 23 tables, migrated |
+| Database | CockroachDB raw-goblin-34935 (Singapore) — 26 tables, migrated |
 | Auth | kingAdmin / superadmin login verified cross-origin (Pages → Render, CORS header confirmed) |
 | GCash | QR + 09173235981 / REYCEL R. CENTINO serving from the wallet endpoint |
+| File storage | R2 `parish-connect-sra-uploads` — S3 API verified, public dev URL live |
+| Email | Brevo SMTP — authenticated + test email sent |
+| Push | Web Push/VAPID — `/api/cron/contribution-reminder` verified 200 |
+| BEC dues ledger | `becs`/`donors`/`contributions` tables + `/api/finance` + Admin Management → "BEC Dues" tab |
+| Cron | cron-job.org ×3 — keep-alive (5 min), autopost (daily, Groq AI confirmed), dues reminder (monthly) |
 | Auto-deploys | Push to main → Render rebuilds API, Pages rebuilds frontend |
