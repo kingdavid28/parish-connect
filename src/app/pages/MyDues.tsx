@@ -33,6 +33,11 @@ const STATUS_STYLE: Record<string, string> = {
   partial: "bg-amber-100 text-amber-800",
   unpaid: "bg-gray-100 text-gray-500",
 };
+const STATUS_LABEL: Record<string, string> = {
+  paid: "complete",
+  partial: "partial",
+  unpaid: "not yet",
+};
 
 export default function MyDues() {
   const now = new Date();
@@ -95,19 +100,19 @@ export default function MyDues() {
             <>
               <p className="text-sm text-gray-600 mb-4">
                 {ledger.donor.name}{ledger.donor.bec_name ? ` · ${ledger.donor.bec_name}` : ""}
-                {ledger.expected > 0 && ` · dues ${peso(ledger.expected)}/month`}
+                {ledger.expected > 0 && ` · suggested ${peso(ledger.expected)}/month`}
               </p>
               <div className="grid grid-cols-3 gap-3 mb-5">
                 <div className="rounded-lg border p-3 text-center">
-                  <p className="text-xs text-gray-500">Paid ({year})</p>
+                  <p className="text-xs text-gray-500">Given ({year})</p>
                   <p className="text-lg font-semibold text-green-700">{peso(totalPaid)}</p>
                 </div>
                 <div className="rounded-lg border p-3 text-center">
-                  <p className="text-xs text-gray-500">Expected</p>
+                  <p className="text-xs text-gray-500">Suggested</p>
                   <p className="text-lg font-semibold">{peso(totalDue)}</p>
                 </div>
                 <div className="rounded-lg border p-3 text-center">
-                  <p className="text-xs text-gray-500">Balance</p>
+                  <p className="text-xs text-gray-500">To go</p>
                   <p className={`text-lg font-semibold ${totalBalance > 0 ? "text-amber-600" : "text-green-700"}`}>
                     {peso(totalBalance)}
                   </p>
@@ -120,12 +125,12 @@ export default function MyDues() {
                       <div>
                         <p className="font-medium">{MONTHS_FULL[m.month - 1]}</p>
                         <p className="text-xs text-gray-500">
-                          {m.expected > 0 ? `due ${peso(m.expected)}` : "no dues set"}
-                          {m.status !== "unpaid" && ` · paid ${peso(m.paid_total)}`}
-                          {m.status === "partial" && ` · balance ${peso(m.balance)}`}
+                          {m.expected > 0 ? `suggested ${peso(m.expected)}` : "no suggested amount"}
+                          {m.status !== "unpaid" && ` · given ${peso(m.paid_total)}`}
+                          {m.status === "partial" && ` · ${peso(m.balance)} to go`}
                         </p>
                       </div>
-                      <Badge className={`${STATUS_STYLE[m.status]} border-0 capitalize`}>{m.status}</Badge>
+                      <Badge className={`${STATUS_STYLE[m.status]} border-0`}>{STATUS_LABEL[m.status]}</Badge>
                     </div>
                     {m.payments.length > 0 && (
                       <div className="mt-2 space-y-1 border-t pt-2">

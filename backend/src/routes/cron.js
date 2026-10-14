@@ -87,12 +87,14 @@ async function contributionReminder(req, res) {
   }
 
   try {
-    // Donors owing (unpaid or partial) who haven't been reminded this month
+    // Donors with a suggested amount who haven't completed it and
+    // haven't been reminded yet. Donations are voluntary — donors with
+    // no suggested amount are never reminded.
     const { rows: owing } = await pool.query(
       `SELECT d.id, d.name, d.user_id,
               COALESCE(d.expected_amount, b.expected_amount, 0)::float AS expected,
               COALESCE(p.paid, 0)::float AS paid_total,
-              GREATEST(COALESCE(d.expected_amount, b.expected_amount, 0) - COALESCE(p.paid, 0), 0)::float AS balance
+              GREATEST(COALESCE(d.expected_amount, b.expected_amount, 0) - COALESCE(p.paid, 0), 0)::float AS remaining
        FROM donors d
        LEFT JOIN becs b ON b.id = d.bec_id
        LEFT JOIN (
@@ -100,7 +102,8 @@ async function contributionReminder(req, res) {
          FROM contribution_payments WHERE year = $1 AND month = $2 GROUP BY donor_id
        ) p ON p.donor_id = d.id
        WHERE d.is_active = 1 AND d.user_id IS NOT NULL
-         AND COALESCE(p.paid, 0) < GREATEST(COALESCE(d.expected_amount, b.expected_amount, 0), 0.000001)
+         AND COALESCE(d.expected_amount, b.expected_amount, 0) > 0
+         AND COALESCE(p.paid, 0) < COALESCE(d.expected_amount, b.expected_amount, 0)
          AND NOT EXISTS (
            SELECT 1 FROM contribution_reminders r
            WHERE r.donor_id = d.id AND r.year = $1 AND r.month = $2
@@ -112,9 +115,9 @@ async function contributionReminder(req, res) {
     await Promise.all(owing.map(async (donor) => {
       await sendPushToUser(donor.user_id, {
         title: "Monthly Contribution Reminder",
-        body: donor.balance > 0
-          ? `Friendly reminder: ₱${Number(donor.balance).toFixed(2)} is still due for ${label}.`
-          : `Friendly reminder: your ${label} contribution hasn't been recorded yet.`,
+        body: donor.remaining > 0 && donor.paid_total > 0
+          ? `Salamat sa imong ₱${Number(donor.paid_total).toFixed(2)}! ₱${Number(donor.remaining).toFixed(2)} more completes your suggested ${label} contribution.`
+          : `A gentle reminder: your suggested ${label} contribution of ₱${Number(donor.expected).toFixed(2)} supports our parish ministries. Daghang salamat!`,
         tag: `contrib-${year}-${month}-${donor.id}`,
         url: `${config.appUrl}${config.appBasePath}/dues`,
       });

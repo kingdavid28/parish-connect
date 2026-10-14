@@ -448,7 +448,7 @@ export default function FinancePanel() {
               <>
                 <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-4">
                   <div className="rounded-lg border p-3">
-                    <p className="text-xs text-gray-500">Expected</p>
+                    <p className="text-xs text-gray-500">Suggested</p>
                     <p className="text-lg font-semibold">{peso(expected)}</p>
                   </div>
                   <div className="rounded-lg border p-3">
@@ -456,7 +456,7 @@ export default function FinancePanel() {
                     <p className="text-lg font-semibold">{peso(collected)}</p>
                   </div>
                   <div className="rounded-lg border p-3">
-                    <p className="text-xs text-gray-500">Paid</p>
+                    <p className="text-xs text-gray-500">Complete</p>
                     <p className="text-lg font-semibold">{paid}</p>
                   </div>
                   <div className="rounded-lg border p-3">
@@ -464,7 +464,7 @@ export default function FinancePanel() {
                     <p className={`text-lg font-semibold ${partial > 0 ? "text-amber-600" : ""}`}>{partial}</p>
                   </div>
                   <div className="rounded-lg border p-3">
-                    <p className="text-xs text-gray-500">Unpaid</p>
+                    <p className="text-xs text-gray-500">None yet</p>
                     <p className={`text-lg font-semibold ${unpaid > 0 ? "text-amber-600" : ""}`}>{unpaid}</p>
                   </div>
                 </div>
@@ -472,7 +472,7 @@ export default function FinancePanel() {
                   <div className="flex flex-wrap gap-2">
                     {summary.map((r) => (
                       <Badge key={r.bec_id ?? "none"} variant="secondary" className="font-normal">
-                        {r.bec_name}: {peso(r.collected)}/{peso(r.expected_due)} · {r.paid}/{r.donors} paid
+                        {r.bec_name}: {peso(r.collected)}/{peso(r.expected_due)} · {r.paid}/{r.donors} complete
                       </Badge>
                     ))}
                   </div>
@@ -504,7 +504,7 @@ export default function FinancePanel() {
                 className="inline-flex items-center gap-1.5 border rounded-full px-3 py-1 text-sm hover:border-primary transition-colors"
                 title="Edit BEC">
                 {b.name}
-                {b.expected_amount != null && <span className="text-xs text-gray-500">{peso(b.expected_amount)}/mo</span>}
+                {b.expected_amount != null && <span className="text-xs text-gray-500">{peso(b.expected_amount)}/mo suggested</span>}
                 <Pencil className="h-3 w-3 text-gray-400" />
               </button>
             ))}
@@ -551,7 +551,7 @@ export default function FinancePanel() {
                   <TableRow>
                     <TableHead>Name</TableHead>
                     <TableHead className="hidden md:table-cell">BEC</TableHead>
-                    <TableHead className="hidden sm:table-cell">Dues</TableHead>
+                    <TableHead className="hidden sm:table-cell">Suggested</TableHead>
                     <TableHead className="hidden lg:table-cell">Linked User</TableHead>
                     <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
@@ -619,9 +619,9 @@ export default function FinancePanel() {
                 placeholder="e.g., BEC St. Joseph" />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="bec-exp">Default monthly dues (₱)</Label>
+              <Label htmlFor="bec-exp">Suggested monthly amount (₱)</Label>
               <Input id="bec-exp" type="number" min="0" step="0.01" value={becExpected}
-                onChange={(e) => setBecExpected(e.target.value)} placeholder="e.g., 50 — leave blank if none" />
+                onChange={(e) => setBecExpected(e.target.value)} placeholder="e.g., 50 — optional" />
             </div>
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setBecDialogOpen(false)}>Cancel</Button>
@@ -659,7 +659,7 @@ export default function FinancePanel() {
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="d-exp">Monthly dues (₱)</Label>
+                <Label htmlFor="d-exp">Suggested monthly (₱)</Label>
                 <Input id="d-exp" type="number" min="0" step="0.01" value={dForm.expected}
                   onChange={(e) => setDForm({ ...dForm, expected: e.target.value })} placeholder="Inherit BEC" />
               </div>
@@ -712,7 +712,7 @@ export default function FinancePanel() {
             <DialogTitle>{ledger?.donor.name} — Ledger</DialogTitle>
             <DialogDescription>
               {ledger?.donor.bec_name || "No BEC"}
-              {ledger ? ` · dues ${ledger.expected > 0 ? peso(ledger.expected) + "/mo" : "not set"}` : ""}
+              {ledger ? ` · suggested ${ledger.expected > 0 ? peso(ledger.expected) + "/mo" : "not set"}` : ""}
               {" · click a month"}
             </DialogDescription>
           </DialogHeader>
@@ -744,7 +744,7 @@ export default function FinancePanel() {
                     </p>
                   )}
                   <p className="text-[10px] text-primary">
-                    {m.status === "partial" ? `bal ${peso(m.balance)}` : m.status === "paid" ? "paid" : "+ record"}
+                    {m.status === "partial" ? `${peso(m.balance)} to go` : m.status === "paid" ? "complete" : "+ record"}
                   </p>
                 </button>
               ))}
@@ -762,8 +762,8 @@ export default function FinancePanel() {
                 <DialogTitle>{MONTHS_FULL[detailMonth.month - 1]} {ledgerYear} — {ledger.donor.name}</DialogTitle>
                 <DialogDescription>
                   {detailMonth.expected > 0
-                    ? `Due ${peso(detailMonth.expected)} · paid ${peso(detailMonth.paid_total)} · balance ${peso(detailMonth.balance)}`
-                    : `Paid ${peso(detailMonth.paid_total)}`}
+                    ? `Suggested ${peso(detailMonth.expected)} · given ${peso(detailMonth.paid_total)} · ${peso(detailMonth.balance)} to go`
+                    : `Given ${peso(detailMonth.paid_total)}`}
                 </DialogDescription>
               </DialogHeader>
               <div className="space-y-2">

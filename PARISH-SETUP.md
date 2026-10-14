@@ -245,37 +245,40 @@ To disable the feature entirely: `RECORDS_MODE=off`.
 
 ---
 
-## Step 8 — BEC monthly dues ledger
+## Step 8 — BEC monthly contributions ledger
 
 Admin Management → **BEC Dues** tab. **All finance reads/writes are
 admin/superadmin-only** — members cannot see other people's contributions.
 
-1. Add **BECs** — optionally with a **default monthly dues** amount
+Contributions are voluntary, not debts — the ledger tracks a **suggested**
+monthly amount per donor and how much of it they've given. Nothing is
+"owed".
+
+1. Add **BECs** — optionally with a **suggested monthly amount**
    (e.g. ₱50).
-2. Add **donors** — name + BEC + optional GCash number, per-donor dues
-   override, and optional linked app account. The link enables push
-   reminders via the Step 6 cron **and** gives the member self-view.
-   Bulk onboarding: **Import** accepts a CSV (`name,address,bec,gcash,
-   expected`) — new BEC names are created automatically; bad rows are
-   reported, not silently skipped.
+2. Add **donors** — name + BEC + optional GCash number, per-donor
+   suggested-amount override, and optional linked app account. The link
+   enables push reminders via the Step 6 cron **and** gives the member
+   self-view. Bulk onboarding: **Import** accepts a CSV (`name,address,
+   bec,gcash,expected`) — new BEC names are created automatically; bad
+   rows are reported, not silently skipped.
 3. Click a donor's **Ledger** → click any month → the detail view shows
-   expected vs paid vs balance and the **payment history**. A month can
-   hold multiple payments — partial payments are tracked as a remaining
-   balance, not marked "paid". Payments are editable/deletable; receipt
-   photos upload to R2.
-4. The top card shows expected/collected/paid/partial/unpaid per month
-   with per-BEC breakdown; **Export** downloads the month as CSV.
-   Deactivating a donor stops reminders and hides them from dues while
-   keeping their ledger.
+   suggested vs given vs remaining and the **payment history**. A month
+   can hold multiple payments — partial giving shows what's left of the
+   suggested amount, not a "debt". Payments are editable/deletable;
+   receipt photos upload to R2.
+4. The top card shows suggested/collected/complete/partial counts per
+   month with per-BEC breakdown; **Export** downloads the month as CSV.
+   Deactivating a donor stops reminders while keeping their ledger.
 
 **Member self-view:** linked members see their own ledger at
 `/dues` (navbar → My Contributions) — payments, method, reference,
-and remaining balance only for themselves.
+and remaining suggested amount only for themselves.
 
-**Reminders:** the monthly cron pushes each linked active donor with a
-remaining balance for the previous month, including the amount still
-owed. `contribution_reminders` deduplicates — re-running the job the
-same month never double-notifies.
+**Reminders:** the monthly cron gently reminds each linked active donor
+who has a suggested amount they haven't completed — donors with no
+suggested amount are never reminded. `contribution_reminders`
+deduplicates — re-running the job the same month never double-notifies.
 
 Everything is audit-logged (`create_donor`, `record_payment`,
 `import_donors`, `export_finance`, …).
