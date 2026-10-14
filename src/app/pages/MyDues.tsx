@@ -6,6 +6,7 @@ import {
 } from "../components/ui/select";
 import { Loader2, PhilippinePeso } from "lucide-react";
 import { API } from "../config";
+import ImageLightbox from "../components/ImageLightbox";
 
 const MONTHS_FULL = ["January","February","March","April","May","June",
   "July","August","September","October","November","December"];
@@ -44,6 +45,7 @@ export default function MyDues() {
   const [year, setYear] = useState(now.getFullYear());
   const [ledger, setLedger] = useState<MyLedger | null>(null);
   const [loading, setLoading] = useState(true);
+  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
 
   const fetchLedger = useCallback(async () => {
     setLoading(true);
@@ -138,6 +140,10 @@ export default function MyDues() {
                           <div key={p.id} className="flex justify-between text-sm">
                             <span className="text-gray-600 capitalize">
                               {p.method}{p.reference ? ` · ${p.reference}` : ""}
+                              {p.receipt_url && (
+                                <> · <button type="button" className="text-primary hover:underline"
+                                  onClick={() => setLightboxUrl(p.receipt_url!)}>receipt</button></>
+                              )}
                             </span>
                             <span className="font-medium">{peso(p.amount)}</span>
                           </div>
@@ -151,6 +157,8 @@ export default function MyDues() {
           )}
         </CardContent>
       </Card>
+
+      <ImageLightbox src={lightboxUrl} alt="Payment receipt" onClose={() => setLightboxUrl(null)} />
     </div>
   );
 }

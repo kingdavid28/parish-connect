@@ -12,12 +12,13 @@ import {
 } from "../components/ui/dialog";
 import {
     CheckCircle2, XCircle, Loader, ArrowDownCircle, ArrowUpCircle, RefreshCw,
-    ImageIcon, ZoomIn, X,
+    ImageIcon, ZoomIn,
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
 
 import { API } from "../config";
+import ImageLightbox from "../components/ImageLightbox";
 const getToken = () =>
     localStorage.getItem("parish_token") || sessionStorage.getItem("parish_token");
 
@@ -321,26 +322,7 @@ export default function AdminWallet() {
             </Dialog>
 
             {/* Receipt lightbox */}
-            {lightboxUrl && (
-                <div
-                    className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4"
-                    onClick={() => setLightboxUrl(null)}
-                >
-                    <button
-                        className="absolute top-4 right-4 text-white bg-white/20 rounded-full p-2 hover:bg-white/30"
-                        onClick={() => setLightboxUrl(null)}
-                        aria-label="Close"
-                    >
-                        <X className="h-5 w-5" />
-                    </button>
-                    <img
-                        src={lightboxUrl}
-                        alt="GCash receipt"
-                        className="max-w-full max-h-[90vh] rounded-xl shadow-2xl object-contain"
-                        onClick={e => e.stopPropagation()}
-                    />
-                </div>
-            )}
+            <ImageLightbox src={lightboxUrl} alt="GCash receipt" onClose={() => setLightboxUrl(null)} />
         </div>
     );
 }

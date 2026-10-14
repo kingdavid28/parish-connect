@@ -10,12 +10,13 @@ import { Separator } from "../components/ui/separator";
 import { Avatar, AvatarImage, AvatarFallback } from "../components/ui/avatar";
 import {
     Wallet as WalletIcon, ArrowDownCircle, ArrowUpCircle, Gift,
-    Loader, Zap, Clock, CheckCircle2, XCircle, Info, ImageIcon, X,
+    Loader, Zap, Clock, CheckCircle2, XCircle, Info, ImageIcon, X, ZoomIn,
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
 
 import { API } from "../config";
+import ImageLightbox from "../components/ImageLightbox";
 const getToken = () =>
     localStorage.getItem("parish_token") || sessionStorage.getItem("parish_token");
 
@@ -159,6 +160,7 @@ export default function Wallet() {
     const [searchingUsers, setSearchingUsers] = useState(false);
 
     const [loadError, setLoadError] = useState(false);
+    const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
 
     useEffect(() => {
         Promise.all([fetchSummary(), fetchGcashInfo()]).finally(() => setLoading(false));
@@ -370,8 +372,15 @@ export default function Wallet() {
                             <CardContent className="space-y-4">
                                 <div className="flex flex-col sm:flex-row gap-4 items-center">
                                     {gcashInfo.gcash_qr_url && (
-                                        <img src={gcashInfo.gcash_qr_url} alt="GCash QR" className="w-40 h-40 rounded-xl border object-contain bg-white"
-                                            decoding="async" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
+                                        <button type="button" onClick={() => setLightboxUrl(gcashInfo.gcash_qr_url)}
+                                            className="relative group cursor-zoom-in" aria-label="Enlarge GCash QR code"
+                                            title="Tap to enlarge">
+                                            <img src={gcashInfo.gcash_qr_url} alt="GCash QR" className="w-40 h-40 rounded-xl border object-contain bg-white"
+                                                decoding="async" onError={(e) => { e.currentTarget.closest('button')!.style.display = 'none'; }} />
+                                            <span className="absolute bottom-1.5 right-1.5 rounded-full bg-black/60 p-1.5 text-white opacity-0 group-hover:opacity-100 transition-opacity">
+                                                <ZoomIn className="h-4 w-4" />
+                                            </span>
+                                        </button>
                                     )}
                                     <div className="space-y-2 text-sm">
                                         <div>
@@ -657,6 +666,8 @@ export default function Wallet() {
                     )}
                 </TabsContent>
             </Tabs>
+
+            <ImageLightbox src={lightboxUrl} alt="GCash QR code" onClose={() => setLightboxUrl(null)} />
         </div>
     );
 }

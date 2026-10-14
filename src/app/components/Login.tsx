@@ -66,7 +66,7 @@ export default function Login() {
               height={80}
             />
           </div>
-          <CardTitle className="text-2xl">Welcome Back</CardTitle>
+          <CardTitle className="text-2xl">Welcome to {parish.name}</CardTitle>
           <CardDescription>Sign in to your Parish Connect account</CardDescription>
         </CardHeader>
 

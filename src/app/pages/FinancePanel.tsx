@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { API } from "../config";
+import ImageLightbox from "../components/ImageLightbox";
 import { parseDonorsCsv, DONORS_CSV_TEMPLATE } from "../lib/parseCsv";
 
 const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
@@ -112,6 +113,7 @@ export default function FinancePanel() {
   const [importErrors, setImportErrors] = useState<{ row: number; message: string }[]>([]);
   const [importing, setImporting] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
 
   const authHeaders = useCallback(() => ({
     Authorization: `Bearer ${getToken()}`,
@@ -778,7 +780,7 @@ export default function FinancePanel() {
                         {p.method}{p.reference ? ` · ${p.reference}` : ""}
                         {p.receipt_url && (
                           <> · <button type="button" className="text-primary hover:underline"
-                            onClick={() => window.open(p.receipt_url!, "_blank")}>receipt</button></>
+                            onClick={() => setLightboxUrl(p.receipt_url!)}>receipt</button></>
                         )}
                       </p>
                     </div>
@@ -886,6 +888,8 @@ export default function FinancePanel() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <ImageLightbox src={lightboxUrl} alt="Payment receipt" onClose={() => setLightboxUrl(null)} />
     </div>
   );
 }
