@@ -102,28 +102,61 @@ CREATE INDEX IF NOT EXISTS idx_sacramental_records_name ON sacramental_records(n
 
 -- BEC (Basic Ecclesial Community) monthly dues ledger.
 CREATE TABLE IF NOT EXISTS becs (
-  id         VARCHAR(36)  NOT NULL PRIMARY KEY,
-  name       VARCHAR(150) NOT NULL UNIQUE,
-  created_at TIMESTAMP    DEFAULT CURRENT_TIMESTAMP
+  id              VARCHAR(36)   NOT NULL PRIMARY KEY,
+  name            VARCHAR(150)  NOT NULL UNIQUE,
+  expected_amount NUMERIC(12,2) NULL,          -- default monthly dues for its donors
+  created_at      TIMESTAMP     DEFAULT CURRENT_TIMESTAMP
 );
+ALTER TABLE becs ADD COLUMN IF NOT EXISTS expected_amount NUMERIC(12,2) NULL;
 
 CREATE TABLE IF NOT EXISTS donors (
-  id           VARCHAR(36)  NOT NULL PRIMARY KEY,
-  name         VARCHAR(200) NOT NULL,
-  address      VARCHAR(300) NULL,
-  bec_id       VARCHAR(36)  NULL REFERENCES becs(id) ON DELETE SET NULL,
-  gcash_number VARCHAR(20)  NULL,
-  user_id      VARCHAR(36)  NULL REFERENCES users(id) ON DELETE SET NULL,
-  is_active    SMALLINT     DEFAULT 1,
-  notes        TEXT         NULL,
-  created_by   VARCHAR(36)  NULL REFERENCES users(id) ON DELETE SET NULL,
-  created_at   TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
-  updated_at   TIMESTAMP    DEFAULT CURRENT_TIMESTAMP
+  id              VARCHAR(36)   NOT NULL PRIMARY KEY,
+  name            VARCHAR(200)  NOT NULL,
+  address         VARCHAR(300)  NULL,
+  bec_id          VARCHAR(36)   NULL REFERENCES becs(id) ON DELETE SET NULL,
+  gcash_number    VARCHAR(20)   NULL,
+  user_id         VARCHAR(36)   NULL REFERENCES users(id) ON DELETE SET NULL,
+  expected_amount NUMERIC(12,2) NULL,          -- overrides BEC default; NULL = inherit
+  is_active       SMALLINT      DEFAULT 1,
+  notes           TEXT          NULL,
+  created_by      VARCHAR(36)   NULL REFERENCES users(id) ON DELETE SET NULL,
+  created_at      TIMESTAMP     DEFAULT CURRENT_TIMESTAMP,
+  updated_at      TIMESTAMP     DEFAULT CURRENT_TIMESTAMP
 );
+ALTER TABLE donors ADD COLUMN IF NOT EXISTS expected_amount NUMERIC(12,2) NULL;
 CREATE INDEX IF NOT EXISTS idx_donors_name ON donors(name);
 CREATE INDEX IF NOT EXISTS idx_donors_bec  ON donors(bec_id);
 
--- One ledger row per donor per month — upsert on the unique key.
+-- Payments ledger — multiple payments per donor per month (partials).
+-- Paid status = SUM(payments) vs expected_amount (donor, else BEC).
+CREATE TABLE IF NOT EXISTS contribution_payments (
+  id          VARCHAR(36)    NOT NULL PRIMARY KEY,
+  donor_id    VARCHAR(36)    NOT NULL REFERENCES donors(id) ON DELETE CASCADE,
+  year        SMALLINT       NOT NULL,
+  month       SMALLINT       NOT NULL,
+  amount      NUMERIC(12,2)  NOT NULL,
+  method      VARCHAR(20)    NOT NULL DEFAULT 'cash',
+  reference   VARCHAR(120)   NULL,
+  receipt_url VARCHAR(500)   NULL,
+  recorded_by VARCHAR(36)    NULL REFERENCES users(id) ON DELETE SET NULL,
+  created_at  TIMESTAMP      DEFAULT CURRENT_TIMESTAMP,
+  updated_at  TIMESTAMP      DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_payments_donor_month ON contribution_payments(donor_id, year, month);
+CREATE INDEX IF NOT EXISTS idx_payments_year_month  ON contribution_payments(year, month);
+
+-- Dedup log so the reminder cron never double-notifies a donor/month.
+CREATE TABLE IF NOT EXISTS contribution_reminders (
+  donor_id VARCHAR(36) NOT NULL REFERENCES donors(id) ON DELETE CASCADE,
+  year     SMALLINT    NOT NULL,
+  month    SMALLINT    NOT NULL,
+  sent_at  TIMESTAMP   DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (donor_id, year, month)
+);
+
+-- Legacy single-row table from the first finance release. Migrated into
+-- contribution_payments and dropped by scripts/migrate.js — kept here only
+-- so fresh installs that never had it still validate.
 CREATE TABLE IF NOT EXISTS contributions (
   id          VARCHAR(36)    NOT NULL PRIMARY KEY,
   donor_id    VARCHAR(36)    NOT NULL REFERENCES donors(id) ON DELETE CASCADE,
@@ -138,8 +171,6 @@ CREATE TABLE IF NOT EXISTS contributions (
   updated_at  TIMESTAMP      DEFAULT CURRENT_TIMESTAMP,
   UNIQUE (donor_id, year, month)
 );
-CREATE INDEX IF NOT EXISTS idx_contributions_year_month ON contributions(year, month);
-CREATE INDEX IF NOT EXISTS idx_contributions_donor      ON contributions(donor_id);
 
 CREATE TABLE IF NOT EXISTS audit_logs (
   id          VARCHAR(36)  NOT NULL PRIMARY KEY,

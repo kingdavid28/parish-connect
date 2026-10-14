@@ -112,23 +112,30 @@ const HEADER_ALIASES: Record<string, string> = {
 const normalizeHeader = (h: string) => h.toLowerCase().replace(/[^a-z0-9]/g, "");
 
 /**
- * Parse CSV text with a header row into canonical record objects.
- * Rows failing structural validation surface in `errors` with their line number.
+ * Generic header-mapped CSV parse. `aliases` maps normalized headers to
+ * canonical fields; `required` fields must be present in the header and
+ * non-empty in every row.
  */
-export function parseRecordsCsv(text: string): CsvParseResult {
+export function parseCsvWithAliases(
+  text: string,
+  aliases: Record<string, string>,
+  required: string[] = ["name"]
+): CsvParseResult {
   const { grid, errors } = parseCsvGrid(text);
   if (grid.length === 0) {
     return { headers: [], rows: [], errors: [{ row: 1, message: "CSV is empty" }] };
   }
 
   const rawHeaders = grid[0];
-  const headers = rawHeaders.map((h) => HEADER_ALIASES[normalizeHeader(h)] || "");
-  if (!headers.includes("name")) {
-    return {
-      headers: rawHeaders,
-      rows: [],
-      errors: [...errors, { row: 1, message: 'Missing required "name" column in header row' }],
-    };
+  const headers = rawHeaders.map((h) => aliases[normalizeHeader(h)] || "");
+  for (const field of required) {
+    if (!headers.includes(field)) {
+      return {
+        headers: rawHeaders,
+        rows: [],
+        errors: [...errors, { row: 1, message: `Missing required "${field}" column in header row` }],
+      };
+    }
   }
   const unknown = rawHeaders.filter((h, i) => h.trim() && !headers[i]);
   unknown.forEach((h) =>
@@ -149,14 +156,43 @@ export function parseRecordsCsv(text: string): CsvParseResult {
       }
     });
     if (!Object.keys(data).length) continue; // blank line
-    if (!data.name) {
-      errors.push({ row: i + 1, message: "Missing name — row skipped" });
+    const missing = required.find((f) => !data[f]);
+    if (missing) {
+      errors.push({ row: i + 1, message: `Missing ${missing} — row skipped` });
       continue;
     }
     rows.push({ row: i + 1, data });
   }
   return { headers: rawHeaders, rows, errors };
 }
+
+/**
+ * Parse CSV text with a header row into canonical record objects.
+ * Rows failing structural validation surface in `errors` with their line number.
+ */
+export function parseRecordsCsv(text: string): CsvParseResult {
+  return parseCsvWithAliases(text, HEADER_ALIASES);
+}
+
+// ─── Donor import (BEC dues ledger) ──────────────────────────────────────────
+
+const DONOR_ALIASES: Record<string, string> = {
+  name: "name", fullname: "name", donor: "name", donorname: "name",
+  address: "address", addr: "address",
+  bec: "bec_name", becname: "bec_name", community: "bec_name",
+  gcash: "gcash_number", gcashnumber: "gcash_number", gcashno: "gcash_number",
+  expected: "expected_amount", expectedamount: "expected_amount",
+  dues: "expected_amount", monthly: "expected_amount", monthlydues: "expected_amount",
+};
+
+export function parseDonorsCsv(text: string): CsvParseResult {
+  return parseCsvWithAliases(text, DONOR_ALIASES);
+}
+
+export const DONORS_CSV_TEMPLATE =
+  "name,address,bec,gcash,expected\n" +
+  '"Dela Cruz, Juan","Purok 3, Kawayan","BEC St. Joseph","0917xxxxxxx","50"\n' +
+  '"Santos, Maria","Brgy. Proper, Kawayan","BEC St. Joseph","0918xxxxxxx","50"\n';
 
 /** CSV template header + example row for the Import dialog download. */
 export const RECORDS_CSV_TEMPLATE =

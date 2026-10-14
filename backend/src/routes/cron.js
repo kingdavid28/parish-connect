@@ -87,24 +87,43 @@ async function contributionReminder(req, res) {
   }
 
   try {
-    const { rows: unpaid } = await pool.query(
-      `SELECT d.id, d.name, d.user_id FROM donors d
+    // Donors owing (unpaid or partial) who haven't been reminded this month
+    const { rows: owing } = await pool.query(
+      `SELECT d.id, d.name, d.user_id,
+              COALESCE(d.expected_amount, b.expected_amount, 0)::float AS expected,
+              COALESCE(p.paid, 0)::float AS paid_total,
+              GREATEST(COALESCE(d.expected_amount, b.expected_amount, 0) - COALESCE(p.paid, 0), 0)::float AS balance
+       FROM donors d
+       LEFT JOIN becs b ON b.id = d.bec_id
+       LEFT JOIN (
+         SELECT donor_id, SUM(amount) AS paid
+         FROM contribution_payments WHERE year = $1 AND month = $2 GROUP BY donor_id
+       ) p ON p.donor_id = d.id
        WHERE d.is_active = 1 AND d.user_id IS NOT NULL
+         AND COALESCE(p.paid, 0) < GREATEST(COALESCE(d.expected_amount, b.expected_amount, 0), 0.000001)
          AND NOT EXISTS (
-           SELECT 1 FROM contributions c
-           WHERE c.donor_id = d.id AND c.year = $1 AND c.month = $2
+           SELECT 1 FROM contribution_reminders r
+           WHERE r.donor_id = d.id AND r.year = $1 AND r.month = $2
          )`,
       [year, month]
     );
 
     const label = `${MONTH_NAMES[month - 1]} ${year}`;
-    await Promise.all(unpaid.map((donor) => sendPushToUser(donor.user_id, {
-      title: "Monthly Contribution Reminder",
-      body: `Friendly reminder: your ${label} contribution for ${donor.name} hasn't been recorded yet.`,
-      tag: `contrib-${year}-${month}-${donor.id}`,
-      url: `${config.appUrl}${config.appBasePath}/`,
-    })));
-    const sent = unpaid.length;
+    await Promise.all(owing.map(async (donor) => {
+      await sendPushToUser(donor.user_id, {
+        title: "Monthly Contribution Reminder",
+        body: donor.balance > 0
+          ? `Friendly reminder: ₱${Number(donor.balance).toFixed(2)} is still due for ${label}.`
+          : `Friendly reminder: your ${label} contribution hasn't been recorded yet.`,
+        tag: `contrib-${year}-${month}-${donor.id}`,
+        url: `${config.appUrl}${config.appBasePath}/dues`,
+      });
+      await pool.query(
+        "INSERT INTO contribution_reminders (donor_id, year, month) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING",
+        [donor.id, year, month]
+      );
+    }));
+    const sent = owing.length;
     console.log(`[ContribReminder] ${label}: pushed ${sent} reminder(s)`);
     res.json({ success: true, data: { year, month, sent } });
   } catch (err) {

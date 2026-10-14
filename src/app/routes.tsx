@@ -20,6 +20,7 @@ const QRCodePage = lazy(() => import("./pages/QRCode"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 const Rewards = lazy(() => import("./pages/Rewards"));
 const Wallet = lazy(() => import("./pages/Wallet"));
+const MyDues = lazy(() => import("./pages/MyDues"));
 
 // Wrap lazy pages in Suspense
 const withSuspense = (Component: React.ComponentType) => (
@@ -49,6 +50,7 @@ export const router = createBrowserRouter([
       { path: "settings", element: withSuspense(Settings) },
       { path: "rewards", element: withSuspense(Rewards) },
       { path: "wallet", element: withSuspense(Wallet) },
+      { path: "dues", element: withSuspense(MyDues) },
       {
         path: "admin",
         element: (

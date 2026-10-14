@@ -15,6 +15,7 @@ import {
 import {
   Home, BookOpen, Users, Settings as SettingsIcon, LogOut, Shield, Crown,
   UserCircle, ChevronDown, MessageCircle, QrCode, Trophy, Wallet as WalletIcon,
+  PhilippinePeso,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -170,6 +171,11 @@ export default function Navbar() {
                   <DropdownMenuItem asChild>
                     <Link to="/wallet" className="cursor-pointer">
                       <WalletIcon className="mr-2 h-4 w-4" />GBless Wallet
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
+                    <Link to="/dues" className="cursor-pointer">
+                      <PhilippinePeso className="mr-2 h-4 w-4" />My Contributions
                     </Link>
                   </DropdownMenuItem>
                   <DropdownMenuItem asChild>
