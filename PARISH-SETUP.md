@@ -245,21 +245,40 @@ To disable the feature entirely: `RECORDS_MODE=off`.
 
 ---
 
-## Step 8 — BEC monthly dues ledger (admin)
+## Step 8 — BEC monthly dues ledger
 
-Admin Management → **BEC Dues** tab (requires `admin`/`superadmin`):
+Admin Management → **BEC Dues** tab. **All finance reads/writes are
+admin/superadmin-only** — members cannot see other people's contributions.
 
-1. Add **BECs** (Basic Ecclesial Communities) — e.g. "BEC St. Joseph".
-2. Add **donors** — name + BEC + optional GCash number + optional linked
-   app account. Linking enables push reminders via the Step 6 cron.
-3. Click a donor's **Ledger** → click any month cell → record amount,
-   method (cash/GCash/bank), reference no., optional receipt photo
-   (stored in R2). Re-recording a month overwrites — one row per
-   donor/month enforced by `UNIQUE(donor_id, year, month)`.
-4. The top card shows collected/paid/unpaid totals per month, broken
-   down per BEC. Deactivating a donor stops reminders, keeps the ledger.
+1. Add **BECs** — optionally with a **default monthly dues** amount
+   (e.g. ₱50).
+2. Add **donors** — name + BEC + optional GCash number, per-donor dues
+   override, and optional linked app account. The link enables push
+   reminders via the Step 6 cron **and** gives the member self-view.
+   Bulk onboarding: **Import** accepts a CSV (`name,address,bec,gcash,
+   expected`) — new BEC names are created automatically; bad rows are
+   reported, not silently skipped.
+3. Click a donor's **Ledger** → click any month → the detail view shows
+   expected vs paid vs balance and the **payment history**. A month can
+   hold multiple payments — partial payments are tracked as a remaining
+   balance, not marked "paid". Payments are editable/deletable; receipt
+   photos upload to R2.
+4. The top card shows expected/collected/paid/partial/unpaid per month
+   with per-BEC breakdown; **Export** downloads the month as CSV.
+   Deactivating a donor stops reminders and hides them from dues while
+   keeping their ledger.
 
-Everything is audit-logged (`create_donor`, `record_contribution`, …).
+**Member self-view:** linked members see their own ledger at
+`/dues` (navbar → My Contributions) — payments, method, reference,
+and remaining balance only for themselves.
+
+**Reminders:** the monthly cron pushes each linked active donor with a
+remaining balance for the previous month, including the amount still
+owed. `contribution_reminders` deduplicates — re-running the job the
+same month never double-notifies.
+
+Everything is audit-logged (`create_donor`, `record_payment`,
+`import_donors`, `export_finance`, …).
 
 ---
 
