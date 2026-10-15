@@ -76,10 +76,10 @@ export default function MyDues() {
     }
   }, [year]);
 
-  useEffect(() => { fetchLedger(); }, [fetchLedger]);
+  useEffect(() => { void fetchLedger(); }, [fetchLedger]);
 
   const submitReport = async () => {
-    const amount = parseFloat(reportAmount);
+    const amount = Number.parseFloat(reportAmount);
     if (!Number.isFinite(amount) || amount <= 0) { toast.error("Enter a valid amount"); return; }
     setReporting(true);
     try {
@@ -100,7 +100,7 @@ export default function MyDues() {
       toast.success("Contribution reported — pending admin approval");
       setReportOpen(false);
       setReportAmount(""); setReportRef(""); setReportReceipt(null);
-      fetchLedger();
+      void fetchLedger();
     } catch (e: any) {
       toast.error(e.message);
     } finally {
@@ -115,51 +115,39 @@ export default function MyDues() {
     .reduce((s, m) => s + m.expected, 0) || 0;
   const totalBalance = ledger?.months.reduce((s, m) => s + m.balance, 0) || 0;
 
-  return (
-    <div className="max-w-3xl mx-auto p-4 space-y-4">
-      <Card>
-        <CardHeader className="pb-3">
-          <div className="flex items-center justify-between gap-3">
-            <CardTitle className="flex items-center gap-2 text-lg">
-              <PhilippinePeso className="h-5 w-5 text-primary" />
-              My Contributions
-            </CardTitle>
-            <div className="flex items-center gap-2">
-              <Button size="sm" onClick={() => setReportOpen(true)}>
-                <Plus className="h-4 w-4 mr-1" /> Report
-              </Button>
-              <Select value={String(year)} onValueChange={(v) => setYear(Number(v))}>
-                <SelectTrigger className="w-[95px] h-9" aria-label="Year"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {years.map((y) => <SelectItem key={y} value={String(y)}>{y}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
+  const hasReports = (ledger?.months || []).some((m) => m.payments.length > 0);
+  const becPart = ledger?.donor?.bec_name ? " · " + ledger.donor.bec_name : "";
+  const donorLabel = ledger?.donor ? ledger.donor.name + becPart : "Your reported contributions";
+
+  const renderContent = () => {
+    if (loading) {
+      return (
+        <div className="flex items-center gap-2 text-sm text-gray-500 py-8 justify-center">
+          <Loader2 className="h-4 w-4 animate-spin" /> Loading…
+        </div>
+      );
+    }
+    if (!ledger?.donor && !hasReports) {
+      return (
+        <div className="text-center py-8 space-y-2">
+          <p className="text-gray-600 font-medium">No contributions yet.</p>
+          <p className="text-sm text-gray-500">
+            Sent via GCash? Tap <strong>Report</strong> above to submit it — an admin will match it to your record.
+          </p>
+        </div>
+      );
+    }
+    return (
+      <>
+        {!ledger?.donor && (
+          <div className="rounded-lg bg-blue-50 border border-blue-100 px-3 py-2 mb-4 text-xs text-blue-700">
+            Awaiting admin review — your reported contributions appear below once submitted. An admin will link your donor record on approval.
           </div>
-        </CardHeader>
-        <CardContent>
-          {loading ? (
-            <div className="flex items-center gap-2 text-sm text-gray-500 py-8 justify-center">
-              <Loader2 className="h-4 w-4 animate-spin" /> Loading…
-            </div>
-          ) : !ledger?.donor && !ledger?.months.some((m) => m.payments.length > 0) ? (
-            <div className="text-center py-8 space-y-2">
-              <p className="text-gray-600 font-medium">No contributions yet.</p>
-              <p className="text-sm text-gray-500">
-                Sent via GCash? Tap <strong>Report</strong> above to submit it — an admin will match it to your record.
-              </p>
-            </div>
-          ) : (
-            <>
-              {!ledger?.donor && (
-                <div className="rounded-lg bg-blue-50 border border-blue-100 px-3 py-2 mb-4 text-xs text-blue-700">
-                  Awaiting admin review — your reported contributions appear below once submitted. An admin will link your donor record on approval.
-                </div>
-              )}
-              <p className="text-sm text-gray-600 mb-4">
-                {ledger.donor ? `${ledger.donor.name}${ledger.donor.bec_name ? ` · ${ledger.donor.bec_name}` : ""}` : "Your reported contributions"}
-                {ledger.expected > 0 && ` · suggested ${peso(ledger.expected)}/month`}
-              </p>
+        )}
+        <p className="text-sm text-gray-600 mb-4">
+          {donorLabel}
+          {ledger!.expected > 0 && ` · suggested ${peso(ledger!.expected)}/month`}
+        </p>
               <div className="grid grid-cols-3 gap-3 mb-5">
                 <div className="rounded-lg border p-3 text-center">
                   <p className="text-xs text-gray-500">Given ({year})</p>
@@ -219,8 +207,32 @@ export default function MyDues() {
                 ))}
               </div>
             </>
-          )}
-        </CardContent>
+    );
+  };
+
+  return (
+    <div className="max-w-3xl mx-auto p-4 space-y-4">
+      <Card>
+        <CardHeader className="pb-3">
+          <div className="flex items-center justify-between gap-3">
+            <CardTitle className="flex items-center gap-2 text-lg">
+              <PhilippinePeso className="h-5 w-5 text-primary" />
+              My Contributions
+            </CardTitle>
+            <div className="flex items-center gap-2">
+              <Button size="sm" onClick={() => setReportOpen(true)}>
+                <Plus className="h-4 w-4 mr-1" /> Report
+              </Button>
+              <Select value={String(year)} onValueChange={(v) => setYear(Number(v))}>
+                <SelectTrigger className="w-[95px] h-9" aria-label="Year"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {years.map((y) => <SelectItem key={y} value={String(y)}>{y}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>{renderContent()}</CardContent>
       </Card>
 
       {/* Report contribution dialog */}
@@ -232,7 +244,7 @@ export default function MyDues() {
               Sent via GCash? Enter the details and a parish admin will confirm it.
             </DialogDescription>
           </DialogHeader>
-          <form onSubmit={(e) => { e.preventDefault(); submitReport(); }} className="space-y-4">
+          <form onSubmit={(e) => { e.preventDefault(); void submitReport(); }} className="space-y-4">
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-2">
                 <Label htmlFor="r-month">Month <span className="text-red-500">*</span></Label>
