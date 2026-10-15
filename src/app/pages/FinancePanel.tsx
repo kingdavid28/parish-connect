@@ -45,11 +45,17 @@ interface Donor {
 }
 interface Payment {
   id: string; month: number; amount: number; method: string;
-  reference: string | null; receipt_url: string | null; created_at: string;
+  reference: string | null; receipt_url: string | null;
+  status: "confirmed" | "pending" | "rejected"; created_at: string;
 }
 interface LedgerMonth {
-  month: number; expected: number; paid_total: number; balance: number;
-  status: "unpaid" | "partial" | "paid"; payments: Payment[];
+  month: number; expected: number; paid_total: number; pending_total: number;
+  balance: number; status: "unpaid" | "partial" | "paid"; payments: Payment[];
+}
+interface PendingReport {
+  id: string; year: number; month: number; amount: number; method: string;
+  reference: string | null; receipt_url: string | null; created_at: string;
+  donor_id: string; donor_name: string; bec_name: string | null; submitted_by_name: string | null;
 }
 interface Ledger {
   donor: Donor; year: number; expected: number; months: LedgerMonth[];
@@ -100,6 +106,10 @@ export default function FinancePanel() {
   const [payRef, setPayRef] = useState("");
   const [payReceipt, setPayReceipt] = useState<File | null>(null);
   const [savingPayment, setSavingPayment] = useState(false);
+
+  // Pending member-reported contributions
+  const [pending, setPending] = useState<PendingReport[]>([]);
+  const [actingPending, setActingPending] = useState<string | null>(null);
 
   // Summary
   const [sumYear, setSumYear] = useState(now.getFullYear());
@@ -170,7 +180,15 @@ export default function FinancePanel() {
     }
   }, [authHeaders]);
 
-  useEffect(() => { fetchBecs(); fetchSummary(); }, [fetchBecs, fetchSummary]);
+  const fetchPending = useCallback(async () => {
+    try {
+      const res = await fetch(`${API}/finance/contributions/pending`, { headers: authHeaders() });
+      const data = await res.json();
+      if (data.success) setPending(data.data || []);
+    } catch { /* non-fatal */ }
+  }, [authHeaders]);
+
+  useEffect(() => { fetchBecs(); fetchSummary(); fetchPending(); }, [fetchBecs, fetchSummary, fetchPending]);
   useEffect(() => { fetchDonors(); }, [fetchDonors]);
 
   useEffect(() => {
@@ -324,6 +342,25 @@ export default function FinancePanel() {
       toast.error(e.message);
     } finally {
       setSavingPayment(false);
+    }
+  };
+
+  const actOnPending = async (id: string, action: "approve" | "reject") => {
+    setActingPending(id);
+    try {
+      const res = await fetch(`${API}/finance/payments/${id}/${action}`, {
+        method: "POST",
+        headers: authHeaders(),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || "Failed");
+      toast.success(action === "approve" ? "Contribution approved" : "Contribution rejected");
+      fetchPending(); fetchSummary();
+      if (ledger) fetchLedger(ledger.donor.id, ledgerYear);
+    } catch (e: any) {
+      toast.error(e.message);
+    } finally {
+      setActingPending(null);
     }
   };
 
@@ -484,6 +521,46 @@ export default function FinancePanel() {
           })()}
         </CardContent>
       </Card>
+
+      {/* Pending member reports */}
+      {pending.length > 0 && (
+        <Card className="border-amber-300">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base flex items-center gap-2">
+              Pending Reports
+              <Badge className="bg-amber-100 text-amber-800 border-0">{pending.length}</Badge>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {pending.map((r) => (
+              <div key={r.id} className="flex flex-wrap items-center justify-between gap-2 border rounded-lg px-3 py-2">
+                <div className="text-sm">
+                  <span className="font-medium">{r.donor_name}</span>
+                  {r.bec_name && <span className="text-gray-500"> · {r.bec_name}</span>}
+                  <p className="text-xs text-gray-500">
+                    {MONTHS_FULL[r.month - 1]} {r.year} · {r.method}
+                    {r.reference && ` · ref ${r.reference}`}
+                    {r.submitted_by_name && ` · by ${r.submitted_by_name}`}
+                    {r.receipt_url && (
+                      <> · <button type="button" className="text-primary hover:underline"
+                        onClick={() => setLightboxUrl(r.receipt_url!)}>receipt</button></>
+                    )}
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="font-semibold">{peso(r.amount)}</span>
+                  <Button size="sm" className="bg-green-600 hover:bg-green-700" disabled={actingPending === r.id}
+                    onClick={() => actOnPending(r.id, "approve")}>
+                    {actingPending === r.id ? <Loader2 className="h-4 w-4 animate-spin" /> : "Approve"}
+                  </Button>
+                  <Button size="sm" variant="outline" className="text-red-600 border-red-200" disabled={actingPending === r.id}
+                    onClick={() => actOnPending(r.id, "reject")}>Reject</Button>
+                </div>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
 
       {/* BECs */}
       <Card>
@@ -775,7 +852,15 @@ export default function FinancePanel() {
                 {detailMonth.payments.map((p) => (
                   <div key={p.id} className="flex items-center justify-between border rounded-lg px-3 py-2">
                     <div>
-                      <p className="font-semibold">{peso(p.amount)}</p>
+                      <p className={`font-semibold ${p.status === "rejected" ? "line-through text-gray-400" : ""}`}>
+                        {peso(p.amount)}
+                        {p.status === "pending" && (
+                          <Badge className="ml-1.5 bg-amber-100 text-amber-800 border-0 text-[10px]">pending</Badge>
+                        )}
+                        {p.status === "rejected" && (
+                          <Badge className="ml-1.5 bg-red-100 text-red-800 border-0 text-[10px]">rejected</Badge>
+                        )}
+                      </p>
                       <p className="text-xs text-gray-500 capitalize">
                         {p.method}{p.reference ? ` · ${p.reference}` : ""}
                         {p.receipt_url && (

@@ -138,12 +138,18 @@ CREATE TABLE IF NOT EXISTS contribution_payments (
   method      VARCHAR(20)    NOT NULL DEFAULT 'cash',
   reference   VARCHAR(120)   NULL,
   receipt_url VARCHAR(500)   NULL,
+  status      VARCHAR(10)    NOT NULL DEFAULT 'confirmed', -- confirmed|pending|rejected
+  submitted_by VARCHAR(36)   NULL REFERENCES users(id) ON DELETE SET NULL,
   recorded_by VARCHAR(36)    NULL REFERENCES users(id) ON DELETE SET NULL,
   created_at  TIMESTAMP      DEFAULT CURRENT_TIMESTAMP,
   updated_at  TIMESTAMP      DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_payments_donor_month ON contribution_payments(donor_id, year, month);
 CREATE INDEX IF NOT EXISTS idx_payments_year_month  ON contribution_payments(year, month);
+-- Idempotent upgrades for databases created before the approval workflow:
+ALTER TABLE contribution_payments ADD COLUMN IF NOT EXISTS status VARCHAR(10) NOT NULL DEFAULT 'confirmed';
+ALTER TABLE contribution_payments ADD COLUMN IF NOT EXISTS submitted_by VARCHAR(36) NULL;
+CREATE INDEX IF NOT EXISTS idx_payments_status ON contribution_payments(status);
 
 -- Dedup log so the reminder cron never double-notifies a donor/month.
 CREATE TABLE IF NOT EXISTS contribution_reminders (

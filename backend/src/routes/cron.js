@@ -99,7 +99,7 @@ async function contributionReminder(req, res) {
        LEFT JOIN becs b ON b.id = d.bec_id
        LEFT JOIN (
          SELECT donor_id, SUM(amount) AS paid
-         FROM contribution_payments WHERE year = $1 AND month = $2 GROUP BY donor_id
+         FROM contribution_payments WHERE year = $1 AND month = $2 AND status = 'confirmed' GROUP BY donor_id
        ) p ON p.donor_id = d.id
        WHERE d.is_active = 1 AND d.user_id IS NOT NULL
          AND COALESCE(d.expected_amount, b.expected_amount, 0) > 0

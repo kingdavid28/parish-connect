@@ -37,6 +37,8 @@ function monthStatus(expected, paidTotal) {
 }
 
 // Build a 12-month ledger for a donor from its payments rows.
+// paid_total counts confirmed payments only; self-reported ones sit
+// in pending_total until an admin approves them.
 function buildLedger(year, expected, payments) {
   const byMonth = new Map();
   for (const p of payments) {
@@ -46,11 +48,13 @@ function buildLedger(year, expected, payments) {
   const months = [];
   for (let m = 1; m <= 12; m++) {
     const list = byMonth.get(m) || [];
-    const paidTotal = list.reduce((s, p) => s + Number(p.amount), 0);
+    const paidTotal = list.reduce((s, p) => s + (p.status === "confirmed" ? Number(p.amount) : 0), 0);
+    const pendingTotal = list.reduce((s, p) => s + (p.status === "pending" ? Number(p.amount) : 0), 0);
     months.push({
       month: m,
       expected,
       paid_total: paidTotal,
+      pending_total: pendingTotal,
       balance: Math.max(0, expected - paidTotal),
       status: monthStatus(expected, paidTotal),
       payments: list,
@@ -320,7 +324,7 @@ async function fetchLedger(donorId, year) {
   const donor = donorRows[0];
   const expected = Number(donor.expected_amount ?? donor.bec_expected ?? 0);
   const { rows: payments } = await pool.query(
-    `SELECT id, month, amount, method, reference, receipt_url, recorded_by, created_at
+    `SELECT id, month, amount, method, reference, receipt_url, status, submitted_by, recorded_by, created_at
      FROM contribution_payments WHERE donor_id = $1 AND year = $2 ORDER BY month, created_at`,
     [donorId, year]
   );
@@ -361,7 +365,113 @@ router.get("/my/ledger", authenticate, async (req, res) => {
   }
 });
 
+// POST /api/finance/my/contributions — member self-reports a contribution
+// (multipart w/ optional `receipt`, or JSON). Creates a pending payment
+// against the donor record linked to their account; admin approves.
+router.post("/my/contributions", authenticate, upload.single("receipt"), async (req, res) => {
+  if (!financeEnabled(res)) return;
+  const body = req.body || {};
+  const now = new Date();
+  const year = Number.parseInt(body.year || now.getFullYear(), 10);
+  const month = Number.parseInt(body.month || now.getMonth() + 1, 10);
+  const amount = parseFloat(body.amount);
+  const method = VALID_METHODS.includes(String(body.method)) ? String(body.method) : "gcash";
+  const reference = String(body.reference || "").trim() || null;
+
+  if (!validYear(year)) return badRequest(res, "year is required");
+  if (!validMonth(month)) return badRequest(res, "month must be 1-12");
+  if (!(amount > 0) || amount >= 1000000) {
+    return badRequest(res, "amount must be between 0 and 1,000,000");
+  }
+
+  let receiptUrl = null;
+  if (req.file) {
+    const uploaded = await storeImage(req.file, "receipts", 5 * 1024 * 1024);
+    if (uploaded.error) {
+      return badRequest(res, uploaded.error);
+    }
+    receiptUrl = uploaded.url;
+  }
+
+  try {
+    const { rows } = await pool.query(
+      "SELECT id FROM donors WHERE user_id = $1 AND is_active = 1 ORDER BY created_at ASC LIMIT 1",
+      [req.user.id]
+    );
+    if (!rows[0]) {
+      return badRequest(res, "No contribution record is linked to your account — ask a parish admin to link it first");
+    }
+    const id = uuid();
+    await pool.query(
+      `INSERT INTO contribution_payments (id, donor_id, year, month, amount, method, reference, receipt_url, status, submitted_by)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'pending',$9)`,
+      [id, rows[0].id, year, month, amount, method, reference, receiptUrl, req.user.id]
+    );
+    await auditLog(req.user.id, "report_contribution", "contribution_payment", id, getClientIp(req));
+    res.status(201).json({ success: true, message: "Contribution reported — pending admin approval", data: { id } });
+  } catch (err) {
+    serverError(res, "Contribution report error", err);
+  }
+});
+
 // ─── Payments ────────────────────────────────────────────────────────────────
+
+// GET /api/finance/contributions/pending — member-reported payments awaiting review (admin)
+router.get("/contributions/pending", ...adminOnly, async (req, res) => {
+  if (!financeEnabled(res)) return;
+  try {
+    const { rows } = await pool.query(
+      `SELECT c.id, c.year, c.month, c.amount, c.method, c.reference, c.receipt_url, c.created_at,
+              d.id AS donor_id, d.name AS donor_name, b.name AS bec_name, u.name AS submitted_by_name
+       FROM contribution_payments c
+       JOIN donors d ON d.id = c.donor_id
+       LEFT JOIN becs b ON b.id = d.bec_id
+       LEFT JOIN users u ON u.id = c.submitted_by
+       WHERE c.status = 'pending'
+       ORDER BY c.created_at ASC`
+    );
+    res.json({ success: true, data: rows });
+  } catch (err) {
+    serverError(res, "Pending list error", err);
+  }
+});
+
+// POST /api/finance/payments/:id/approve — confirm a member-reported payment (admin)
+router.post("/payments/:id/approve", ...adminOnly, async (req, res) => {
+  if (!financeEnabled(res)) return;
+  try {
+    const result = await pool.query(
+      `UPDATE contribution_payments SET status='confirmed', recorded_by=$2, updated_at=NOW()
+       WHERE id=$1 AND status='pending'`,
+      [req.params.id, req.user.id]
+    );
+    if (result.rowCount === 0) {
+      return res.status(404).json({ success: false, message: "Pending payment not found" });
+    }
+    await auditLog(req.user.id, "approve_payment", "contribution_payment", req.params.id, getClientIp(req));
+    res.json({ success: true, message: "Contribution approved" });
+  } catch (err) {
+    serverError(res, "Payment approve error", err);
+  }
+});
+
+// POST /api/finance/payments/:id/reject — reject a member-reported payment (admin)
+router.post("/payments/:id/reject", ...adminOnly, async (req, res) => {
+  if (!financeEnabled(res)) return;
+  try {
+    const result = await pool.query(
+      "UPDATE contribution_payments SET status='rejected', updated_at=NOW() WHERE id=$1 AND status='pending'",
+      [req.params.id]
+    );
+    if (result.rowCount === 0) {
+      return res.status(404).json({ success: false, message: "Pending payment not found" });
+    }
+    await auditLog(req.user.id, "reject_payment", "contribution_payment", req.params.id, getClientIp(req));
+    res.json({ success: true, message: "Contribution rejected" });
+  } catch (err) {
+    serverError(res, "Payment reject error", err);
+  }
+});
 
 // GET /api/finance/contributions?year=&month=&bec_id=&page=&limit= (admin)
 router.get("/contributions", ...adminOnly, async (req, res) => {
@@ -514,7 +624,7 @@ router.get("/summary", ...adminOnly, async (req, res) => {
        LEFT JOIN donors d ON d.bec_id = b.id AND d.is_active = 1
        LEFT JOIN (
          SELECT donor_id, SUM(amount) AS paid
-         FROM contribution_payments WHERE year = $1 AND month = $2
+         FROM contribution_payments WHERE year = $1 AND month = $2 AND status = 'confirmed'
          GROUP BY donor_id
        ) p ON p.donor_id = d.id
        GROUP BY b.id, b.name
@@ -532,7 +642,7 @@ router.get("/summary", ...adminOnly, async (req, res) => {
        FROM donors d
        LEFT JOIN (
          SELECT donor_id, SUM(amount) AS paid
-         FROM contribution_payments WHERE year = $1 AND month = $2
+         FROM contribution_payments WHERE year = $1 AND month = $2 AND status = 'confirmed'
          GROUP BY donor_id
        ) p ON p.donor_id = d.id
        WHERE d.bec_id IS NULL AND d.is_active = 1
@@ -561,7 +671,7 @@ router.get("/unpaid", ...adminOnly, async (req, res) => {
        LEFT JOIN becs b ON b.id = d.bec_id
        LEFT JOIN (
          SELECT donor_id, SUM(amount) AS paid
-         FROM contribution_payments WHERE year = $1 AND month = $2
+         FROM contribution_payments WHERE year = $1 AND month = $2 AND status = 'confirmed'
          GROUP BY donor_id
        ) p ON p.donor_id = d.id
        WHERE d.is_active = 1
@@ -594,7 +704,7 @@ router.get("/export", ...adminOnly, async (req, res) => {
               COUNT(p.id)::int AS payment_count
        FROM donors d
        LEFT JOIN becs b ON b.id = d.bec_id
-       LEFT JOIN contribution_payments p ON p.donor_id = d.id AND p.year = $1${monthSql}
+       LEFT JOIN contribution_payments p ON p.donor_id = d.id AND p.year = $1${monthSql} AND p.status = 'confirmed'
        WHERE d.is_active = 1
        GROUP BY d.id, d.name, b.name, d.expected_amount, b.expected_amount
        ORDER BY b.name NULLS LAST, d.name`,
