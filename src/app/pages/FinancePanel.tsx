@@ -55,7 +55,8 @@ interface LedgerMonth {
 interface PendingReport {
   id: string; year: number; month: number; amount: number; method: string;
   reference: string | null; receipt_url: string | null; created_at: string;
-  donor_id: string; donor_name: string; bec_name: string | null; submitted_by_name: string | null;
+  donor_id: string | null; donor_name: string | null; bec_name: string | null;
+  submitted_by_name: string | null;
 }
 interface Ledger {
   donor: Donor; year: number; expected: number; months: LedgerMonth[];
@@ -110,6 +111,11 @@ export default function FinancePanel() {
   // Pending member-reported contributions
   const [pending, setPending] = useState<PendingReport[]>([]);
   const [actingPending, setActingPending] = useState<string | null>(null);
+  // Donor-matching dialog for unlinked reports
+  const [matchReport, setMatchReport] = useState<PendingReport | null>(null);
+  const [matchDonorId, setMatchDonorId] = useState("");
+  const [matchDonors, setMatchDonors] = useState<Donor[]>([]);
+  const [matchNewName, setMatchNewName] = useState("");
 
   // Summary
   const [sumYear, setSumYear] = useState(now.getFullYear());
@@ -345,23 +351,45 @@ export default function FinancePanel() {
     }
   };
 
-  const actOnPending = async (id: string, action: "approve" | "reject") => {
+  const actOnPending = async (id: string, action: "approve" | "reject", body: object = {}) => {
     setActingPending(id);
     try {
       const res = await fetch(`${API}/finance/payments/${id}/${action}`, {
         method: "POST",
-        headers: authHeaders(),
+        headers: { ...authHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify(body),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || "Failed");
       toast.success(action === "approve" ? "Contribution approved" : "Contribution rejected");
-      fetchPending(); fetchSummary();
+      setMatchReport(null);
+      fetchPending(); fetchSummary(); fetchBecs();
       if (ledger) fetchLedger(ledger.donor.id, ledgerYear);
     } catch (e: any) {
       toast.error(e.message);
     } finally {
       setActingPending(null);
     }
+  };
+
+  // Approve click: linked donor → approve directly; unlinked → open match dialog
+  const handleApprove = async (r: PendingReport) => {
+    if (r.donor_id) return actOnPending(r.id, "approve");
+    setMatchReport(r);
+    setMatchDonorId("");
+    setMatchNewName(r.submitted_by_name || r.donor_name || "");
+    try {
+      const res = await fetch(`${API}/finance/donors?limit=50`, { headers: authHeaders() });
+      const data = await res.json();
+      if (data.success) setMatchDonors(data.data?.items || []);
+    } catch { /* dialog still usable via create-new */ }
+  };
+
+  const confirmApprove = () => {
+    if (!matchReport) return;
+    const body = matchDonorId ? { donor_id: matchDonorId } : { new_donor_name: matchNewName.trim() };
+    if (!matchDonorId && !matchNewName.trim()) { toast.error("Pick a donor or enter a new name"); return; }
+    actOnPending(matchReport.id, "approve", body);
   };
 
   const deletePayment = async (id: string) => {
@@ -535,8 +563,11 @@ export default function FinancePanel() {
             {pending.map((r) => (
               <div key={r.id} className="flex flex-wrap items-center justify-between gap-2 border rounded-lg px-3 py-2">
                 <div className="text-sm">
-                  <span className="font-medium">{r.donor_name}</span>
+                  <span className="font-medium">{r.donor_name || r.submitted_by_name || "Unknown"}</span>
                   {r.bec_name && <span className="text-gray-500"> · {r.bec_name}</span>}
+                  {!r.donor_id && (
+                    <Badge className="ml-1.5 bg-blue-100 text-blue-800 border-0 text-[10px]">needs donor match</Badge>
+                  )}
                   <p className="text-xs text-gray-500">
                     {MONTHS_FULL[r.month - 1]} {r.year} · {r.method}
                     {r.reference && ` · ref ${r.reference}`}
@@ -550,7 +581,7 @@ export default function FinancePanel() {
                 <div className="flex items-center gap-2">
                   <span className="font-semibold">{peso(r.amount)}</span>
                   <Button size="sm" className="bg-green-600 hover:bg-green-700" disabled={actingPending === r.id}
-                    onClick={() => actOnPending(r.id, "approve")}>
+                    onClick={() => handleApprove(r)}>
                     {actingPending === r.id ? <Loader2 className="h-4 w-4 animate-spin" /> : "Approve"}
                   </Button>
                   <Button size="sm" variant="outline" className="text-red-600 border-red-200" disabled={actingPending === r.id}
@@ -969,6 +1000,44 @@ export default function FinancePanel() {
             <Button onClick={runImport} disabled={importing || !importRows.length}>
               {importing && <Loader2 className="h-4 w-4 mr-1 animate-spin" />}
               Import {importRows.length > 0 ? importRows.length : ""} Donors
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Donor-match dialog for unlinked reports */}
+      <Dialog open={!!matchReport} onOpenChange={(o) => !o && setMatchReport(null)}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Match Donor</DialogTitle>
+            <DialogDescription>
+              {matchReport && `${matchReport.submitted_by_name || "A member"} reported ${peso(matchReport.amount)} for ${MONTHS_FULL[matchReport.month - 1]} ${matchReport.year}. Pick the donor record — or create one (auto-links their account).`}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="space-y-2">
+              <Label htmlFor="match-donor">Existing donor</Label>
+              <Select value={matchDonorId || "none"} onValueChange={(v) => setMatchDonorId(v === "none" ? "" : v)}>
+                <SelectTrigger id="match-donor"><SelectValue placeholder="Select donor" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">— Create new instead —</SelectItem>
+                  {matchDonors.map((d) => <SelectItem key={d.id} value={d.id}>{d.name}{d.bec_name ? ` (${d.bec_name})` : ""}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            {!matchDonorId && (
+              <div className="space-y-2">
+                <Label htmlFor="match-new">New donor name</Label>
+                <Input id="match-new" value={matchNewName} onChange={(e) => setMatchNewName(e.target.value)}
+                  placeholder="Donor's full name" />
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setMatchReport(null)}>Cancel</Button>
+            <Button onClick={confirmApprove} disabled={actingPending === matchReport?.id}>
+              {actingPending === matchReport?.id && <Loader2 className="h-4 w-4 mr-1 animate-spin" />}
+              Approve &amp; {matchDonorId ? "Match" : "Create Donor"}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -318,15 +318,22 @@ router.delete("/donors/:id", ...adminOnly, async (req, res) => {
 
 // ─── Ledgers ─────────────────────────────────────────────────────────────────
 
-async function fetchLedger(donorId, year) {
-  const { rows: donorRows } = await pool.query(`${DONOR_SELECT} WHERE d.id = $1`, [donorId]);
-  if (!donorRows[0]) return null;
-  const donor = donorRows[0];
-  const expected = Number(donor.expected_amount ?? donor.bec_expected ?? 0);
+// submittedBy (optional): also include the member's self-reported payments
+// that haven't been matched to a donor yet (pending reports).
+async function fetchLedger(donorId, year, submittedBy = null) {
+  let donor = null;
+  if (donorId) {
+    const { rows: donorRows } = await pool.query(`${DONOR_SELECT} WHERE d.id = $1`, [donorId]);
+    if (!donorRows[0]) return null;
+    donor = donorRows[0];
+  }
+  const expected = donor ? Number(donor.expected_amount ?? donor.bec_expected ?? 0) : 0;
   const { rows: payments } = await pool.query(
     `SELECT id, month, amount, method, reference, receipt_url, status, submitted_by, recorded_by, created_at
-     FROM contribution_payments WHERE donor_id = $1 AND year = $2 ORDER BY month, created_at`,
-    [donorId, year]
+     FROM contribution_payments
+     WHERE year = $2 AND (donor_id = $1 OR ($3::varchar IS NOT NULL AND submitted_by = $3))
+     ORDER BY month, created_at`,
+    [donorId, year, submittedBy]
   );
   return { donor, ...buildLedger(year, expected, payments) };
 }
@@ -355,10 +362,8 @@ router.get("/my/ledger", authenticate, async (req, res) => {
       "SELECT id FROM donors WHERE user_id = $1 ORDER BY created_at ASC LIMIT 1",
       [req.user.id]
     );
-    if (!rows[0]) {
-      return res.json({ success: true, data: { donor: null, year, expected: 0, months: [] } });
-    }
-    const ledger = await fetchLedger(rows[0].id, year);
+    // No linked donor → still show the member's own pending reports
+    const ledger = await fetchLedger(rows[0]?.id || null, year, req.user.id);
     res.json({ success: true, data: ledger });
   } catch (err) {
     serverError(res, "My ledger error", err);
@@ -398,14 +403,12 @@ router.post("/my/contributions", authenticate, upload.single("receipt"), async (
       "SELECT id FROM donors WHERE user_id = $1 AND is_active = 1 ORDER BY created_at ASC LIMIT 1",
       [req.user.id]
     );
-    if (!rows[0]) {
-      return badRequest(res, "No contribution record is linked to your account — ask a parish admin to link it first");
-    }
+    // Unlinked members can still report — admin matches a donor on approve
     const id = uuid();
     await pool.query(
       `INSERT INTO contribution_payments (id, donor_id, year, month, amount, method, reference, receipt_url, status, submitted_by)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'pending',$9)`,
-      [id, rows[0].id, year, month, amount, method, reference, receiptUrl, req.user.id]
+      [id, rows[0]?.id || null, year, month, amount, method, reference, receiptUrl, req.user.id]
     );
     await auditLog(req.user.id, "report_contribution", "contribution_payment", id, getClientIp(req));
     res.status(201).json({ success: true, message: "Contribution reported — pending admin approval", data: { id } });
@@ -424,7 +427,7 @@ router.get("/contributions/pending", ...adminOnly, async (req, res) => {
       `SELECT c.id, c.year, c.month, c.amount, c.method, c.reference, c.receipt_url, c.created_at,
               d.id AS donor_id, d.name AS donor_name, b.name AS bec_name, u.name AS submitted_by_name
        FROM contribution_payments c
-       JOIN donors d ON d.id = c.donor_id
+       LEFT JOIN donors d ON d.id = c.donor_id
        LEFT JOIN becs b ON b.id = d.bec_id
        LEFT JOIN users u ON u.id = c.submitted_by
        WHERE c.status = 'pending'
@@ -437,19 +440,42 @@ router.get("/contributions/pending", ...adminOnly, async (req, res) => {
 });
 
 // POST /api/finance/payments/:id/approve — confirm a member-reported payment (admin)
+// Body: { donor_id } to match an existing donor, or { new_donor_name } to
+// create one (auto-linked to the member who reported).
 router.post("/payments/:id/approve", ...adminOnly, async (req, res) => {
   if (!financeEnabled(res)) return;
   try {
-    const result = await pool.query(
-      `UPDATE contribution_payments SET status='confirmed', recorded_by=$2, updated_at=NOW()
-       WHERE id=$1 AND status='pending'`,
-      [req.params.id, req.user.id]
+    const { rows: rows0 } = await pool.query(
+      "SELECT id, donor_id, submitted_by FROM contribution_payments WHERE id = $1 AND status = 'pending'",
+      [req.params.id]
     );
-    if (result.rowCount === 0) {
+    const payment = rows0[0];
+    if (!payment) {
       return res.status(404).json({ success: false, message: "Pending payment not found" });
     }
+
+    // Resolve which donor this payment belongs to
+    let donorId = payment.donor_id || String(req.body?.donor_id || "").trim() || null;
+    const newDonorName = String(req.body?.new_donor_name || "").trim();
+    if (!donorId && newDonorName) {
+      donorId = uuid();
+      await pool.query(
+        `INSERT INTO donors (id, name, user_id, is_active, created_by) VALUES ($1,$2,$3,1,$4)`,
+        [donorId, newDonorName, payment.submitted_by, req.user.id]
+      );
+      await auditLog(req.user.id, "create_donor", "donor", donorId, getClientIp(req));
+    }
+    if (!donorId) {
+      return badRequest(res, "Select a donor for this report (donor_id or new_donor_name)");
+    }
+
+    await pool.query(
+      `UPDATE contribution_payments SET donor_id=$2, status='confirmed', recorded_by=$3, updated_at=NOW()
+       WHERE id=$1`,
+      [req.params.id, donorId, req.user.id]
+    );
     await auditLog(req.user.id, "approve_payment", "contribution_payment", req.params.id, getClientIp(req));
-    res.json({ success: true, message: "Contribution approved" });
+    res.json({ success: true, message: "Contribution approved", data: { donor_id: donorId } });
   } catch (err) {
     serverError(res, "Payment approve error", err);
   }

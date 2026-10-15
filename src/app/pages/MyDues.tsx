@@ -125,11 +125,9 @@ export default function MyDues() {
               My Contributions
             </CardTitle>
             <div className="flex items-center gap-2">
-              {ledger?.donor && (
-                <Button size="sm" onClick={() => setReportOpen(true)}>
-                  <Plus className="h-4 w-4 mr-1" /> Report
-                </Button>
-              )}
+              <Button size="sm" onClick={() => setReportOpen(true)}>
+                <Plus className="h-4 w-4 mr-1" /> Report
+              </Button>
               <Select value={String(year)} onValueChange={(v) => setYear(Number(v))}>
                 <SelectTrigger className="w-[95px] h-9" aria-label="Year"><SelectValue /></SelectTrigger>
                 <SelectContent>
@@ -144,17 +142,22 @@ export default function MyDues() {
             <div className="flex items-center gap-2 text-sm text-gray-500 py-8 justify-center">
               <Loader2 className="h-4 w-4 animate-spin" /> Loading…
             </div>
-          ) : !ledger?.donor ? (
+          ) : !ledger?.donor && !ledger?.months.some((m) => m.payments.length > 0) ? (
             <div className="text-center py-8 space-y-2">
-              <p className="text-gray-600 font-medium">No contribution record is linked to your account yet.</p>
+              <p className="text-gray-600 font-medium">No contributions yet.</p>
               <p className="text-sm text-gray-500">
-                Ask a parish admin to link your account in the BEC Dues tab so you can track your monthly contributions here.
+                Sent via GCash? Tap <strong>Report</strong> above to submit it — an admin will match it to your record.
               </p>
             </div>
           ) : (
             <>
+              {!ledger?.donor && (
+                <div className="rounded-lg bg-blue-50 border border-blue-100 px-3 py-2 mb-4 text-xs text-blue-700">
+                  Awaiting admin review — your reported contributions appear below once submitted. An admin will link your donor record on approval.
+                </div>
+              )}
               <p className="text-sm text-gray-600 mb-4">
-                {ledger.donor.name}{ledger.donor.bec_name ? ` · ${ledger.donor.bec_name}` : ""}
+                {ledger.donor ? `${ledger.donor.name}${ledger.donor.bec_name ? ` · ${ledger.donor.bec_name}` : ""}` : "Your reported contributions"}
                 {ledger.expected > 0 && ` · suggested ${peso(ledger.expected)}/month`}
               </p>
               <div className="grid grid-cols-3 gap-3 mb-5">
@@ -174,7 +177,7 @@ export default function MyDues() {
                 </div>
               </div>
               <div className="space-y-2">
-                {ledger.months.map((m) => (
+                {ledger.months.filter((m) => ledger.donor || m.payments.length > 0).map((m) => (
                   <div key={m.month} className="border rounded-lg px-4 py-3">
                     <div className="flex items-center justify-between">
                       <div>

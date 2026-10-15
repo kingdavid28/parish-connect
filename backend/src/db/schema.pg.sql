@@ -131,7 +131,8 @@ CREATE INDEX IF NOT EXISTS idx_donors_bec  ON donors(bec_id);
 -- Paid status = SUM(payments) vs expected_amount (donor, else BEC).
 CREATE TABLE IF NOT EXISTS contribution_payments (
   id          VARCHAR(36)    NOT NULL PRIMARY KEY,
-  donor_id    VARCHAR(36)    NOT NULL REFERENCES donors(id) ON DELETE CASCADE,
+  -- NULL while a member-reported payment waits for admin to match a donor
+  donor_id    VARCHAR(36)    NULL REFERENCES donors(id) ON DELETE CASCADE,
   year        SMALLINT       NOT NULL,
   month       SMALLINT       NOT NULL,
   amount      NUMERIC(12,2)  NOT NULL,
@@ -149,6 +150,7 @@ CREATE INDEX IF NOT EXISTS idx_payments_year_month  ON contribution_payments(yea
 -- Idempotent upgrades for databases created before the approval workflow:
 ALTER TABLE contribution_payments ADD COLUMN IF NOT EXISTS status VARCHAR(10) NOT NULL DEFAULT 'confirmed';
 ALTER TABLE contribution_payments ADD COLUMN IF NOT EXISTS submitted_by VARCHAR(36) NULL;
+ALTER TABLE contribution_payments ALTER COLUMN donor_id DROP NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_payments_status ON contribution_payments(status);
 
 -- Dedup log so the reminder cron never double-notifies a donor/month.
