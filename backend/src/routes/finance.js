@@ -50,10 +50,16 @@ function buildLedger(year, expected, payments) {
     byMonth.get(p.month).push(p);
   }
   const months = [];
+  let annualExpectedCents = 0;
+  let annualPaidCents = 0;
+  let annualPendingCents = 0;
   for (let m = 1; m <= 12; m++) {
     const list = byMonth.get(m) || [];
     const paidTotalCents = list.reduce((s, p) => s + (p.status === "confirmed" ? toCents(p.amount) : 0), 0);
     const pendingTotalCents = list.reduce((s, p) => s + (p.status === "pending" ? toCents(p.amount) : 0), 0);
+    annualExpectedCents += expectedCents;
+    annualPaidCents += paidTotalCents;
+    annualPendingCents += pendingTotalCents;
     const paidTotal = fromCents(paidTotalCents);
     const pendingTotal = fromCents(pendingTotalCents);
     months.push({
@@ -66,7 +72,15 @@ function buildLedger(year, expected, payments) {
       payments: list,
     });
   }
-  return { year, expected, months };
+  return {
+    year,
+    expected,
+    months,
+    annual_expected: fromCents(annualExpectedCents),
+    annual_paid: fromCents(annualPaidCents),
+    net_balance: fromCents(Math.max(0, annualExpectedCents - annualPaidCents)),
+    total_pending: fromCents(annualPendingCents),
+  };
 }
 
 // ─── BECs ────────────────────────────────────────────────────────────────────
@@ -1039,6 +1053,43 @@ router.get("/export", ...adminOnly, async (req, res) => {
     res.send(lines.join("\n"));
   } catch (err) {
     serverError(res, "Export error", err);
+  }
+});
+
+// GET /api/finance/my/ledger?year= — authenticated donor's own ledger
+router.get("/my/ledger", authenticate, async (req, res) => {
+  if (!financeEnabled(res)) return;
+  const year = Number.parseInt(req.query.year || new Date().getFullYear(), 10);
+  if (!validYear(year)) return badRequest(res, "year must be 1900-2200");
+  try {
+    const { rows: donorRows } = await pool.query(
+      `SELECT d.id, d.name, d.expected_amount, d.bec_id, b.name AS bec_name
+       FROM donors d
+       LEFT JOIN becs b ON b.id = d.bec_id
+       WHERE d.user_id = $1 AND d.is_active = 1`,
+      [req.user.id]
+    );
+    if (donorRows.length === 0) {
+      return res.json({ success: true, data: null });
+    }
+    const donor = donorRows[0];
+    const { rows: payments } = await pool.query(
+      `SELECT id, donor_id, submitted_by, year, month, amount, method, reference,
+              receipt_url, receipt_no, status, void_reason, voided_at, voided_by, created_at
+       FROM contribution_payments
+       WHERE donor_id = $1 AND year = $2
+       ORDER BY month, created_at`,
+      [donor.id, year]
+    );
+    const ledger = buildLedger(year, donor.expected_amount, payments);
+    ledger.donor = {
+      id: donor.id,
+      name: donor.name,
+      bec_name: donor.bec_name || null,
+    };
+    res.json({ success: true, data: ledger });
+  } catch (err) {
+    serverError(res, "My ledger error", err);
   }
 });
 

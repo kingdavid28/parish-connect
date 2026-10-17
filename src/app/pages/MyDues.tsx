@@ -56,6 +56,7 @@ export default function MyDues() {
   const [ledger, setLedger] = useState<MyLedger | null>(null);
   const [loading, setLoading] = useState(true);
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
+  const [ledgerError, setLedgerError] = useState<string | null>(null);
 
   // Report-a-contribution form
   const [reportOpen, setReportOpen] = useState(false);
@@ -67,13 +68,18 @@ export default function MyDues() {
 
   const fetchLedger = useCallback(async () => {
     setLoading(true);
+    setLedgerError(null);
     try {
       const res = await fetch(`${API}/finance/my/ledger?year=${year}`, {
         headers: { Authorization: `Bearer ${getToken()}` },
       });
       const data = await res.json();
+      if (!res.ok) throw new Error(data.message || "Failed to load your ledger");
       if (data.success) setLedger(data.data);
-    } catch { /* leave stale */ } finally {
+    } catch (e: any) {
+      setLedgerError(e.message);
+      setLedger(null);
+    } finally {
       setLoading(false);
     }
   }, [year]);
@@ -130,10 +136,21 @@ export default function MyDues() {
         </div>
       );
     }
+    if (ledgerError) {
+      return (
+        <div className="text-center py-8 space-y-2 text-red-600">
+          <p className="font-medium">Unable to load your contributions.</p>
+          <p className="text-sm">{ledgerError}</p>
+          <Button variant="outline" size="sm" onClick={() => { setLedgerError(null); void fetchLedger(); }}>
+            Try again
+          </Button>
+        </div>
+      );
+    }
     if (!ledger?.donor && !hasReports) {
       return (
         <div className="text-center py-8 space-y-2">
-          <p className="text-gray-600 font-medium">No contributions yet.</p>
+          <p className="text-gray-600 font-medium">No donor record linked yet.</p>
           <p className="text-sm text-gray-500">
             Sent via GCash? Tap <strong>Report</strong> above to submit it — an admin will match it to your record.
           </p>
