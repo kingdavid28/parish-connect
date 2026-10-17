@@ -139,7 +139,13 @@ CREATE TABLE IF NOT EXISTS contribution_payments (
   method      VARCHAR(20)    NOT NULL DEFAULT 'cash',
   reference   VARCHAR(120)   NULL,
   receipt_url VARCHAR(500)   NULL,
-  status      VARCHAR(10)    NOT NULL DEFAULT 'confirmed', -- confirmed|pending|rejected
+  status      VARCHAR(10)    NOT NULL DEFAULT 'confirmed', -- confirmed|pending|rejected|voided
+  voided_at   TIMESTAMP      NULL,            -- set when a confirmed/pending payment is voided (soft delete)
+  void_reason TEXT           NULL,            -- reason code / note for the void
+  voided_by   VARCHAR(36)    NULL REFERENCES users(id) ON DELETE SET NULL,
+  -- reversal_of links a replacement/correction payment back to the payment it voids/replaces,
+  -- preserving an immutable audit trail instead of overwriting or deleting.
+  reversal_of VARCHAR(36)    NULL REFERENCES contribution_payments(id) ON DELETE SET NULL,
   submitted_by VARCHAR(36)   NULL REFERENCES users(id) ON DELETE SET NULL,
   recorded_by VARCHAR(36)    NULL REFERENCES users(id) ON DELETE SET NULL,
   created_at  TIMESTAMP      DEFAULT CURRENT_TIMESTAMP,
@@ -152,6 +158,18 @@ ALTER TABLE contribution_payments ADD COLUMN IF NOT EXISTS status VARCHAR(10) NO
 ALTER TABLE contribution_payments ADD COLUMN IF NOT EXISTS submitted_by VARCHAR(36) NULL;
 ALTER TABLE contribution_payments ALTER COLUMN donor_id DROP NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_payments_status ON contribution_payments(status);
+-- Idempotent upgrades for immutability / audit trail (this change):
+ALTER TABLE contribution_payments ADD COLUMN IF NOT EXISTS voided_at TIMESTAMP NULL;
+ALTER TABLE contribution_payments ADD COLUMN IF NOT EXISTS void_reason TEXT NULL;
+ALTER TABLE contribution_payments ADD COLUMN IF NOT EXISTS voided_by VARCHAR(36) NULL;
+ALTER TABLE contribution_payments ADD COLUMN IF NOT EXISTS reversal_of VARCHAR(36) NULL;
+CREATE INDEX IF NOT EXISTS idx_payments_reversal ON contribution_payments(reversal_of);
+CREATE INDEX IF NOT EXISTS idx_payments_voided_at ON contribution_payments(voided_at);
+-- Unique formatted transaction reference for confirmed payments (receipt number).
+-- Partially unique: multiple NULLs allowed, but no two confirmed payments share a receipt_no.
+ALTER TABLE contribution_payments ADD COLUMN IF NOT EXISTS receipt_no VARCHAR(50) NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_payments_receipt_no
+  ON contribution_payments(receipt_no) WHERE receipt_no IS NOT NULL;
 
 -- Dedup log so the reminder cron never double-notifies a donor/month.
 CREATE TABLE IF NOT EXISTS contribution_reminders (

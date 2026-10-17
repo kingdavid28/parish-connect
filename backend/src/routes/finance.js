@@ -30,9 +30,12 @@ const serverError = (res, tag, err) => {
 };
 
 // paid_total vs expected → "unpaid" | "partial" | "paid"
-function monthStatus(expected, paidTotal) {
-  if (paidTotal <= 0) return "unpaid";
-  if (expected > 0 && paidTotal < expected) return "partial";
+// All money math is done in integer cents to avoid floating-point drift.
+function toCents(n) { return Math.round(Number(n || 0) * 100); }
+function fromCents(c) { return Number(c) / 100; }
+function monthStatus(expectedCents, paidTotalCents) {
+  if (paidTotalCents <= 0) return "unpaid";
+  if (expectedCents > 0 && paidTotalCents < expectedCents) return "partial";
   return "paid";
 }
 
@@ -40,6 +43,7 @@ function monthStatus(expected, paidTotal) {
 // paid_total counts confirmed payments only; self-reported ones sit
 // in pending_total until an admin approves them.
 function buildLedger(year, expected, payments) {
+  const expectedCents = toCents(expected);
   const byMonth = new Map();
   for (const p of payments) {
     if (!byMonth.has(p.month)) byMonth.set(p.month, []);
@@ -48,15 +52,17 @@ function buildLedger(year, expected, payments) {
   const months = [];
   for (let m = 1; m <= 12; m++) {
     const list = byMonth.get(m) || [];
-    const paidTotal = list.reduce((s, p) => s + (p.status === "confirmed" ? Number(p.amount) : 0), 0);
-    const pendingTotal = list.reduce((s, p) => s + (p.status === "pending" ? Number(p.amount) : 0), 0);
+    const paidTotalCents = list.reduce((s, p) => s + (p.status === "confirmed" ? toCents(p.amount) : 0), 0);
+    const pendingTotalCents = list.reduce((s, p) => s + (p.status === "pending" ? toCents(p.amount) : 0), 0);
+    const paidTotal = fromCents(paidTotalCents);
+    const pendingTotal = fromCents(pendingTotalCents);
     months.push({
       month: m,
       expected,
       paid_total: paidTotal,
       pending_total: pendingTotal,
-      balance: Math.max(0, expected - paidTotal),
-      status: monthStatus(expected, paidTotal),
+      balance: fromCents(Math.max(0, expectedCents - paidTotalCents)),
+      status: monthStatus(expectedCents, paidTotalCents),
       payments: list,
     });
   }
@@ -204,13 +210,17 @@ router.post("/donors", ...adminOnly, async (req, res) => {
     return badRequest(res, "name is required (max 200 chars)");
   }
   try {
-    const id = uuid();
-    await pool.query(
-      `INSERT INTO donors (id, name, address, bec_id, gcash_number, user_id, expected_amount, notes, is_active, created_by)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
-      [id, v.name, v.address, v.bec_id, v.gcash_number, v.user_id, v.expected_amount, v.notes, v.is_active, req.user.id]
-    );
-    await auditLog(req.user.id, "create_donor", "donor", id, getClientIp(req));
+    await withTransaction(async (client) => {
+      const id = uuid();
+      await client.query(
+        `INSERT INTO donors (id, name, address, bec_id, gcash_number, user_id, expected_amount, notes, is_active, created_by)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+        [id, v.name, v.address, v.bec_id, v.gcash_number, v.user_id, v.expected_amount, v.notes, v.is_active, req.user.id]
+      );
+      await auditLog(req.user.id, "create_donor", "donor", id, getClientIp(req), client, {
+        name: v.name, expected_amount: v.expected_amount, bec_id: v.bec_id, created_by: req.user.id,
+      });
+    });
     res.status(201).json({ success: true, message: "Donor created", data: { id } });
   } catch (err) {
     serverError(res, "Donor create error", err);
@@ -329,13 +339,24 @@ async function fetchLedger(donorId, year, submittedBy = null) {
   }
   const expected = donor ? Number(donor.expected_amount ?? donor.bec_expected ?? 0) : 0;
   const { rows: payments } = await pool.query(
-    `SELECT id, month, amount, method, reference, receipt_url, status, submitted_by, recorded_by, created_at
+    `SELECT id, month, amount, method, reference, receipt_url, receipt_no, status,
+            voided_at, void_reason, voided_by, reversal_of, submitted_by, recorded_by, created_at
      FROM contribution_payments
      WHERE year = $2 AND (donor_id = $1 OR ($3::varchar IS NOT NULL AND submitted_by = $3))
      ORDER BY month, created_at`,
     [donorId, year, submittedBy]
   );
-  return { donor, ...buildLedger(year, expected, payments) };
+  const ledger = { donor, ...buildLedger(year, expected, payments) };
+  const annualExpectedCents = toCents(expected) * 12;
+  const annualPaidCents = payments.reduce((s, p) => s + (p.status === "confirmed" ? toCents(p.amount) : 0), 0);
+  const totalPendingCents = payments.reduce((s, p) => s + (p.status === "pending" ? toCents(p.amount) : 0), 0);
+  return {
+    ...ledger,
+    annual_expected: fromCents(annualExpectedCents),
+    annual_paid: fromCents(annualPaidCents),
+    net_balance: fromCents(Math.max(0, annualExpectedCents - annualPaidCents)),
+    total_pending: fromCents(totalPendingCents),
+  };
 }
 
 // GET /api/finance/donors/:id/ledger?year= (admin)
@@ -350,6 +371,85 @@ router.get("/donors/:id/ledger", ...adminOnly, async (req, res) => {
     res.json({ success: true, data: ledger });
   } catch (err) {
     serverError(res, "Donor ledger error", err);
+  }
+});
+
+// GET /api/finance/donors/:id/statement?year= — itemized donor statement of account (CSV)
+router.get("/donors/:id/statement", ...adminOnly, async (req, res) => {
+  if (!financeEnabled(res)) return;
+  const year = Number.parseInt(req.query.year || new Date().getFullYear(), 10);
+  if (!validYear(year)) return badRequest(res, "year is required");
+  try {
+    const { rows: donorRows } = await pool.query(`${DONOR_SELECT} WHERE d.id = $1`, [req.params.id]);
+    const donor = donorRows[0];
+    if (!donor) {
+      return res.status(404).json({ success: false, message: "Donor not found" });
+    }
+    const expected = Number(donor.expected_amount ?? donor.bec_expected ?? 0);
+    const { rows: payments } = await pool.query(
+      `SELECT c.id, c.month, c.amount, c.method, c.reference, c.receipt_url, c.receipt_no, c.status,
+              c.voided_at, c.void_reason, c.reversal_of, c.created_at, u.name AS recorded_by_name
+       FROM contribution_payments c
+       LEFT JOIN users u ON u.id = c.recorded_by
+       WHERE c.donor_id = $1 AND c.year = $2
+       ORDER BY c.month, c.created_at`,
+      [req.params.id, year]
+    );
+
+    // Monthly rollup
+    const months = [];
+    for (let m = 1; m <= 12; m++) {
+      const list = payments.filter((p) => p.month === m);
+      const paidCents = list.reduce((s, p) => s + (p.status === "confirmed" ? toCents(p.amount) : 0), 0);
+      const pendingCents = list.reduce((s, p) => s + (p.status === "pending" ? toCents(p.amount) : 0), 0);
+      months.push({ month: m, expected, paid_total: fromCents(paidCents), pending_total: fromCents(pendingCents) });
+    }
+    const annualExpectedCents = toCents(expected) * 12;
+    const annualPaidCents = payments.reduce((s, p) => s + (p.status === "confirmed" ? toCents(p.amount) : 0), 0);
+    const totalPendingCents = payments.reduce((s, p) => s + (p.status === "pending" ? toCents(p.amount) : 0), 0);
+
+    const esc = (v) => {
+      const s = String(v ?? "");
+      return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+    const money = (n) => Number(n || 0).toFixed(2);
+    const MONTH_NAMES = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+
+    const lines = [];
+    lines.push(`Statement of Account,${esc(donor.name)},${esc(donor.bec_name || "")},Year ${year}`);
+    lines.push("");
+    lines.push(`Annual Expected Due,${money(annualExpectedCents)}`);
+    lines.push(`Annual Paid (confirmed),${money(annualPaidCents)}`);
+    lines.push(`Pending Approval,${money(totalPendingCents)}`);
+    lines.push(`Net Balance,${money(Math.max(0, annualExpectedCents - annualPaidCents))}`);
+    lines.push("");
+    lines.push("Month,Expected Due,Paid Total,Pending Total,Balance,Status");
+    let runningPaidCents = 0;
+    for (const m of months) {
+      runningPaidCents += toCents(m.paid_total);
+      lines.push([
+        MONTH_NAMES[m.month - 1], money(m.expected), money(m.paid_total), money(m.pending_total),
+        money(Math.max(0, toCents(m.expected) - runningPaidCents)), monthStatus(toCents(m.expected), toCents(m.paid_total)),
+      ].join(","));
+    }
+    lines.push("");
+    lines.push("Date,Month,Amount,Method,Reference,Receipt No.,Status,Recorded By,Void Reason");
+    for (const p of payments) {
+      const paidOn = new Date(p.created_at).toISOString().slice(0, 10);
+      lines.push([
+        paidOn, MONTH_NAMES[p.month - 1], money(p.amount), p.method,
+        esc(p.reference || ""), p.receipt_no || "", p.status,
+        esc(p.recorded_by_name || ""),
+        p.status === "voided" ? esc(p.void_reason || "") : "",
+      ].join(","));
+    }
+
+    const safeName = String(donor.name).replace(/[^A-Za-z0-9]+/g, "_");
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader("Content-Disposition", `attachment; filename="statement-${safeName}-${year}.csv"`);
+    res.send(lines.join("\n"));
+  } catch (err) {
+    serverError(res, "Donor statement error", err);
   }
 });
 
@@ -446,7 +546,7 @@ router.post("/payments/:id/approve", ...adminOnly, async (req, res) => {
   if (!financeEnabled(res)) return;
   try {
     const { rows: rows0 } = await pool.query(
-      "SELECT id, donor_id, submitted_by FROM contribution_payments WHERE id = $1 AND status = 'pending'",
+      "SELECT id, donor_id, submitted_by, year, receipt_no FROM contribution_payments WHERE id = $1 AND status = 'pending'",
       [req.params.id]
     );
     const payment = rows0[0];
@@ -457,24 +557,36 @@ router.post("/payments/:id/approve", ...adminOnly, async (req, res) => {
     // Resolve which donor this payment belongs to
     let donorId = payment.donor_id || String(req.body?.donor_id || "").trim() || null;
     const newDonorName = String(req.body?.new_donor_name || "").trim();
-    if (!donorId && newDonorName) {
-      donorId = uuid();
-      await pool.query(
-        `INSERT INTO donors (id, name, user_id, is_active, created_by) VALUES ($1,$2,$3,1,$4)`,
-        [donorId, newDonorName, payment.submitted_by, req.user.id]
-      );
-      await auditLog(req.user.id, "create_donor", "donor", donorId, getClientIp(req));
-    }
-    if (!donorId) {
+    if (!donorId && !newDonorName) {
       return badRequest(res, "Select a donor for this report (donor_id or new_donor_name)");
     }
 
-    await pool.query(
-      `UPDATE contribution_payments SET donor_id=$2, status='confirmed', recorded_by=$3, updated_at=NOW()
-       WHERE id=$1`,
-      [req.params.id, donorId, req.user.id]
-    );
-    await auditLog(req.user.id, "approve_payment", "contribution_payment", req.params.id, getClientIp(req));
+    await withTransaction(async (client) => {
+      if (!donorId && newDonorName) {
+        donorId = uuid();
+        await client.query(
+          `INSERT INTO donors (id, name, user_id, is_active, created_by) VALUES ($1,$2,$3,1,$4)`,
+          [donorId, newDonorName, payment.submitted_by, req.user.id]
+        );
+        await auditLog(req.user.id, "create_donor", "donor", donorId, getClientIp(req), client, {
+          name: newDonorName, user_id: payment.submitted_by, created_by: req.user.id,
+        });
+      }
+
+      await client.query(
+        `UPDATE contribution_payments SET donor_id=$2, status='confirmed', recorded_by=$3, updated_at=NOW()
+         WHERE id=$1`,
+        [req.params.id, donorId, req.user.id]
+      );
+      const receiptNo = await ensureReceiptNo(client, {
+        id: req.params.id, year: payment.year,
+        status: "confirmed", receipt_no: payment.receipt_no,
+      });
+      await auditLog(req.user.id, "approve_payment", "contribution_payment", req.params.id, getClientIp(req), client, {
+        before: { status: "pending", donor_id: payment.donor_id },
+        after: { status: "confirmed", donor_id, recorded_by: req.user.id, receipt_no: receiptNo },
+      });
+    });
     res.json({ success: true, message: "Contribution approved", data: { donor_id: donorId } });
   } catch (err) {
     serverError(res, "Payment approve error", err);
@@ -485,14 +597,24 @@ router.post("/payments/:id/approve", ...adminOnly, async (req, res) => {
 router.post("/payments/:id/reject", ...adminOnly, async (req, res) => {
   if (!financeEnabled(res)) return;
   try {
-    const result = await pool.query(
-      "UPDATE contribution_payments SET status='rejected', updated_at=NOW() WHERE id=$1 AND status='pending'",
-      [req.params.id]
-    );
-    if (result.rowCount === 0) {
+    const existing = await fetchPayment(req.params.id);
+    if (!existing) {
       return res.status(404).json({ success: false, message: "Pending payment not found" });
     }
-    await auditLog(req.user.id, "reject_payment", "contribution_payment", req.params.id, getClientIp(req));
+    let updateResult;
+    await withTransaction(async (client) => {
+      updateResult = await client.query(
+        "UPDATE contribution_payments SET status='rejected', updated_at=NOW() WHERE id=$1 AND status='pending'",
+        [req.params.id]
+      );
+      await auditLog(req.user.id, "reject_payment", "contribution_payment", req.params.id, getClientIp(req), client, {
+        before: { status: existing.status },
+        after: { status: "rejected" },
+      });
+    });
+    if (updateResult.rowCount === 0) {
+      return res.status(409).json({ success: false, message: "Payment is no longer pending" });
+    }
     res.json({ success: true, message: "Contribution rejected" });
   } catch (err) {
     serverError(res, "Payment reject error", err);
@@ -571,57 +693,219 @@ router.post("/payments", ...adminOnly, upload.single("receipt"), async (req, res
   }
 
   try {
-    const id = uuid();
-    await pool.query(
-      `INSERT INTO contribution_payments (id, donor_id, year, month, amount, method, reference, receipt_url, recorded_by)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
-      [id, donorId, year, month, amount, method, reference, receiptUrl, req.user.id]
-    );
-    await auditLog(req.user.id, "record_payment", "contribution_payment", id, getClientIp(req));
+    await withTransaction(async (client) => {
+      const id = uuid();
+      await client.query(
+        `INSERT INTO contribution_payments (id, donor_id, year, month, amount, method, reference, receipt_url, recorded_by)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+        [id, donorId, year, month, amount, method, reference, receiptUrl, req.user.id]
+      );
+      const receiptNo = await ensureReceiptNo(client, { id, year, month, status: "confirmed", receipt_no: null });
+      await auditLog(req.user.id, "record_payment", "contribution_payment", id, getClientIp(req), client, {
+        amount, method, reference, receipt_no: receiptNo,
+      });
+    });
     res.status(201).json({ success: true, message: "Payment recorded", data: { id } });
   } catch (err) {
     serverError(res, "Payment record error", err);
   }
 });
 
-// PUT /api/finance/payments/:id — edit amount/method/reference (receipt immutable)
+// Fetch a single payment by id (for edit / void / delete).
+async function fetchPayment(id) {
+  const { rows } = await pool.query(
+    `SELECT id, donor_id, year, month, amount, method, reference, receipt_url, status,
+            voided_at, void_reason, voided_by, reversal_of, submitted_by, recorded_by, created_at
+     FROM contribution_payments WHERE id = $1`,
+    [id]
+  );
+  return rows[0] || null;
+}
+
+// Helper: run a set of queries inside a single transaction.
+async function withTransaction(fn) {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const result = await fn(client);
+    await client.query("COMMIT");
+    return result;
+  } catch (err) {
+    await client.query("ROLLBACK");
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
+// --- receipt numbers ---------------------------------------------------------
+// Formatted transaction reference for confirmed payments: RCPT-YYYY-NNNNNN
+const RECEIPT_PREFIX = "RCPT";
+
+async function nextReceiptNo(client, year) {
+  const { rows } = await client.query(
+    `SELECT receipt_no FROM contribution_payments
+     WHERE receipt_no LIKE $1 ORDER BY receipt_no DESC LIMIT 1`,
+    [`${RECEIPT_PREFIX}-${year}-%`]
+  );
+  let seq = 1;
+  const last = rows[0]?.receipt_no;
+  if (last) {
+    const tail = String(last).split("-").pop();
+    const n = Number.parseInt(tail, 10);
+    if (Number.isFinite(n)) seq = n + 1;
+  }
+  return `${RECEIPT_PREFIX}-${year}-${String(seq).padStart(6, "0")}`;
+}
+
+// Assign a receipt_no to a confirmed payment that does not have one yet.
+async function ensureReceiptNo(client, payment) {
+  if (payment.status !== "confirmed" || payment.receipt_no) return null;
+  const receiptNo = await nextReceiptNo(client, payment.year);
+  await client.query(
+    `UPDATE contribution_payments SET receipt_no = $1, updated_at = NOW() WHERE id = $2`,
+    [receiptNo, payment.id]
+  );
+  return receiptNo;
+}
+
+// Terminal statuses that must never be overwritten or re-voided.
+const TERMINAL_STATUSES = new Set(["rejected", "voided"]);
+
+// PUT /api/finance/payments/:id — correct a payment immutably.
+// Confirmed payments are never overwritten: the original is voided and a
+// replacement payment is recorded (linked via reversal_of). Pending payments
+// may still be updated in place since they are not yet final.
 router.put("/payments/:id", ...adminOnly, async (req, res) => {
   if (!financeEnabled(res)) return;
   const amount = parseFloat(req.body?.amount);
   const method = VALID_METHODS.includes(String(req.body?.method)) ? String(req.body.method) : null;
   const reference = String(req.body?.reference || "").trim() || null;
+  const voidReason = String(req.body?.void_reason || "").trim() || null;
 
   if (!(amount > 0) || amount >= 1000000) {
     return badRequest(res, "amount must be between 0 and 1,000,000");
   }
+  if (!method) {
+    return badRequest(res, "method is required");
+  }
+
   try {
-    const result = await pool.query(
-      `UPDATE contribution_payments SET amount=$1,
-       method=COALESCE($2, method), reference=$3, updated_at=NOW() WHERE id=$4`,
-      [amount, method, reference, req.params.id]
-    );
-    if (result.rowCount === 0) {
+    const existing = await fetchPayment(req.params.id);
+    if (!existing) {
       return res.status(404).json({ success: false, message: "Payment not found" });
     }
-    await auditLog(req.user.id, "update_payment", "contribution_payment", req.params.id, getClientIp(req));
-    res.json({ success: true, message: "Payment updated" });
+
+    // Pending (not yet confirmed) may be corrected in place.
+    if (existing.status === "pending") {
+      let updateResult;
+      await withTransaction(async (client) => {
+        updateResult = await client.query(
+          `UPDATE contribution_payments SET amount=$1, method=$2, reference=$3, updated_at=NOW()
+           WHERE id=$4 AND status='pending'`,
+          [amount, method, reference, req.params.id]
+        );
+        await auditLog(req.user.id, "correct_pending_payment", "contribution_payment", req.params.id, getClientIp(req), client, {
+          before: { status: existing.status, amount: existing.amount, method: existing.method, reference: existing.reference },
+          after: { status: "pending", amount, method, reference },
+        });
+      });
+      if (updateResult.rowCount === 0) {
+        return res.status(409).json({ success: false, message: "Payment no longer editable" });
+      }
+      return res.json({ success: true, message: "Pending payment corrected", data: { id: req.params.id } });
+    }
+
+    // Confirmed payments: void the original + record a replacement (immutable audit trail).
+    if (existing.status === "confirmed") {
+      if (!voidReason) {
+        return badRequest(res, "void_reason is required when correcting a confirmed payment");
+      }
+      return withTransaction(async (client) => {
+        // 1. Void the original payment (soft delete — never hard-deleted).
+        await client.query(
+          `UPDATE contribution_payments
+           SET status='voided', voided_at=NOW(), void_reason=$1, voided_by=$2, updated_at=NOW()
+           WHERE id=$3 AND status='confirmed'`,
+          [voidReason, req.user.id, req.params.id]
+        );
+        await auditLog(req.user.id, "void_payment", "contribution_payment", req.params.id, getClientIp(req), client, {
+          before: { status: "confirmed", amount: existing.amount, method: existing.method, reference: existing.reference },
+          after: { status: "voided", void_reason: voidReason, voided_by: req.user.id },
+        });
+        // 2. Record the replacement payment (links back to the voided original).
+        const newId = uuid();
+        const { rows } = await client.query(
+          `INSERT INTO contribution_payments
+            (id, donor_id, year, month, amount, method, reference, receipt_url, status,
+             recorded_by, reversal_of, created_at, updated_at)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'confirmed',$9,$10,NOW(),NOW())
+           RETURNING id, donor_id, year, month, amount, method, reference, receipt_url, status,
+                     reversal_of, created_at, updated_at`,
+          [newId, existing.donor_id, existing.year, existing.month, amount, method, reference,
+           existing.receipt_url, req.user.id, req.params.id]
+        );
+        const receiptNo = await ensureReceiptNo(client, { id: newId, year: existing.year, status: "confirmed", receipt_no: null });
+        const replacement = { ...rows[0], receipt_no: receiptNo || rows[0].receipt_no };
+        await auditLog(req.user.id, "correct_payment", "contribution_payment", newId, getClientIp(req), client, {
+          before: { reversal_of: req.params.id },
+          after: { status: "confirmed", amount, method, reference, receipt_no: replacement.receipt_no },
+        });
+        return res.json({
+          success: true,
+          message: "Confirmed payment corrected — original voided, replacement recorded",
+          data: { voided_id: req.params.id, replacement },
+        });
+      });
+    }
+
+    // Rejected or already-voided payments are terminal and immutable.
+    return res.status(409).json({
+      success: false,
+      message: `Payment is ${existing.status} and cannot be edited`,
+    });
   } catch (err) {
     serverError(res, "Payment update error", err);
   }
 });
 
-// DELETE /api/finance/payments/:id
+// DELETE /api/finance/payments/:id — soft-void a payment (never hard-delete).
 router.delete("/payments/:id", ...adminOnly, async (req, res) => {
   if (!financeEnabled(res)) return;
+  const voidReason = String(req.body?.void_reason || "").trim() || null;
+  if (!voidReason) {
+    return badRequest(res, "void_reason is required");
+  }
   try {
-    const result = await pool.query("DELETE FROM contribution_payments WHERE id = $1", [req.params.id]);
-    if (result.rowCount === 0) {
+    const existing = await fetchPayment(req.params.id);
+    if (!existing) {
       return res.status(404).json({ success: false, message: "Payment not found" });
     }
-    await auditLog(req.user.id, "delete_payment", "contribution_payment", req.params.id, getClientIp(req));
-    res.json({ success: true, message: "Payment deleted" });
+    if (TERMINAL_STATUSES.has(existing.status)) {
+      return res.status(409).json({
+        success: false,
+        message: `Payment is ${existing.status} and cannot be voided`,
+      });
+    }
+    let voidResult;
+    await withTransaction(async (client) => {
+      voidResult = await client.query(
+        `UPDATE contribution_payments
+         SET status='voided', voided_at=NOW(), void_reason=$1, voided_by=$2, updated_at=NOW()
+         WHERE id=$3 AND status IN ('confirmed','pending')`,
+        [voidReason, req.user.id, req.params.id]
+      );
+      await auditLog(req.user.id, "void_payment", "contribution_payment", req.params.id, getClientIp(req), client, {
+        before: { status: existing.status, void_reason: existing.void_reason },
+        after: { status: "voided", void_reason: voidReason, voided_by: req.user.id },
+      });
+    });
+    if (voidResult.rowCount === 0) {
+      return res.status(409).json({ success: false, message: "Payment could not be voided" });
+    }
+    res.json({ success: true, message: "Payment voided", data: { id: req.params.id } });
   } catch (err) {
-    serverError(res, "Payment delete error", err);
+    serverError(res, "Payment void error", err);
   }
 });
 

@@ -45,8 +45,14 @@ interface Donor {
 }
 interface Payment {
   id: string; month: number; amount: number; method: string;
-  reference: string | null; receipt_url: string | null;
-  status: "confirmed" | "pending" | "rejected"; created_at: string;
+  reference: string | null; receipt_url: string | null; receipt_no: string | null;
+  status: "confirmed" | "pending" | "rejected" | "voided"; created_at: string;
+  voided_at: string | null; void_reason: string | null; voided_by: string | null;
+  reversal_of: string | null;
+}
+interface Ledger {
+  donor: Donor; year: number; expected: number; months: LedgerMonth[];
+  annual_expected: number; annual_paid: number; net_balance: number; total_pending: number;
 }
 interface LedgerMonth {
   month: number; expected: number; paid_total: number; pending_total: number;
@@ -57,9 +63,6 @@ interface PendingReport {
   reference: string | null; receipt_url: string | null; created_at: string;
   donor_id: string | null; donor_name: string | null; bec_name: string | null;
   submitted_by_name: string | null;
-}
-interface Ledger {
-  donor: Donor; year: number; expected: number; months: LedgerMonth[];
 }
 interface SummaryRow {
   bec_id: string | null; bec_name: string; donors: number; expected_due: number;
@@ -106,6 +109,10 @@ export default function FinancePanel() {
   const [payMethod, setPayMethod] = useState("cash");
   const [payRef, setPayRef] = useState("");
   const [payReceipt, setPayReceipt] = useState<File | null>(null);
+  const [voidReason, setVoidReason] = useState("");
+  const [voidModalReason, setVoidModalReason] = useState("");
+  const [voidOpen, setVoidOpen] = useState(false);
+  const [voidTarget, setVoidTarget] = useState<Payment | null>(null);
   const [savingPayment, setSavingPayment] = useState(false);
 
   // Pending member-reported contributions
@@ -311,6 +318,7 @@ export default function FinancePanel() {
     setPayMethod(payment?.method || "cash");
     setPayRef(payment?.reference || "");
     setPayReceipt(null);
+    setVoidReason("");
     setPayOpen(true);
   };
 
@@ -318,14 +326,23 @@ export default function FinancePanel() {
     if (!ledger) return;
     const amount = parseFloat(payAmount);
     if (!Number.isFinite(amount) || amount <= 0) { toast.error("Enter a valid amount"); return; }
+    if (editingPayment?.status === "confirmed" && !voidReason.trim()) {
+      toast.error("Reason for correction is required"); return;
+    }
     setSavingPayment(true);
     try {
       let res: Response;
       if (editingPayment) {
+        const body: Record<string, unknown> = { amount, method: payMethod, reference: payRef || null };
+        // Confirmed payments are corrected immutably (void original + replacement);
+        // the server requires a reason for the correction.
+        if (editingPayment.status === "confirmed") {
+          body["void_reason"] = voidReason || null;
+        }
         res = await fetch(`${API}/finance/payments/${editingPayment.id}`, {
           method: "PUT",
           headers: { ...authHeaders(), "Content-Type": "application/json" },
-          body: JSON.stringify({ amount, method: payMethod, reference: payRef || null }),
+          body: JSON.stringify(body),
         });
       } else {
         const fd = new FormData();
@@ -340,7 +357,9 @@ export default function FinancePanel() {
       }
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || "Failed");
-      toast.success(editingPayment ? "Payment updated" : `${MONTHS_FULL[payMonth - 1]} payment recorded`);
+      toast.success(editingPayment?.status === "confirmed"
+        ? "Payment corrected — original voided, replacement recorded"
+        : editingPayment ? "Payment corrected" : `${MONTHS_FULL[payMonth - 1]} payment recorded`);
       setPayOpen(false);
       fetchLedger(ledger.donor.id, ledgerYear);
       fetchSummary();
@@ -392,16 +411,34 @@ export default function FinancePanel() {
     actOnPending(matchReport.id, "approve", body);
   };
 
-  const deletePayment = async (id: string) => {
-    if (!confirm("Delete this payment? This cannot be undone.")) return;
+  const openVoid = (payment: Payment) => {
+    if (payment.status === "voided") return;
+    setVoidTarget(payment);
+    setVoidModalReason("");
+    setVoidOpen(true);
+  };
+
+  const submitVoid = async () => {
+    if (!voidTarget) return;
+    if (!voidModalReason.trim()) { toast.error("Void reason is required"); return; }
+    setSavingPayment(true);
     try {
-      const res = await fetch(`${API}/finance/payments/${id}`, { method: "DELETE", headers: authHeaders() });
-      if (!res.ok) throw new Error("Failed");
-      toast.success("Payment deleted");
+      const res = await fetch(`${API}/finance/payments/${voidTarget.id}`, {
+        method: "DELETE",
+        headers: { ...authHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify({ void_reason: voidModalReason.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || "Failed to void");
+      toast.success("Payment voided");
+      setVoidOpen(false);
+      setVoidTarget(null);
       if (ledger) fetchLedger(ledger.donor.id, ledgerYear);
       fetchSummary();
-    } catch {
-      toast.error("Failed to delete");
+    } catch (e: any) {
+      toast.error(e.message || "Failed to void payment");
+    } finally {
+      setSavingPayment(false);
     }
   };
 
@@ -462,6 +499,25 @@ export default function FinancePanel() {
     }
   };
 
+  const exportStatement = async () => {
+    if (!ledger) return;
+    try {
+      const res = await fetch(`${API}/finance/donors/${ledger.donor.id}/statement?year=${ledgerYear}`, {
+        headers: authHeaders(),
+      });
+      if (!res.ok) throw new Error("Export failed");
+      const blob = await res.blob();
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = `statement-${String(ledger.donor.name).replace(/[^A-Za-z0-9]+/g, "_")}-${ledgerYear}.csv`;
+      a.click();
+      URL.revokeObjectURL(a.href);
+      toast.success("Statement downloaded");
+    } catch {
+      toast.error("Export failed");
+    }
+  };
+
   const donorTotalPages = Math.max(1, Math.ceil(donorTotal / PAGE_SIZE));
   const years = [now.getFullYear() - 1, now.getFullYear(), now.getFullYear() + 1];
 
@@ -469,6 +525,12 @@ export default function FinancePanel() {
     status === "paid" ? "bg-green-50 border-green-200" :
     status === "partial" ? "bg-amber-50 border-amber-300" :
     "border-dashed hover:border-primary hover:bg-primary/5";
+
+  const ledgerHistory = ledger
+    ? ledger.months
+        .flatMap((m) => m.payments)
+        .sort((a, b) => a.month - b.month || (a.created_at || "").localeCompare(b.created_at || ""))
+    : [];
 
   // ── Render ────────────────────────────────────────────────
   return (
@@ -835,6 +897,9 @@ export default function FinancePanel() {
                 {years.map((y) => <SelectItem key={y} value={String(y)}>{y}</SelectItem>)}
               </SelectContent>
             </Select>
+            <Button variant="outline" size="sm" onClick={exportStatement} disabled={!ledger} aria-label="Export statement">
+              <Download className="h-4 w-4" /> Statement
+            </Button>
           </div>
           {loadingLedger ? (
             <div className="flex items-center gap-2 text-sm text-gray-500 py-6 justify-center">
@@ -860,6 +925,69 @@ export default function FinancePanel() {
               ))}
             </div>
           ) : null}
+          {ledger && (
+            <div className="mt-6 border-t pt-4 space-y-4">
+              <div>
+                <h3 className="text-sm font-semibold text-gray-700">Annual {ledgerYear}</h3>
+                <p className="text-xs text-gray-500">Confirmed payments only; voided/rejected payments stay visible above but never count toward totals.</p>
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <div className="rounded-lg border p-3">
+                  <p className="text-xs text-gray-500">Expected (annual)</p>
+                  <p className="text-lg font-semibold">{peso(ledger.annual_expected)}</p>
+                </div>
+                <div className="rounded-lg border p-3">
+                  <p className="text-xs text-gray-500">Paid (confirmed)</p>
+                  <p className="text-lg font-semibold text-green-700">{peso(ledger.annual_paid)}</p>
+                </div>
+                <div className="rounded-lg border p-3">
+                  <p className="text-xs text-gray-500">Pending approval</p>
+                  <p className="text-lg font-semibold text-amber-600">{peso(ledger.total_pending)}</p>
+                </div>
+                <div className="rounded-lg border p-3">
+                  <p className="text-xs text-gray-500">Net balance</p>
+                  <p className={`text-lg font-semibold ${ledger.net_balance > 0 ? "text-amber-600" : "text-green-700"}`}>{peso(ledger.net_balance)}</p>
+                </div>
+              </div>
+              <div className="border rounded-lg overflow-hidden">
+                <div className="border-b px-3 py-2 text-xs font-semibold text-gray-500 uppercase bg-gray-50">
+                  Transaction History · {ledgerHistory.length} payment(s)
+                </div>
+                <div className="py-3 max-h-60 overflow-y-auto">
+                  {ledgerHistory.length === 0 ? (
+                    <p className="text-xs text-gray-500 px-3 py-2 text-center">No payments this year.</p>
+                  ) : (
+                    <div className="space-y-0.5">
+                      {ledgerHistory.map((p) => (
+                        <div key={p.id} className="px-3 py-2 text-sm border-b border-b-gray-100 last:border-0 flex flex-wrap items-center gap-2">
+                          <span className="w-20 text-gray-600">{new Date(p.created_at).toISOString().slice(0, 10)}</span>
+                          <span className="w-16 text-gray-600 capitalize">{MONTHS[p.month - 1]}</span>
+                          <span className={`w-20 text-right font-semibold ${(p.status === "rejected" || p.status === "voided") ? "line-through text-gray-400" : ""}`}>{peso(p.amount)}</span>
+                          <span className="w-16 text-gray-600 capitalize">{p.method}</span>
+                          <span className="w-24 text-gray-600 truncate">{p.reference || "—"}</span>
+                          <span className="w-20 text-gray-600 text-[11px]">{p.receipt_no || "—"}</span>
+                          <span className="flex items-center gap-1">
+                            <Badge variant={p.status === "confirmed" ? "default" : p.status === "pending" ? "secondary" : "destructive"} className="text-[10px]">
+                              {p.status}
+                            </Badge>
+                            {p.status === "voided" && (
+                              <span className="text-[10px] text-gray-400">void</span>
+                            )}
+                          </span>
+                          {p.status === "voided" && p.void_reason && (
+                            <span className="ml-2 text-[10px] text-gray-500 italic">void: {p.void_reason}</span>
+                          )}
+                          {p.status === "voided" && p.reversal_of && (
+                            <span className="ml-2 text-[10px] text-gray-400">replaced</span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
 
@@ -883,13 +1011,16 @@ export default function FinancePanel() {
                 {detailMonth.payments.map((p) => (
                   <div key={p.id} className="flex items-center justify-between border rounded-lg px-3 py-2">
                     <div>
-                      <p className={`font-semibold ${p.status === "rejected" ? "line-through text-gray-400" : ""}`}>
+                      <p className={`font-semibold ${(p.status === "rejected" || p.status === "voided") ? "line-through text-gray-400" : ""}`}>
                         {peso(p.amount)}
                         {p.status === "pending" && (
                           <Badge className="ml-1.5 bg-amber-100 text-amber-800 border-0 text-[10px]">pending</Badge>
                         )}
                         {p.status === "rejected" && (
                           <Badge className="ml-1.5 bg-red-100 text-red-800 border-0 text-[10px]">rejected</Badge>
+                        )}
+                        {p.status === "voided" && (
+                          <Badge className="ml-1.5 bg-gray-100 text-gray-700 border-0 text-[10px]">voided</Badge>
                         )}
                       </p>
                       <p className="text-xs text-gray-500 capitalize">
@@ -898,16 +1029,25 @@ export default function FinancePanel() {
                           <> · <button type="button" className="text-primary hover:underline"
                             onClick={() => setLightboxUrl(p.receipt_url!)}>receipt</button></>
                         )}
+                        {p.status === "voided" && p.void_reason && (
+                          <>
+                            <br />
+                            <span className="text-[10px] text-gray-500">void: {p.void_reason}</span>
+                          </>
+                        )}
                       </p>
                     </div>
-                    <div className="flex gap-1">
-                      <Button variant="ghost" size="sm" onClick={() => openPaymentForm(detailMonth.month, p)} aria-label="Edit payment">
-                        <Pencil className="h-4 w-4" />
-                      </Button>
-                      <Button variant="ghost" size="sm" onClick={() => deletePayment(p.id)} aria-label="Delete payment">
-                        <Trash2 className="h-4 w-4 text-red-500" />
-                      </Button>
-                    </div>
+                    {/* Voided and rejected payments are terminal — never edited or re-voided. */}
+                    {(p.status === "confirmed" || p.status === "pending") && (
+                      <div className="flex gap-1">
+                        <Button variant="ghost" size="sm" onClick={() => openPaymentForm(detailMonth.month, p)} aria-label="Edit payment">
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        <Button variant="ghost" size="sm" onClick={() => openVoid(p)} aria-label="Void payment">
+                          <Trash2 className="h-4 w-4 text-red-500" />
+                        </Button>
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
@@ -952,6 +1092,14 @@ export default function FinancePanel() {
               <Input id="p-ref" value={payRef} placeholder="GCash ref / OR number"
                 onChange={(e) => setPayRef(e.target.value)} />
             </div>
+            {editingPayment && editingPayment.status === "confirmed" && (
+              <div className="space-y-2">
+                <Label htmlFor="p-void-reason">Reason for correction <span className="text-red-500">*</span></Label>
+                <textarea id="p-void-reason" className="border border-gray-300 rounded p-2 text-sm"
+                  value={voidReason} onChange={(e) => setVoidReason(e.target.value)}
+                  placeholder="Why is this payment being corrected?" />
+              </div>
+            )}
             {!editingPayment && (
               <div className="space-y-2">
                 <Label htmlFor="p-receipt">Receipt (optional)</Label>
@@ -964,6 +1112,38 @@ export default function FinancePanel() {
               <Button type="submit" disabled={savingPayment}>
                 {savingPayment && <Loader2 className="h-4 w-4 mr-1 animate-spin" />}
                 {editingPayment ? "Save" : "Record Payment"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Void payment dialog (reason required — immutable soft void) */}
+      <Dialog open={voidOpen} onOpenChange={setVoidOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Void Payment</DialogTitle>
+            <DialogDescription>
+              Voiding keeps the payment in the ledger with a <span className="line-through">line-through</span> mark and full audit trail; it is never hard-deleted.
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={(e) => { e.preventDefault(); void submitVoid(); }} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="v-reason">Reason <span className="text-red-500">*</span></Label>
+              <textarea id="v-reason" className="border border-gray-300 rounded p-2 text-sm"
+                value={voidModalReason} onChange={(e) => setVoidModalReason(e.target.value)}
+                placeholder="Why is this payment being voided?" />
+            </div>
+            {voidTarget && (
+              <p className="text-sm text-gray-600">
+                {peso(voidTarget.amount)} · {MONTHS_FULL[voidTarget.month - 1]} · status: <span className="font-semibold capitalize">{voidTarget.status}</span>
+              </p>
+            )}
+            <DialogFooter>
+              <Button type="button" variant="outline" disabled={savingPayment} onClick={() => { setVoidOpen(false); setVoidTarget(null); }}>Cancel</Button>
+              <Button type="submit" disabled={savingPayment || !voidModalReason.trim()}>
+                {savingPayment && <Loader2 className="h-4 w-4 mr-1 animate-spin" />}
+                Void Payment
               </Button>
             </DialogFooter>
           </form>

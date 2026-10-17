@@ -19,12 +19,18 @@ function strimwidth(str, max) {
   return str.length > max ? str.slice(0, max - 1) + "…" : str;
 }
 
-/** Write an audit log entry (best-effort) */
-async function auditLog(userId, action, targetType, targetId, ip) {
+/** Write an audit log entry (best-effort).
+ *  When `client` is supplied the insert runs inside that client's transaction.
+ *  `details` (JSON-serializable) captures before/after values for edits & voids.
+ */
+async function auditLog(userId, action, targetType, targetId, ip, client, details) {
   try {
-    await pool.query(
-      "INSERT INTO audit_logs (id, user_id, action, target_type, target_id, ip_address) VALUES ($1, $2, $3, $4, $5, $6)",
-      [uuid(), userId, action, targetType || null, targetId || null, ip]
+    const q = client || pool;
+    await q.query(
+      `INSERT INTO audit_logs (id, user_id, action, target_type, target_id, details, ip_address, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())`,
+      [uuid(), userId, action, targetType || null, targetId || null,
+       details ? JSON.stringify(details) : null, ip]
     );
   } catch (err) {
     console.error("auditLog error:", err.message);

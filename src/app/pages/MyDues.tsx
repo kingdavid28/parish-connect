@@ -24,7 +24,8 @@ const getToken = () =>
 interface Payment {
   id: string; month: number; amount: number; method: string;
   reference: string | null; receipt_url: string | null;
-  status: "confirmed" | "pending" | "rejected"; created_at: string;
+  status: "confirmed" | "pending" | "rejected" | "voided"; created_at: string;
+  voided_at: string | null; void_reason: string | null;
 }
 interface LedgerMonth {
   month: number; expected: number; paid_total: number; pending_total: number;
@@ -33,6 +34,7 @@ interface LedgerMonth {
 interface MyLedger {
   donor: { id: string; name: string; bec_name: string | null } | null;
   year: number; expected: number; months: LedgerMonth[];
+  annual_expected: number; annual_paid: number; net_balance: number; total_pending: number;
 }
 
 const peso = (n: number) => `₱${Number(n || 0).toLocaleString("en-PH", { minimumFractionDigits: 2 })}`;
@@ -110,10 +112,11 @@ export default function MyDues() {
 
   const years = [now.getFullYear() - 1, now.getFullYear(), now.getFullYear() + 1];
   const totalPaid = ledger?.months.reduce((s, m) => s + m.paid_total, 0) || 0;
-  const totalDue = ledger?.months
-    .filter((m) => m.month <= now.getMonth() + 1 || year < now.getFullYear())
-    .reduce((s, m) => s + m.expected, 0) || 0;
-  const totalBalance = ledger?.months.reduce((s, m) => s + m.balance, 0) || 0;
+  const totalPending = ledger?.total_pending ?? 0;
+  const annualExpected = ledger?.annual_expected ?? 0;
+  const annualPaid = ledger?.annual_paid ?? 0;
+  const netBalance = ledger?.net_balance ?? 0;
+  const annualPct = annualExpected > 0 ? Math.min(100, Math.round((annualPaid / annualExpected) * 100)) : 0;
 
   const hasReports = (ledger?.months || []).some((m) => m.payments.length > 0);
   const becPart = ledger?.donor?.bec_name ? " · " + ledger.donor.bec_name : "";
@@ -148,20 +151,35 @@ export default function MyDues() {
           {donorLabel}
           {ledger!.expected > 0 && ` · suggested ${peso(ledger!.expected)}/month`}
         </p>
-              <div className="grid grid-cols-3 gap-3 mb-5">
+              <div className="grid grid-cols-3 sm:grid-cols-5 gap-3 mb-3">
                 <div className="rounded-lg border p-3 text-center">
-                  <p className="text-xs text-gray-500">Given ({year})</p>
+                  <p className="text-xs text-gray-500">Paid (confirmed)</p>
                   <p className="text-lg font-semibold text-green-700">{peso(totalPaid)}</p>
                 </div>
                 <div className="rounded-lg border p-3 text-center">
-                  <p className="text-xs text-gray-500">Suggested</p>
-                  <p className="text-lg font-semibold">{peso(totalDue)}</p>
+                  <p className="text-xs text-gray-500">Awaiting approval</p>
+                  <p className="text-lg font-semibold text-amber-600">{peso(totalPending)}</p>
                 </div>
                 <div className="rounded-lg border p-3 text-center">
-                  <p className="text-xs text-gray-500">To go</p>
-                  <p className={`text-lg font-semibold ${totalBalance > 0 ? "text-amber-600" : "text-green-700"}`}>
-                    {peso(totalBalance)}
-                  </p>
+                  <p className="text-xs text-gray-500">Expected this year</p>
+                  <p className="text-lg font-semibold">{peso(annualExpected)}</p>
+                </div>
+                <div className="rounded-lg border p-3 text-center">
+                  <p className="text-xs text-gray-500">Net balance</p>
+                  <p className={`text-lg font-semibold ${netBalance > 0 ? "text-amber-600" : "text-green-700"}`}>{peso(netBalance)}</p>
+                </div>
+                <div className="rounded-lg border p-3 text-center">
+                  <p className="text-xs text-gray-500">Annual progress</p>
+                  <p className="text-lg font-semibold">{annualPct}%</p>
+                </div>
+              </div>
+              <div className="mb-4">
+                <div className="flex justify-between text-xs text-gray-500 mb-1">
+                  <span>Annual goal</span>
+                  <span>{peso(annualPaid)} / {peso(annualExpected)}</span>
+                </div>
+                <div className="w-full bg-gray-200 rounded-full h-2.5">
+                  <div className={`bg-green-600 h-2.5 rounded-full`} style={{ width: `${annualPct}%` }}></div>
                 </div>
               </div>
               <div className="space-y-2">
@@ -195,10 +213,16 @@ export default function MyDues() {
                               {p.status === "rejected" && (
                                 <Badge className="ml-1.5 bg-red-100 text-red-800 border-0 text-[10px]">rejected</Badge>
                               )}
+                              {p.status === "voided" && (
+                                <Badge className="ml-1.5 bg-gray-100 text-gray-700 border-0 text-[10px]">voided</Badge>
+                              )}
                             </span>
-                            <span className={`font-medium ${p.status === "rejected" ? "line-through text-gray-400" : ""}`}>
+                            <span className={`font-medium ${(p.status === "rejected" || p.status === "voided") ? "line-through text-gray-400" : ""}`}>
                               {peso(p.amount)}
                             </span>
+                            {p.status === "voided" && p.void_reason && (
+                              <span className="ml-2 text-[10px] text-gray-500 italic">void: {p.void_reason}</span>
+                            )}
                           </div>
                         ))}
                       </div>
