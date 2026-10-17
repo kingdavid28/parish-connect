@@ -560,7 +560,7 @@ router.post("/payments/:id/approve", ...adminOnly, async (req, res) => {
   if (!financeEnabled(res)) return;
   try {
     const { rows: rows0 } = await pool.query(
-      "SELECT id, donor_id, submitted_by, year, receipt_no FROM contribution_payments WHERE id = $1 AND status = 'pending'",
+      "SELECT id, donor_id, submitted_by, year FROM contribution_payments WHERE id = $1 AND status = 'pending'",
       [req.params.id]
     );
     const payment = rows0[0];
@@ -592,10 +592,15 @@ router.post("/payments/:id/approve", ...adminOnly, async (req, res) => {
          WHERE id=$1`,
         [req.params.id, donorId, req.user.id]
       );
-      const receiptNo = await ensureReceiptNo(client, {
-        id: req.params.id, year: payment.year,
-        status: "confirmed", receipt_no: payment.receipt_no,
-      });
+      let receiptNo = null;
+      try {
+        receiptNo = await ensureReceiptNo(client, {
+          id: req.params.id, year: payment.year,
+          status: "confirmed", receipt_no: null,
+        });
+      } catch (err) {
+        console.error("ensureReceiptNo error (non-fatal):", err.message);
+      }
       await auditLog(req.user.id, "approve_payment", "contribution_payment", req.params.id, getClientIp(req), client, {
         before: { status: "pending", donor_id: payment.donor_id },
         after: { status: "confirmed", donor_id, recorded_by: req.user.id, receipt_no: receiptNo },
