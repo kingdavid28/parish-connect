@@ -32,7 +32,6 @@ jobs:
       - name: Build Frontend
         env:
           VITE_API_BASE_URL: https://sanvicenteferrerparish-franciscan.com/parish-connect/api
-          VITE_VAPID_PUBLIC_KEY: ${{ secrets.VITE_VAPID_PUBLIC_KEY }}
         run: npm run build
 
       # Copy the SPA .htaccess into dist so it gets deployed with the frontend
@@ -45,7 +44,6 @@ jobs:
           cp public/parish-connect-logo.png dist/parish-connect-logo.png
           cp public/background-viewport.png dist/background-viewport.png
           cp public/sw.js dist/sw.js
-          cp public/manifest.json dist/manifest.json
 
       - name: Deploy Frontend via SSH (rsync)
         uses: burnett01/rsync-deployments@7.0.1
