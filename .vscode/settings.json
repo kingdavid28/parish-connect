@@ -1,3 +1,13 @@
 {
-  "duplicatefinderjs.enabled": false
+  "files.exclude": {
+    "**/dist": true,
+    "**/coverage": true
+  },
+  "search.exclude": {
+    "**/dist/**": true,
+    "**/coverage/**": true,
+    "**/node_modules/**": true,
+    "backend/node_modules/**": true,
+    "api/vendor/**": true
+  }
 }

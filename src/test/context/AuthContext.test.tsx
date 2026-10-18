@@ -29,7 +29,7 @@ describe('AuthContext', () => {
         const { result } = renderHook(() => useAuth(), { wrapper });
         await waitFor(() => expect(result.current.isLoading).toBe(false));
         expect(result.current.isAuthenticated).toBe(false);
-        expect(result.current.user).toBe(null);
+        expect(result.current.user).toBeNull();
     });
 
     it('logs in and sets user', async () => {
@@ -69,7 +69,7 @@ describe('AuthContext', () => {
         await act(async () => { await result.current.login('juan@test.com', 'Password1'); });
         act(() => { result.current.logout(); });
         expect(result.current.isAuthenticated).toBe(false);
-        expect(result.current.user).toBe(null);
+        expect(result.current.user).toBeNull();
     });
 
     it('isAdmin is true for admin role', async () => {
