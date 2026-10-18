@@ -9,5 +9,16 @@
     "**/node_modules/**": true,
     "backend/node_modules/**": true,
     "api/vendor/**": true
+  },
+  // DuplicateFinderJS (batuhantrkgl.duplicatefinderjs) has no exclude setting
+  // and flags minified bundles in dist/ (gitignored build output).
+  // Recommended: uninstall it — SonarLint already covers real duplication.
+  // These patterns keep VS Code itself from indexing generated output.
+  "files.watcherExclude": {
+    "**/dist/**": true,
+    "**/coverage/**": true,
+    "**/node_modules/**": true,
+    "backend/node_modules/**": true,
+    "api/vendor/**": true
   }
 }
