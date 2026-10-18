@@ -84,7 +84,7 @@ function getClientIp(): string {
  * @param int $windowSeconds Time window in seconds
  */
 function checkRateLimit(string $key, int $max, int $windowSeconds): void {
-    if (!function_exists('apcu_fetch')) {
+    if (!function_exists('apcu_fetch') || !function_exists('apcu_store') || !function_exists('apcu_inc')) {
         return;
     }
     $count = (int) apcu_fetch($key);
@@ -92,9 +92,13 @@ function checkRateLimit(string $key, int $max, int $windowSeconds): void {
         jsonResponse(['success' => false, 'message' => 'Too many requests, please try again later'], 429);
     }
     if ($count === 0) {
-        apcu_store($key, 1, $windowSeconds);
+        /** @var callable(string,mixed,int):bool $store */
+        $store = 'apcu_store';
+        $store($key, 1, $windowSeconds);
     } else {
-        apcu_inc($key);
+        /** @var callable(string,int,int):int $increment */
+        $increment = 'apcu_inc';
+        $increment($key);
     }
 }
 
