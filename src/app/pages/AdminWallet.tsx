@@ -1,10 +1,9 @@
 import React, { useEffect, useState } from "react";
 import { useAuth } from "../context/AuthContext";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "../components/ui/card";
+import { Card, CardContent } from "../components/ui/card";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
-import { Badge } from "../components/ui/badge";
 import { Avatar, AvatarImage, AvatarFallback } from "../components/ui/avatar";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
 import {
@@ -31,21 +30,21 @@ const safeFormatDate = (dateString: string) => {
         date = new Date(dateString);
         
         // If invalid, try ISO format parsing (Safari is stricter)
-        if (isNaN(date.getTime())) {
+        if (Number.isNaN(date.getTime())) {
             // Try parsing with timezone handling
             const isoString = dateString.replace(/ /, 'T');
             date = new Date(isoString);
         }
         
         // If still invalid, try manual parsing
-        if (isNaN(date.getTime())) {
+        if (Number.isNaN(date.getTime())) {
             const parsed = Date.parse(dateString);
-            if (!isNaN(parsed)) {
+            if (!Number.isNaN(parsed)) {
                 date = new Date(parsed);
             }
         }
         
-        if (isNaN(date.getTime())) return 'Invalid date';
+        if (Number.isNaN(date.getTime())) return 'Invalid date';
         return formatDistanceToNow(date, { addSuffix: true });
     } catch (error) {
         console.error('Date parsing error:', error, dateString);
@@ -95,7 +94,7 @@ export default function AdminWallet() {
     // Receipt lightbox
     const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
 
-    useEffect(() => { fetchAll(); }, []);
+    useEffect(() => { void fetchAll(); }, []);
 
     const fetchAll = async () => {
         setLoading(true);
@@ -133,7 +132,7 @@ export default function AdminWallet() {
 
             toast.success(`Request ${decision}`);
             setReviewTarget(null);
-            fetchAll();
+            void fetchAll();
         } catch { toast.error("Failed to process request"); }
         finally { setSubmitting(false); }
     };
@@ -193,7 +192,7 @@ export default function AdminWallet() {
                                             </div>
                                             <div className="mt-1 grid grid-cols-2 gap-x-4 gap-y-0.5 text-sm">
                                                 <span className="text-gray-500">Amount</span>
-                                                <span className="font-semibold text-green-700">₱{parseFloat(String(t.amount_php)).toFixed(2)} → {Number(t.gbless_amount).toLocaleString()} GBless</span>
+                                                <span className="font-semibold text-green-700">₱{Number.parseFloat(String(t.amount_php)).toFixed(2)} → {Number(t.gbless_amount).toLocaleString()} GBless</span>
                                                 <span className="text-gray-500">GCash Ref</span>
                                                 <span className="font-mono font-medium">{t.gcash_ref}</span>
                                                 <span className="text-gray-500">Sender</span>
@@ -226,11 +225,11 @@ export default function AdminWallet() {
                                         </div>
                                         <div className="flex flex-col gap-2 shrink-0">
                                             <Button size="sm" className="bg-green-600 hover:bg-green-700"
-                                                onClick={() => openReview(t.id, "topup", `₱${parseFloat(String(t.amount_php)).toFixed(2)} top-up for ${t.user_name}`)}>
+                                                onClick={() => openReview(t.id, "topup", `₱${Number.parseFloat(String(t.amount_php)).toFixed(2)} top-up for ${t.user_name}`)}>
                                                 <CheckCircle2 className="h-4 w-4 mr-1" />Approve
                                             </Button>
                                             <Button size="sm" variant="outline" className="text-red-600 border-red-200 hover:bg-red-50"
-                                                onClick={() => openReview(t.id, "topup", `₱${parseFloat(String(t.amount_php)).toFixed(2)} top-up for ${t.user_name}`)}>
+                                                onClick={() => openReview(t.id, "topup", `₱${Number.parseFloat(String(t.amount_php)).toFixed(2)} top-up for ${t.user_name}`)}>
                                                 <XCircle className="h-4 w-4 mr-1" />Reject
                                             </Button>
                                         </div>
@@ -263,7 +262,7 @@ export default function AdminWallet() {
                                             </div>
                                             <div className="mt-1 grid grid-cols-2 gap-x-4 gap-y-0.5 text-sm">
                                                 <span className="text-gray-500">Amount</span>
-                                                <span className="font-semibold text-orange-700">{Number(c.gbless_amount).toLocaleString()} GBless → ₱{parseFloat(String(c.amount_php)).toFixed(2)}</span>
+                                                <span className="font-semibold text-orange-700">{Number(c.gbless_amount).toLocaleString()} GBless → ₱{Number.parseFloat(String(c.amount_php)).toFixed(2)}</span>
                                                 <span className="text-gray-500">Send to GCash</span>
                                                 <span className="font-mono font-medium">{c.gcash_number}</span>
                                                 <span className="text-gray-500">Account Name</span>
@@ -272,16 +271,16 @@ export default function AdminWallet() {
                                                 <span className="text-gray-400 text-xs">{safeFormatDate(c.created_at)}</span>
                                             </div>
                                             <div className="mt-2 bg-orange-50 border border-orange-200 rounded px-3 py-2 text-xs text-orange-700">
-                                                ⚠️ GBless has been reserved from user's balance. Send ₱{parseFloat(String(c.amount_php)).toFixed(2)} to <strong>{c.gcash_number}</strong> ({c.gcash_name}) before approving.
+                                                ⚠️ GBless has been reserved from user's balance. Send ₱{Number.parseFloat(String(c.amount_php)).toFixed(2)} to <strong>{c.gcash_number}</strong> ({c.gcash_name}) before approving.
                                             </div>
                                         </div>
                                         <div className="flex flex-col gap-2 shrink-0">
                                             <Button size="sm" className="bg-green-600 hover:bg-green-700"
-                                                onClick={() => openReview(c.id, "cashout", `₱${parseFloat(String(c.amount_php)).toFixed(2)} cash-out for ${c.user_name}`)}>
+                                                onClick={() => openReview(c.id, "cashout", `₱${Number.parseFloat(String(c.amount_php)).toFixed(2)} cash-out for ${c.user_name}`)}>
                                                 <CheckCircle2 className="h-4 w-4 mr-1" />Approve
                                             </Button>
                                             <Button size="sm" variant="outline" className="text-red-600 border-red-200 hover:bg-red-50"
-                                                onClick={() => openReview(c.id, "cashout", `₱${parseFloat(String(c.amount_php)).toFixed(2)} cash-out for ${c.user_name}`)}>
+                                                onClick={() => openReview(c.id, "cashout", `₱${Number.parseFloat(String(c.amount_php)).toFixed(2)} cash-out for ${c.user_name}`)}>
                                                 <XCircle className="h-4 w-4 mr-1" />Reject
                                             </Button>
                                         </div>

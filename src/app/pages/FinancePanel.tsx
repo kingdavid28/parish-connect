@@ -82,6 +82,14 @@ interface CreatePaymentInput {
   reference: string; receipt: File | null; authHeaders: Record<string, string>;
 }
 
+interface SavePaymentFlowInput {
+  ledger: Ledger | null; ledgerYear: number; payMonth: number; payAmount: string;
+  editingPayment: Payment | null; payMethod: string; payRef: string; payReceipt: File | null;
+  voidReason: string; authHeaders: Record<string, string>;
+  setSavingPayment: (saving: boolean) => void; setPayOpen: (open: boolean) => void;
+  refreshLedger: (donorId: string, year: number) => void; refreshSummary: () => void;
+}
+
 function paymentSuccessMessage(editingPayment: Payment | null, payMonth: number): string {
   if (editingPayment?.status === "confirmed") {
     return "Payment corrected — original voided, replacement recorded";
@@ -118,6 +126,38 @@ async function createPaymentRequest(input: CreatePaymentInput): Promise<Response
   return fetch(`${API}/finance/payments`, { method: "POST", headers: input.authHeaders, body: fd });
 }
 
+async function submitPayment(input: SavePaymentFlowInput): Promise<void> {
+  if (!input.ledger) return;
+  const amount = Number.parseFloat(input.payAmount);
+  if (!Number.isFinite(amount) || amount <= 0) { toast.error("Enter a valid amount"); return; }
+  if (input.editingPayment?.status === "confirmed" && !input.voidReason.trim()) {
+    toast.error("Reason for correction is required"); return;
+  }
+  input.setSavingPayment(true);
+  try {
+    const res = input.editingPayment
+      ? await updatePaymentRequest(input.editingPayment, {
+          amount, method: input.payMethod, reference: input.payRef || null, voidReason: input.voidReason,
+          authHeaders: input.authHeaders,
+        })
+      : await createPaymentRequest({
+          donorId: input.ledger.donor.id, year: input.ledgerYear, month: input.payMonth,
+          amount, method: input.payMethod, reference: input.payRef, receipt: input.payReceipt,
+          authHeaders: input.authHeaders,
+        });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || "Failed");
+    toast.success(paymentSuccessMessage(input.editingPayment, input.payMonth));
+    input.setPayOpen(false);
+    input.refreshLedger(input.ledger.donor.id, input.ledgerYear);
+    input.refreshSummary();
+  } catch (e: any) {
+    toast.error(e.message);
+  } finally {
+    input.setSavingPayment(false);
+  }
+}
+
 function cellClassFor(status: string): string {
   if (status === "paid") return "bg-green-50 border-green-200";
   if (status === "partial") return "bg-amber-50 border-amber-300";
@@ -140,6 +180,47 @@ function monthActionLabel(status: LedgerMonth["status"]): string {
   return "+ record";
 }
 
+function monthBalanceLabel(month: LedgerMonth): string {
+  if (month.status === "paid") return "complete";
+  if (month.expected > 0) return `${peso(month.balance)} ${monthActionLabel(month.status)}`;
+  return monthActionLabel(month.status);
+}
+
+function formatSuggestedLine(ledger: Ledger | null): string {
+  if (!ledger || ledger.expected <= 0) return "No suggested monthly amount";
+  return `Suggested ${peso(ledger.expected)}/month`;
+}
+
+interface LedgerMonthGridProps {
+  ledger: Ledger | null;
+  onSelectMonth: (month: LedgerMonth) => void;
+}
+
+function LedgerMonthGrid({ ledger, onSelectMonth }: Readonly<LedgerMonthGridProps>) {
+  if (!ledger) return null;
+
+  return (
+    <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+      {ledger.months.map((month) => (
+        <button
+          key={month.month}
+          type="button"
+          onClick={() => onSelectMonth(month)}
+          className={`rounded-lg border p-3 text-left transition-colors ${cellClassFor(month.status)}`}
+          aria-label={`${MONTHS_FULL[month.month - 1]}: ${peso(month.paid_total)} paid, ${monthActionLabel(month.status)}`}
+        >
+          <span className="block text-sm font-medium">{MONTHS[month.month - 1]}</span>
+          <span className="block text-xs text-gray-600">{peso(month.paid_total)}</span>
+          <span className="block text-[11px] text-gray-500">{monthBalanceLabel(month)}</span>
+          {month.pending_total > 0 && (
+            <span className="block text-[11px] text-amber-700">{peso(month.pending_total)} pending</span>
+          )}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 function donorToggleLabel(donor: Donor): string {
   return donor.is_active === 1 ? `Deactivate ${donor.name}` : `Reactivate ${donor.name}`;
 }
@@ -153,16 +234,27 @@ function formatDonorExpected(donor: Donor): string {
   return exp != null ? peso(exp) : "—";
 }
 
+function getLedgerHistory(ledger: Ledger | null): Payment[] {
+  if (!ledger) return [];
+  return ledger.months
+    .flatMap((month) => month.payments)
+    .sort((first, second) => first.month - second.month || (first.created_at || "").localeCompare(second.created_at || ""));
+}
+
 interface SummaryTotalsProps {
   summary: SummaryRow[];
 }
 
-function SummaryTotals({ summary }: SummaryTotalsProps) {
+function SummaryTotals({ summary }: Readonly<SummaryTotalsProps>) {
   const expected = summary.reduce((s, r) => s + Number(r.expected_due), 0);
   const collected = summary.reduce((s, r) => s + Number(r.collected), 0);
   const paid = summary.reduce((s, r) => s + r.paid, 0);
   const partial = summary.reduce((s, r) => s + r.partial, 0);
   const unpaid = summary.reduce((s, r) => s + r.unpaid, 0);
+
+  const hasPartial = partial > 0;
+  const hasUnpaid = unpaid > 0;
+
   return (
     <>
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-4">
@@ -180,11 +272,11 @@ function SummaryTotals({ summary }: SummaryTotalsProps) {
         </div>
         <div className="rounded-lg border p-3">
           <p className="text-xs text-gray-500">Partial</p>
-          <p className={`text-lg font-semibold ${partial > 0 ? "text-amber-600" : ""}`}>{partial}</p>
+          <p className={`text-lg font-semibold ${hasPartial ? "text-amber-600" : ""}`}>{partial}</p>
         </div>
         <div className="rounded-lg border p-3">
           <p className="text-xs text-gray-500">None yet</p>
-          <p className={`text-lg font-semibold ${unpaid > 0 ? "text-amber-600" : ""}`}>{unpaid}</p>
+          <p className={`text-lg font-semibold ${hasUnpaid ? "text-amber-600" : ""}`}>{unpaid}</p>
         </div>
       </div>
       {summary.length > 0 && (
@@ -206,8 +298,29 @@ interface DonorTableBodyProps {
   onToggle: (donor: Donor) => void; onPrevPage: () => void; onNextPage: () => void;
 }
 
-function DonorTableBody(props: DonorTableBodyProps) {
+function DonorTableBody(props: Readonly<DonorTableBodyProps>) {
   const { donors, donorSearch, donorPage, donorTotal, donorTotalPages } = props;
+
+  const inactiveBadge = (
+    <Badge variant="outline" className="ml-2 text-[10px]">inactive</Badge>
+  );
+
+  const isInactive = (d: Donor) => d.is_active !== 1;
+  const nameCell = (d: Donor) => (
+    <>
+      {d.name}
+      {isInactive(d) && inactiveBadge}
+    </>
+  );
+  const linkedUserCell = (d: Donor) =>
+    d.linked_user_name ? (
+      <Badge variant="secondary" className="font-normal">{d.linked_user_name}</Badge>
+    ) : (
+      "—"
+    );
+
+  const rowClassName = (d: Donor) => (isInactive(d) ? "opacity-60" : "");
+
   if (donors.length === 0) {
     return (
       <p className="text-sm text-gray-500 py-6 text-center">
@@ -215,6 +328,7 @@ function DonorTableBody(props: DonorTableBodyProps) {
       </p>
     );
   }
+
   return (
     <>
       <Table>
@@ -229,22 +343,22 @@ function DonorTableBody(props: DonorTableBodyProps) {
         </TableHeader>
         <TableBody>
           {donors.map((d) => (
-            <TableRow key={d.id} className={d.is_active !== 1 ? "opacity-60" : ""}>
-              <TableCell className="font-medium">
-                {d.name}
-                {d.is_active !== 1 && <Badge variant="outline" className="ml-2 text-[10px]">inactive</Badge>}
-              </TableCell>
+            <TableRow key={d.id} className={rowClassName(d)}>
+              <TableCell className="font-medium">{nameCell(d)}</TableCell>
               <TableCell className="hidden md:table-cell">{d.bec_name || "—"}</TableCell>
               <TableCell className="hidden sm:table-cell">{formatDonorExpected(d)}</TableCell>
-              <TableCell className="hidden lg:table-cell">
-                {d.linked_user_name ? <Badge variant="secondary" className="font-normal">{d.linked_user_name}</Badge> : "—"}
-              </TableCell>
+              <TableCell className="hidden lg:table-cell">{linkedUserCell(d)}</TableCell>
               <TableCell className="text-right space-x-1">
                 <Button variant="outline" size="sm" onClick={() => props.onLedger(d)}>Ledger</Button>
                 <Button variant="ghost" size="sm" onClick={() => props.onEdit(d)} aria-label={`Edit ${d.name}`}>
                   <Pencil className="h-4 w-4" />
                 </Button>
-                <Button variant="ghost" size="sm" onClick={() => props.onToggle(d)} aria-label={donorToggleLabel(d)}>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => props.onToggle(d)}
+                  aria-label={donorToggleLabel(d)}
+                >
                   <Trash2 className={`h-4 w-4 ${donorToggleIconClass(d)}`} />
                 </Button>
               </TableCell>
@@ -258,16 +372,103 @@ function DonorTableBody(props: DonorTableBodyProps) {
             Page {donorPage} of {donorTotalPages} · {donorTotal} donor{donorTotal !== 1 ? "s" : ""}
           </p>
           <div className="flex gap-1">
-            <Button variant="outline" size="sm" disabled={donorPage <= 1} onClick={props.onPrevPage} aria-label="Previous page">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={donorPage <= 1}
+              onClick={props.onPrevPage}
+              aria-label="Previous page"
+            >
               <ChevronLeft className="h-4 w-4" />
             </Button>
-            <Button variant="outline" size="sm" disabled={donorPage >= donorTotalPages} onClick={props.onNextPage} aria-label="Next page">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={donorPage >= donorTotalPages}
+              onClick={props.onNextPage}
+              aria-label="Next page"
+            >
               <ChevronRight className="h-4 w-4" />
             </Button>
           </div>
         </div>
       )}
     </>
+  );
+}
+
+interface PaymentFormDialogProps {
+  open: boolean; onOpenChange: (open: boolean) => void;
+  editingPayment: Payment | null; donorName?: string; month: number; year: number;
+  payAmount: string; onPayAmountChange: (value: string) => void;
+  payMethod: string; onPayMethodChange: (value: string) => void;
+  payRef: string; onPayRefChange: (value: string) => void;
+  voidReason: string; onVoidReasonChange: (value: string) => void;
+  onPayReceiptChange: (value: File | null) => void;
+  saving: boolean; onSave: () => Promise<void>;
+}
+
+function PaymentFormDialog({
+  open, onOpenChange, editingPayment, donorName, month, year,
+  payAmount, onPayAmountChange, payMethod, onPayMethodChange, payRef, onPayRefChange,
+  voidReason, onVoidReasonChange, onPayReceiptChange, saving, onSave,
+}: Readonly<PaymentFormDialogProps>) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>{editingPayment ? "Edit Payment" : "Record Payment"}</DialogTitle>
+          <DialogDescription>
+            {donorName} · {MONTHS_FULL[month - 1]} {year}
+          </DialogDescription>
+        </DialogHeader>
+        <form onSubmit={(e) => { e.preventDefault(); void onSave(); }} className="space-y-4">
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-2">
+              <Label htmlFor="p-amount">Amount (₱) <span className="text-red-500">*</span></Label>
+              <Input id="p-amount" type="number" min="0.01" step="0.01" required autoFocus
+                value={payAmount} onChange={(e) => onPayAmountChange(e.target.value)} placeholder="0.00" />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="p-method">Method</Label>
+              <Select value={payMethod} onValueChange={onPayMethodChange}>
+                <SelectTrigger id="p-method"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {METHODS.map((method) => <SelectItem key={method.value} value={method.value}>{method.label}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="p-ref">Reference No.</Label>
+            <Input id="p-ref" value={payRef} placeholder="GCash ref / OR number"
+              onChange={(e) => onPayRefChange(e.target.value)} />
+          </div>
+          {editingPayment?.status === "confirmed" && (
+            <div className="space-y-2">
+              <Label htmlFor="p-void-reason">Reason for correction <span className="text-red-500">*</span></Label>
+              <textarea id="p-void-reason" className="border border-gray-300 rounded p-2 text-sm"
+                value={voidReason} onChange={(e) => onVoidReasonChange(e.target.value)}
+                placeholder="Why is this payment being corrected?" />
+            </div>
+          )}
+          {!editingPayment && (
+            <div className="space-y-2">
+              <Label htmlFor="p-receipt">Receipt (optional)</Label>
+              <Input id="p-receipt" type="file" accept="image/*"
+                onChange={(e) => onPayReceiptChange(e.target.files?.[0] || null)} />
+            </div>
+          )}
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+            <Button type="submit" disabled={saving}>
+              {saving && <Loader2 className="h-4 w-4 mr-1 animate-spin" />}
+              {editingPayment ? "Save" : "Record Payment"}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -527,35 +728,12 @@ export default function FinancePanel() {
   };
 
   const savePayment = async () => {
-    if (!ledger) return;
-    const amount = Number.parseFloat(payAmount);
-    if (!Number.isFinite(amount) || amount <= 0) { toast.error("Enter a valid amount"); return; }
-    if (editingPayment?.status === "confirmed" && !voidReason.trim()) {
-      toast.error("Reason for correction is required"); return;
-    }
-    setSavingPayment(true);
-    try {
-      const res = editingPayment
-        ? await updatePaymentRequest(editingPayment, {
-            amount, method: payMethod, reference: payRef || null, voidReason,
-            authHeaders: authHeaders(),
-          })
-        : await createPaymentRequest({
-            donorId: ledger.donor.id, year: ledgerYear, month: payMonth,
-            amount, method: payMethod, reference: payRef, receipt: payReceipt,
-            authHeaders: authHeaders(),
-          });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.message || "Failed");
-      toast.success(paymentSuccessMessage(editingPayment, payMonth));
-      setPayOpen(false);
-      void fetchLedger(ledger.donor.id, ledgerYear);
-      void fetchSummary();
-    } catch (e: any) {
-      toast.error(e.message);
-    } finally {
-      setSavingPayment(false);
-    }
+    await submitPayment({
+      ledger, ledgerYear, payMonth, payAmount, editingPayment, payMethod, payRef, payReceipt,
+      voidReason, authHeaders: authHeaders(), setSavingPayment, setPayOpen,
+      refreshLedger: (donorId, year) => { void fetchLedger(donorId, year); },
+      refreshSummary: () => { void fetchSummary(); },
+    });
   };
 
   const actOnPending = async (id: string, action: "approve" | "reject", body: object = {}) => {
@@ -709,13 +887,7 @@ export default function FinancePanel() {
   const donorTotalPages = Math.max(1, Math.ceil(donorTotal / PAGE_SIZE));
   const years = [now.getFullYear() - 1, now.getFullYear(), now.getFullYear() + 1];
 
-  const cellClass = (status: string) => cellClassFor(status);
-
-  const ledgerHistory = ledger
-    ? ledger.months
-        .flatMap((m) => m.payments)
-        .sort((a, b) => a.month - b.month || (a.created_at || "").localeCompare(b.created_at || ""))
-    : [];
+  const ledgerHistory = getLedgerHistory(ledger);
 
   // ── Render ────────────────────────────────────────────────
   return (
@@ -981,9 +1153,7 @@ export default function FinancePanel() {
           <DialogHeader>
             <DialogTitle>{ledger?.donor.name} — Ledger</DialogTitle>
             <DialogDescription>
-              {ledger?.donor.bec_name || "No BEC"}
-              {ledger ? ` · suggested ${ledger.expected > 0 ? peso(ledger.expected) + "/mo" : "not set"}` : ""}
-              {" · click a month"}
+              {ledger?.donor.bec_name || "No BEC"} · {formatSuggestedLine(ledger)} · click a month
             </DialogDescription>
           </DialogHeader>
           <div className="flex items-center gap-2 mb-2">
@@ -1003,26 +1173,12 @@ export default function FinancePanel() {
             <div className="flex items-center gap-2 text-sm text-gray-500 py-6 justify-center">
               <Loader2 className="h-4 w-4 animate-spin" /> Loading…
             </div>
-          ) : ledger ? (
-            <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
-              {ledger.months.map((m) => (
-                <button key={m.month} type="button" onClick={() => setDetailMonth(m)}
-                  className={`rounded-lg border p-2 text-left transition-colors ${cellClass(m.status)}`}>
-                  <p className="text-xs text-gray-500">{MONTHS[m.month - 1]}</p>
-                  {m.status === "unpaid" ? (
-                    <p className="text-sm text-gray-400">—</p>
-                  ) : (
-                    <p className={`text-sm font-semibold ${m.status === "paid" ? "text-green-700" : "text-amber-700"}`}>
-                      {peso(m.paid_total)}
-                    </p>
-                  )}
-                  <p className="text-[10px] text-primary">
-                    {m.status === "partial" ? `${peso(m.balance)} to go` : monthActionLabel(m.status)}
-                  </p>
-                </button>
-              ))}
-            </div>
-          ) : null}
+          ) : (
+            <LedgerMonthGrid
+              ledger={ledger}
+              onSelectMonth={setDetailMonth}
+            />
+          )}
           {ledger && (
             <div className="mt-6 border-t pt-4 space-y-4">
               <div>
@@ -1159,62 +1315,25 @@ export default function FinancePanel() {
         </DialogContent>
       </Dialog>
 
-      {/* Payment form dialog */}
-      <Dialog open={payOpen} onOpenChange={setPayOpen}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>{editingPayment ? "Edit Payment" : "Record Payment"}</DialogTitle>
-            <DialogDescription>
-              {ledger?.donor.name} · {MONTHS_FULL[payMonth - 1]} {ledgerYear}
-            </DialogDescription>
-          </DialogHeader>
-          <form onSubmit={(e) => { e.preventDefault(); void savePayment(); }} className="space-y-4">
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-2">
-                <Label htmlFor="p-amount">Amount (₱) <span className="text-red-500">*</span></Label>
-                <Input id="p-amount" type="number" min="0.01" step="0.01" required autoFocus
-                  value={payAmount} onChange={(e) => setPayAmount(e.target.value)} placeholder="0.00" />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="p-method">Method</Label>
-                <Select value={payMethod} onValueChange={setPayMethod}>
-                  <SelectTrigger id="p-method"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {METHODS.map((m) => <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="p-ref">Reference No.</Label>
-              <Input id="p-ref" value={payRef} placeholder="GCash ref / OR number"
-                onChange={(e) => setPayRef(e.target.value)} />
-            </div>
-            {editingPayment && editingPayment.status === "confirmed" && (
-              <div className="space-y-2">
-                <Label htmlFor="p-void-reason">Reason for correction <span className="text-red-500">*</span></Label>
-                <textarea id="p-void-reason" className="border border-gray-300 rounded p-2 text-sm"
-                  value={voidReason} onChange={(e) => setVoidReason(e.target.value)}
-                  placeholder="Why is this payment being corrected?" />
-              </div>
-            )}
-            {!editingPayment && (
-              <div className="space-y-2">
-                <Label htmlFor="p-receipt">Receipt (optional)</Label>
-                <Input id="p-receipt" type="file" accept="image/*"
-                  onChange={(e) => setPayReceipt(e.target.files?.[0] || null)} />
-              </div>
-            )}
-            <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setPayOpen(false)}>Cancel</Button>
-              <Button type="submit" disabled={savingPayment}>
-                {savingPayment && <Loader2 className="h-4 w-4 mr-1 animate-spin" />}
-                {editingPayment ? "Save" : "Record Payment"}
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
+      <PaymentFormDialog
+        open={payOpen}
+        onOpenChange={setPayOpen}
+        editingPayment={editingPayment}
+        donorName={ledger?.donor.name}
+        month={payMonth}
+        year={ledgerYear}
+        payAmount={payAmount}
+        onPayAmountChange={setPayAmount}
+        payMethod={payMethod}
+        onPayMethodChange={setPayMethod}
+        payRef={payRef}
+        onPayRefChange={setPayRef}
+        voidReason={voidReason}
+        onVoidReasonChange={setVoidReason}
+        onPayReceiptChange={setPayReceipt}
+        saving={savingPayment}
+        onSave={savePayment}
+      />
 
       {/* Void payment dialog (reason required — immutable soft void) */}
       <Dialog open={voidOpen} onOpenChange={setVoidOpen}>
@@ -1240,7 +1359,7 @@ export default function FinancePanel() {
             <DialogFooter>
               <Button type="button" variant="outline" disabled={savingPayment} onClick={() => { setVoidOpen(false); setVoidTarget(null); }}>Cancel</Button>
               <Button type="submit" disabled={savingPayment || !voidModalReason.trim()}>
-                {savingPayment && <Loader2 className="h-4 w-4 mr-1 animate-spin" />}
+                {savingPayment && <Loader2 className="h-4 w-4" />}
                 Void Payment
               </Button>
             </DialogFooter>
@@ -1321,7 +1440,7 @@ export default function FinancePanel() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setMatchReport(null)}>Cancel</Button>
-            <Button onClick={() => { void confirmApprove(); }} disabled={actingPending === matchReport?.id}>
+            <Button onClick={confirmApprove} disabled={actingPending === matchReport?.id}>
               {actingPending === matchReport?.id && <Loader2 className="h-4 w-4 mr-1 animate-spin" />}
               Approve &amp; {matchDonorId ? "Match" : "Create Donor"}
             </Button>
