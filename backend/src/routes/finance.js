@@ -559,23 +559,26 @@ router.get("/contributions/pending", ...adminOnly, async (req, res) => {
 router.post("/payments/:id/approve", ...adminOnly, async (req, res) => {
   if (!financeEnabled(res)) return;
   try {
-    const { rows: rows0 } = await pool.query(
-      "SELECT id, donor_id, submitted_by, year FROM contribution_payments WHERE id = $1 AND status = 'pending'",
-      [req.params.id]
-    );
-    const payment = rows0[0];
-    if (!payment) {
-      return res.status(404).json({ success: false, message: "Pending payment not found" });
-    }
-
-    // Resolve which donor this payment belongs to
-    let donorId = payment.donor_id || String(req.body?.donor_id || "").trim() || null;
     const newDonorName = String(req.body?.new_donor_name || "").trim();
-    if (!donorId && !newDonorName) {
-      return badRequest(res, "Select a donor for this report (donor_id or new_donor_name)");
-    }
+    let payment;
+    let donorId;
+    let missingDonor = false;
 
     await withTransaction(async (client) => {
+      const { rows } = await client.query(
+        "SELECT id, donor_id, submitted_by, year FROM contribution_payments WHERE id = $1 AND status = 'pending' FOR UPDATE",
+        [req.params.id]
+      );
+      payment = rows[0];
+      if (!payment) return;
+
+      // Resolve which donor this payment belongs to while holding its row lock.
+      donorId = payment.donor_id || String(req.body?.donor_id || "").trim() || null;
+      if (!donorId && !newDonorName) {
+        missingDonor = true;
+        return;
+      }
+
       if (!donorId && newDonorName) {
         donorId = uuid();
         await client.query(
@@ -606,6 +609,13 @@ router.post("/payments/:id/approve", ...adminOnly, async (req, res) => {
         after: { status: "confirmed", donor_id, recorded_by: req.user.id, receipt_no: receiptNo },
       });
     });
+
+    if (!payment) {
+      return res.status(404).json({ success: false, message: "Pending payment not found" });
+    }
+    if (missingDonor) {
+      return badRequest(res, "Select a donor for this report (donor_id or new_donor_name)");
+    }
     res.json({ success: true, message: "Contribution approved", data: { donor_id: donorId } });
   } catch (err) {
     serverError(res, "Payment approve error", err);
