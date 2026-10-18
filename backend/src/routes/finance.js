@@ -10,7 +10,7 @@ const router = express.Router();
 const adminOnly = [authenticate, requireRole("admin", "superadmin")];
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
 
-const VALID_METHODS = ["cash", "gcash", "bank", "other"];
+const VALID_METHODS = new Set(["cash", "gcash", "bank", "other"]);
 const EXPECTED_SQL = "COALESCE(d.expected_amount, b.expected_amount, 0)::float";
 
 function financeEnabled(res) {
@@ -105,11 +105,11 @@ router.post("/becs", ...adminOnly, async (req, res) => {
   if (!financeEnabled(res)) return;
   const name = String(req.body?.name || "").trim();
   const expected = req.body?.expected_amount === undefined || req.body?.expected_amount === null || req.body?.expected_amount === ""
-    ? null : parseFloat(req.body.expected_amount);
+    ? null : Number.parseFloat(req.body.expected_amount);
   if (!name || name.length > 150) {
     return badRequest(res, "name is required (max 150 chars)");
   }
-  if (expected !== null && !(expected >= 0)) {
+  if (expected !== null && (!Number.isFinite(expected) || expected < 0)) {
     return badRequest(res, "expected_amount must be >= 0");
   }
   try {
@@ -130,7 +130,7 @@ router.put("/becs/:id", ...adminOnly, async (req, res) => {
   if (!financeEnabled(res)) return;
   const name = String(req.body?.name || "").trim();
   const expected = req.body?.expected_amount === undefined || req.body?.expected_amount === null || req.body?.expected_amount === ""
-    ? null : parseFloat(req.body.expected_amount);
+    ? null : Number.parseFloat(req.body.expected_amount);
   if (!name || name.length > 150) {
     return badRequest(res, "name is required (max 150 chars)");
   }
@@ -162,9 +162,9 @@ function donorValues(body) {
     bec_id: String(body.bec_id || "").trim() || null,
     gcash_number: String(body.gcash_number || "").trim() || null,
     user_id: String(body.user_id || "").trim() || null,
-    expected_amount: exp === undefined || exp === null || exp === "" ? null : parseFloat(exp),
+    expected_amount: exp === undefined || exp === null || exp === "" ? null : Number.parseFloat(exp),
     notes: String(body.notes || "").trim() || null,
-    is_active: body.is_active === undefined ? 1 : (body.is_active ? 1 : 0),
+    is_active: body.is_active === undefined || body.is_active ? 1 : 0,
   };
 }
 
@@ -242,6 +242,69 @@ router.post("/donors", ...adminOnly, async (req, res) => {
 });
 
 // POST /api/finance/donors/bulk — {rows:[{name,address,bec_name,gcash_number,expected_amount}]}
+function parseBulkDonorRows(rows) {
+  const donors = [];
+  const errors = [];
+  rows.forEach((row, index) => {
+    const source = row || {};
+    const name = String(source.name || "").trim();
+    if (!name) {
+      errors.push({ row: index + 1, message: "name is required" });
+      return;
+    }
+    const expected = source.expected_amount === undefined || source.expected_amount === null || source.expected_amount === ""
+      ? null : Number.parseFloat(source.expected_amount);
+    if (expected !== null && !Number.isFinite(expected)) {
+      errors.push({ row: index + 1, message: "expected_amount must be a number" });
+      return;
+    }
+    donors.push({
+      name,
+      becName: String(source.bec_name || "").trim(),
+      address: String(source.address || "").trim() || null,
+      gcashNumber: String(source.gcash_number || "").trim() || null,
+      expected,
+      notes: String(source.notes || "").trim() || null,
+    });
+  });
+  return { donors, errors };
+}
+
+async function createOrFindBulkBec(name) {
+  const id = uuid();
+  try {
+    await pool.query("INSERT INTO becs (id, name) VALUES ($1, $2)", [id, name]);
+    return [name.toLowerCase(), id];
+  } catch (err) {
+    if (String(err.code) !== "23505") throw err;
+    const { rows } = await pool.query("SELECT id FROM becs WHERE name = $1", [name]);
+    return [name.toLowerCase(), rows[0]?.id || null];
+  }
+}
+
+async function resolveBulkBecs(donors) {
+  const { rows } = await pool.query("SELECT id, name FROM becs");
+  const becByName = new Map(rows.map((bec) => [bec.name.toLowerCase(), bec.id]));
+  const missingNames = [...new Set(donors.map((donor) => donor.becName).filter(Boolean))]
+    .filter((name) => !becByName.has(name.toLowerCase()));
+  const created = await Promise.all(missingNames.map(createOrFindBulkBec));
+  created.forEach(([name, id]) => {
+    if (id) becByName.set(name, id);
+  });
+  return becByName;
+}
+
+async function insertBulkDonors(donors, becByName, userId) {
+  await Promise.all(donors.map(async (donor) => {
+    await pool.query(
+      `INSERT INTO donors (id, name, address, bec_id, gcash_number, expected_amount, notes, is_active, created_by)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,1,$8)`,
+      [uuid(), donor.name, donor.address, becByName.get(donor.becName.toLowerCase()) || null,
+       donor.gcashNumber, donor.expected, donor.notes, userId]
+    );
+  }));
+}
+
 router.post("/donors/bulk", ...adminOnly, async (req, res) => {
   if (!financeEnabled(res)) return;
   const rows = Array.isArray(req.body?.rows) ? req.body.rows : [];
@@ -249,54 +312,15 @@ router.post("/donors/bulk", ...adminOnly, async (req, res) => {
   if (rows.length > 500) return badRequest(res, "Maximum 500 rows per import");
 
   try {
-    const { rows: becRows } = await pool.query("SELECT id, name FROM becs");
-    const becByName = new Map(becRows.map((b) => [b.name.toLowerCase(), b.id]));
-
-    const results = { imported: 0, errors: [] };
-    for (let i = 0; i < rows.length; i++) {
-      const r = rows[i] || {};
-      const name = String(r.name || "").trim();
-      if (!name) {
-        results.errors.push({ row: i + 1, message: "name is required" });
-        continue;
-      }
-      let becId = null;
-      const becName = String(r.bec_name || "").trim();
-      if (becName) {
-        becId = becByName.get(becName.toLowerCase());
-        if (!becId) {
-          // Auto-create the BEC so imports don't fail on new community names
-          becId = uuid();
-          try {
-            await pool.query("INSERT INTO becs (id, name) VALUES ($1, $2)", [becId, becName]);
-            becByName.set(becName.toLowerCase(), becId);
-          } catch (e) {
-            if (String(e.code) === "23505") {
-              const { rows: again } = await pool.query("SELECT id FROM becs WHERE name = $1", [becName]);
-              becId = again[0]?.id || null;
-              if (becId) becByName.set(becName.toLowerCase(), becId);
-            } else { throw e; }
-          }
-        }
-      }
-      const exp = r.expected_amount === undefined || r.expected_amount === null || r.expected_amount === ""
-        ? null : parseFloat(r.expected_amount);
-      if (exp !== null && !Number.isFinite(exp)) {
-        results.errors.push({ row: i + 1, message: "expected_amount must be a number" });
-        continue;
-      }
-      const id = uuid();
-      await pool.query(
-        `INSERT INTO donors (id, name, address, bec_id, gcash_number, expected_amount, notes, is_active, created_by)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,1,$8)`,
-        [id, name, String(r.address || "").trim() || null, becId,
-         String(r.gcash_number || "").trim() || null, exp,
-         String(r.notes || "").trim() || null, req.user.id]
-      );
-      results.imported++;
-    }
+    const { donors, errors } = parseBulkDonorRows(rows);
+    const becByName = await resolveBulkBecs(donors);
+    await insertBulkDonors(donors, becByName, req.user.id);
     await auditLog(req.user.id, "bulk_import_donors", "donor", null, getClientIp(req));
-    res.status(201).json({ success: true, message: `Imported ${results.imported} donor(s)`, data: results });
+    res.status(201).json({
+      success: true,
+      message: `Imported ${donors.length} donor(s)`,
+      data: { imported: donors.length, errors },
+    });
   } catch (err) {
     serverError(res, "Donor bulk import error", err);
   }
@@ -424,20 +448,22 @@ router.get("/donors/:id/statement", ...adminOnly, async (req, res) => {
 
     const esc = (v) => {
       const s = String(v ?? "");
-      return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+      return /[",\n]/.test(s) ? `"${s.replaceAll('"', '""')}"` : s;
     };
     const money = (n) => Number(n || 0).toFixed(2);
     const MONTH_NAMES = ["January","February","March","April","May","June","July","August","September","October","November","December"];
 
     const lines = [];
-    lines.push(`Statement of Account,${esc(donor.name)},${esc(donor.bec_name || "")},Year ${year}`);
-    lines.push("");
-    lines.push(`Annual Expected Due,${money(annualExpectedCents)}`);
-    lines.push(`Annual Paid (confirmed),${money(annualPaidCents)}`);
-    lines.push(`Pending Approval,${money(totalPendingCents)}`);
-    lines.push(`Net Balance,${money(Math.max(0, annualExpectedCents - annualPaidCents))}`);
-    lines.push("");
-    lines.push("Month,Expected Due,Paid Total,Pending Total,Balance,Status");
+    lines.push(
+      `Statement of Account,${esc(donor.name)},${esc(donor.bec_name || "")},Year ${year}`,
+      "",
+      `Annual Expected Due,${money(annualExpectedCents)}`,
+      `Annual Paid (confirmed),${money(annualPaidCents)}`,
+      `Pending Approval,${money(totalPendingCents)}`,
+      `Net Balance,${money(Math.max(0, annualExpectedCents - annualPaidCents))}`,
+      "",
+      "Month,Expected Due,Paid Total,Pending Total,Balance,Status"
+    );
     let runningPaidCents = 0;
     for (const m of months) {
       runningPaidCents += toCents(m.paid_total);
@@ -446,8 +472,7 @@ router.get("/donors/:id/statement", ...adminOnly, async (req, res) => {
         money(Math.max(0, toCents(m.expected) - runningPaidCents)), monthStatus(toCents(m.expected), toCents(m.paid_total)),
       ].join(","));
     }
-    lines.push("");
-    lines.push("Date,Month,Amount,Method,Reference,Receipt No.,Status,Recorded By,Void Reason");
+    lines.push("", "Date,Month,Amount,Method,Reference,Receipt No.,Status,Recorded By,Void Reason");
     for (const p of payments) {
       const paidOn = new Date(p.created_at).toISOString().slice(0, 10);
       lines.push([
@@ -493,13 +518,13 @@ router.post("/my/contributions", authenticate, upload.single("receipt"), async (
   const now = new Date();
   const year = Number.parseInt(body.year || now.getFullYear(), 10);
   const month = Number.parseInt(body.month || now.getMonth() + 1, 10);
-  const amount = parseFloat(body.amount);
-  const method = VALID_METHODS.includes(String(body.method)) ? String(body.method) : "gcash";
+  const amount = Number.parseFloat(body.amount);
+  const method = VALID_METHODS.has(String(body.method)) ? String(body.method) : "gcash";
   const reference = String(body.reference || "").trim() || null;
 
   if (!validYear(year)) return badRequest(res, "year is required");
   if (!validMonth(month)) return badRequest(res, "month must be 1-12");
-  if (!(amount > 0) || amount >= 1000000) {
+  if (!Number.isFinite(amount) || amount <= 0 || amount >= 1000000) {
     return badRequest(res, "amount must be between 0 and 1,000,000");
   }
 
@@ -606,7 +631,7 @@ router.post("/payments/:id/approve", ...adminOnly, async (req, res) => {
       }
       await auditLog(req.user.id, "approve_payment", "contribution_payment", req.params.id, getClientIp(req), client, {
         before: { status: "pending", donor_id: payment.donor_id },
-        after: { status: "confirmed", donor_id, recorded_by: req.user.id, receipt_no: receiptNo },
+        after: { status: "confirmed", donor_id: donorId, recorded_by: req.user.id, receipt_no: receiptNo },
       });
     });
 
@@ -701,14 +726,14 @@ router.post("/payments", ...adminOnly, upload.single("receipt"), async (req, res
   const donorId = String(body.donor_id || "").trim();
   const year = Number.parseInt(body.year, 10);
   const month = Number.parseInt(body.month, 10);
-  const amount = parseFloat(body.amount);
-  const method = VALID_METHODS.includes(String(body.method)) ? String(body.method) : "cash";
+  const amount = Number.parseFloat(body.amount);
+  const method = VALID_METHODS.has(String(body.method)) ? String(body.method) : "cash";
   const reference = String(body.reference || "").trim() || null;
 
   if (!donorId) return badRequest(res, "donor_id is required");
   if (!validYear(year)) return badRequest(res, "year is required");
   if (!validMonth(month)) return badRequest(res, "month must be 1-12");
-  if (!(amount > 0) || amount >= 1000000) {
+  if (!Number.isFinite(amount) || amount <= 0 || amount >= 1000000) {
     return badRequest(res, "amount must be between 0 and 1,000,000");
   }
 
@@ -807,12 +832,12 @@ const TERMINAL_STATUSES = new Set(["rejected", "voided"]);
 // may still be updated in place since they are not yet final.
 router.put("/payments/:id", ...adminOnly, async (req, res) => {
   if (!financeEnabled(res)) return;
-  const amount = parseFloat(req.body?.amount);
-  const method = VALID_METHODS.includes(String(req.body?.method)) ? String(req.body.method) : null;
+  const amount = Number.parseFloat(req.body?.amount);
+  const method = VALID_METHODS.has(String(req.body?.method)) ? String(req.body.method) : null;
   const reference = String(req.body?.reference || "").trim() || null;
   const voidReason = String(req.body?.void_reason || "").trim() || null;
 
-  if (!(amount > 0) || amount >= 1000000) {
+  if (!Number.isFinite(amount) || amount <= 0 || amount >= 1000000) {
     return badRequest(res, "amount must be between 0 and 1,000,000");
   }
   if (!method) {
@@ -1051,7 +1076,7 @@ router.get("/export", ...adminOnly, async (req, res) => {
     );
     const esc = (v) => {
       const s = String(v ?? "");
-      return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+      return /[",\n]/.test(s) ? `"${s.replaceAll('"', '""')}"` : s;
     };
     const lines = ["donor,bec,expected_due,paid_total,balance,status,payments"];
     for (const r of rows) {
