@@ -6,10 +6,10 @@ import { KudosButton } from '../../app/components/KudosButton';
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() } }));
 
 const mockFetch = (response: object, status = 200) => {
-    global.fetch = vi.fn().mockResolvedValue({
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
         status,
         json: () => Promise.resolve(response),
-    } as Response);
+    } as Response));
 };
 
 describe('KudosButton', () => {
@@ -24,7 +24,7 @@ describe('KudosButton', () => {
     });
 
     it('is disabled while loading', async () => {
-        global.fetch = vi.fn().mockImplementation(() => new Promise(() => { })); // never resolves
+        vi.stubGlobal('fetch', vi.fn().mockImplementation(() => new Promise(() => { }))); // never resolves
         render(<KudosButton receiverId="user-2" receiverName="Maria" />);
         fireEvent.click(screen.getByRole('button'));
         expect(screen.getByRole('button')).toBeDisabled();
@@ -60,6 +60,6 @@ describe('KudosButton', () => {
         await waitFor(() => screen.getByText('💛 Praised'));
         vi.clearAllMocks();
         fireEvent.click(screen.getByRole('button'));
-        expect(global.fetch).not.toHaveBeenCalled();
+        expect(vi.mocked(fetch)).not.toHaveBeenCalled();
     });
 });

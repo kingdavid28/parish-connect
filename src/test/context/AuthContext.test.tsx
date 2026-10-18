@@ -10,11 +10,11 @@ const wrapper = ({ children }: { children: React.ReactNode }) => (
 );
 
 const mockFetch = (response: object, ok = true) => {
-    global.fetch = vi.fn().mockResolvedValue({
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
         ok,
         status: ok ? 200 : 401,
         json: () => Promise.resolve(response),
-    } as Response);
+    } as Response));
 };
 
 describe('AuthContext', () => {

@@ -200,7 +200,7 @@ export default function MyDues() {
                 </div>
               </div>
               <div className="space-y-2">
-                {ledger.months.filter((m) => ledger.donor || m.payments.length > 0).map((m) => (
+                {(ledger?.months ?? []).filter((m) => ledger?.donor || m.payments.length > 0).map((m) => (
                   <div key={m.month} className="border rounded-lg px-4 py-3">
                     <div className="flex items-center justify-between">
                       <div>
