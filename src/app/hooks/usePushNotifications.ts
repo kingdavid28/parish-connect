@@ -10,7 +10,7 @@ function urlBase64ToUint8Array(base64String: string): Uint8Array<ArrayBuffer> {
     const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
     const rawData = atob(base64);
     const bytes = new Uint8Array(new ArrayBuffer(rawData.length));
-    for (let i = 0; i < rawData.length; i++) bytes[i] = rawData.charCodeAt(i);
+    for (let i = 0; i < rawData.length; i++) bytes[i] = rawData.codePointAt(i)!;
     return bytes;
 }
 
@@ -28,7 +28,7 @@ export function usePushNotifications() {
         setIsSupported(supported);
         if (supported) {
             setPermission(Notification.permission as PushPermission);
-            checkSubscription();
+            void checkSubscription();
         }
     }, []);
 
