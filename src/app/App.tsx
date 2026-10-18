@@ -2,6 +2,7 @@ import { RouterProvider } from "react-router";
 import * as Sentry from "@sentry/react";
 import { AuthProvider } from "./context/AuthContext";
 import { ParishConfigProvider } from "./context/ParishConfigContext";
+import { AccessibilityProvider } from "./context/AccessibilityContext";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { PWAInstallPrompt } from "./components/PWAInstallPrompt";
 import { router } from "./routes";
@@ -12,11 +13,13 @@ export default function App() {
     <Sentry.ErrorBoundary fallback={<ErrorBoundary><></></ErrorBoundary>}>
       <ErrorBoundary>
         <ParishConfigProvider>
-        <AuthProvider>
-          <RouterProvider router={router} />
-          <PWAInstallPrompt />
-          <Toaster position="top-right" richColors />
-        </AuthProvider>
+          <AccessibilityProvider>
+            <AuthProvider>
+              <RouterProvider router={router} />
+              <PWAInstallPrompt />
+              <Toaster position="top-right" richColors />
+            </AuthProvider>
+          </AccessibilityProvider>
         </ParishConfigProvider>
       </ErrorBoundary>
     </Sentry.ErrorBoundary>

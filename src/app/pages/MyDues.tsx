@@ -17,7 +17,6 @@ import ImageLightbox from "../components/ImageLightbox";
 
 const MONTHS_FULL = ["January","February","March","April","May","June",
   "July","August","September","October","November","December"];
-
 const getToken = () =>
   localStorage.getItem("parish_token") || sessionStorage.getItem("parish_token");
 
@@ -57,7 +56,6 @@ export default function MyDues() {
   const [loading, setLoading] = useState(true);
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   const [ledgerError, setLedgerError] = useState<string | null>(null);
-
   // Report-a-contribution form
   const [reportOpen, setReportOpen] = useState(false);
   const [reportMonth, setReportMonth] = useState(now.getMonth() + 1);
@@ -168,7 +166,7 @@ export default function MyDues() {
           {donorLabel}
           {ledger!.expected > 0 && ` · suggested ${peso(ledger!.expected)}/month`}
         </p>
-              <div className="grid grid-cols-3 sm:grid-cols-5 gap-3 mb-3">
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-3">
                 <div className="rounded-lg border p-3 text-center">
                   <p className="text-xs text-gray-500">Paid (confirmed)</p>
                   <p className="text-lg font-semibold text-green-700">{peso(totalPaid)}</p>
@@ -225,20 +223,20 @@ export default function MyDues() {
                                   onClick={() => setLightboxUrl(p.receipt_url!)}>receipt</button></>
                               )}
                               {p.status === "pending" && (
-                                <Badge className="ml-1.5 bg-amber-100 text-amber-800 border-0 text-[10px]">pending</Badge>
+                                <Badge className="ml-1.5 bg-amber-100 text-amber-800 border-0 text-xs">pending</Badge>
                               )}
                               {p.status === "rejected" && (
-                                <Badge className="ml-1.5 bg-red-100 text-red-800 border-0 text-[10px]">rejected</Badge>
+                                <Badge className="ml-1.5 bg-red-100 text-red-800 border-0 text-xs">rejected</Badge>
                               )}
                               {p.status === "voided" && (
-                                <Badge className="ml-1.5 bg-gray-100 text-gray-700 border-0 text-[10px]">voided</Badge>
+                                <Badge className="ml-1.5 bg-gray-100 text-gray-700 border-0 text-xs">voided</Badge>
                               )}
                             </span>
                             <span className={`font-medium ${(p.status === "rejected" || p.status === "voided") ? "line-through text-gray-400" : ""}`}>
                               {peso(p.amount)}
                             </span>
                             {p.status === "voided" && p.void_reason && (
-                              <span className="ml-2 text-[10px] text-gray-500 italic">void: {p.void_reason}</span>
+                              <span className="ml-2 text-xs text-gray-500 italic">void: {p.void_reason}</span>
                             )}
                           </div>
                         ))}
@@ -255,12 +253,12 @@ export default function MyDues() {
     <div className="max-w-3xl mx-auto p-4 space-y-4">
       <Card>
         <CardHeader className="pb-3">
-          <div className="flex items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
             <CardTitle className="flex items-center gap-2 text-lg">
               <PhilippinePeso className="h-5 w-5 text-primary" />
               My Contributions
             </CardTitle>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <Button size="sm" onClick={() => setReportOpen(true)}>
                 <Plus className="h-4 w-4 mr-1" /> Report
               </Button>

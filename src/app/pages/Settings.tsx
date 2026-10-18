@@ -31,9 +31,45 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { usePushNotifications } from "../hooks/usePushNotifications";
+import { TEXT_SIZE_OPTIONS, useAccessibility } from "../context/AccessibilityContext";
+
+function DisplayPreferences() {
+  const { textSize, setTextSize } = useAccessibility();
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Display</CardTitle>
+        <CardDescription>Choose a text size that is comfortable for you. This applies throughout the app.</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <fieldset className="space-y-3">
+          <legend className="text-sm font-medium">Text size</legend>
+          <div className="flex flex-wrap gap-2">
+            {TEXT_SIZE_OPTIONS.map((option) => (
+              <Button
+                key={option.value}
+                type="button"
+                variant={textSize === option.value ? "default" : "outline"}
+                aria-pressed={textSize === option.value}
+                onClick={() => setTextSize(option.value)}
+                style={{ fontSize: `calc(1rem * ${option.scale})` }}
+              >
+                {option.label}
+              </Button>
+            ))}
+          </div>
+          <p className="text-sm text-gray-500">
+            {TEXT_SIZE_OPTIONS.find((option) => option.value === textSize)?.description}
+          </p>
+        </fieldset>
+      </CardContent>
+    </Card>
+  );
+}
 
 export default function Settings() {
-  const { user, isAdmin } = useAuth();
+  const { user } = useAuth();
   const { isSupported, permission, isSubscribed, isLoading: pushLoading, subscribe, unsubscribe } = usePushNotifications();
   const [showPassword, setShowPassword] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -42,7 +78,7 @@ export default function Settings() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [name, setName] = useState(user?.name || "");
-  const [email, setEmail] = useState(user?.email || "");
+  const email = user?.email || "";
   const [bio, setBio] = useState("");
   const [phone, setPhone] = useState("");
 
@@ -203,6 +239,7 @@ export default function Settings() {
         </div>
 
         <div className="space-y-6">
+          <DisplayPreferences />
           {/* Profile Settings */}
           <Card>
             <CardHeader>
