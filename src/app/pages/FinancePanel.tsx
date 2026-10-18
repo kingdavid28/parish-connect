@@ -72,6 +72,205 @@ interface UserOption { id: string; name: string; }
 
 const peso = (n: number) => `₱${Number(n || 0).toLocaleString("en-PH", { minimumFractionDigits: 2 })}`;
 
+interface UpdatePaymentInput {
+  amount: number; method: string; reference: string | null; voidReason: string;
+  authHeaders: Record<string, string>;
+}
+
+interface CreatePaymentInput {
+  donorId: string; year: number; month: number; amount: number; method: string;
+  reference: string; receipt: File | null; authHeaders: Record<string, string>;
+}
+
+function paymentSuccessMessage(editingPayment: Payment | null, payMonth: number): string {
+  if (editingPayment?.status === "confirmed") {
+    return "Payment corrected — original voided, replacement recorded";
+  }
+  if (editingPayment) return "Payment corrected";
+  return `${MONTHS_FULL[payMonth - 1]} payment recorded`;
+}
+
+async function updatePaymentRequest(payment: Payment, input: UpdatePaymentInput): Promise<Response> {
+  const body: Record<string, unknown> = {
+    amount: input.amount, method: input.method, reference: input.reference,
+  };
+  // Confirmed payments are corrected immutably (void original + replacement);
+  // the server requires a reason for the correction.
+  if (payment.status === "confirmed") {
+    body["void_reason"] = input.voidReason || null;
+  }
+  return fetch(`${API}/finance/payments/${payment.id}`, {
+    method: "PUT",
+    headers: { ...input.authHeaders, "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+async function createPaymentRequest(input: CreatePaymentInput): Promise<Response> {
+  const fd = new FormData();
+  fd.append("donor_id", input.donorId);
+  fd.append("year", String(input.year));
+  fd.append("month", String(input.month));
+  fd.append("amount", String(input.amount));
+  fd.append("method", input.method);
+  if (input.reference) fd.append("reference", input.reference);
+  if (input.receipt) fd.append("receipt", input.receipt);
+  return fetch(`${API}/finance/payments`, { method: "POST", headers: input.authHeaders, body: fd });
+}
+
+function cellClassFor(status: string): string {
+  if (status === "paid") return "bg-green-50 border-green-200";
+  if (status === "partial") return "bg-amber-50 border-amber-300";
+  return "border-dashed hover:border-primary hover:bg-primary/5";
+}
+
+function paymentBadgeVariant(status: Payment["status"]): "default" | "secondary" | "destructive" {
+  if (status === "confirmed") return "default";
+  if (status === "pending") return "secondary";
+  return "destructive";
+}
+
+function isStruckThrough(status: Payment["status"]): boolean {
+  return status === "rejected" || status === "voided";
+}
+
+function monthActionLabel(status: LedgerMonth["status"]): string {
+  if (status === "partial") return "to go";
+  if (status === "paid") return "complete";
+  return "+ record";
+}
+
+function donorToggleLabel(donor: Donor): string {
+  return donor.is_active === 1 ? `Deactivate ${donor.name}` : `Reactivate ${donor.name}`;
+}
+
+function donorToggleIconClass(donor: Donor): string {
+  return donor.is_active === 1 ? "text-red-500" : "text-gray-400";
+}
+
+function formatDonorExpected(donor: Donor): string {
+  const exp = donor.expected_amount ?? donor.bec_expected;
+  return exp != null ? peso(exp) : "—";
+}
+
+interface SummaryTotalsProps {
+  summary: SummaryRow[];
+}
+
+function SummaryTotals({ summary }: SummaryTotalsProps) {
+  const expected = summary.reduce((s, r) => s + Number(r.expected_due), 0);
+  const collected = summary.reduce((s, r) => s + Number(r.collected), 0);
+  const paid = summary.reduce((s, r) => s + r.paid, 0);
+  const partial = summary.reduce((s, r) => s + r.partial, 0);
+  const unpaid = summary.reduce((s, r) => s + r.unpaid, 0);
+  return (
+    <>
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-4">
+        <div className="rounded-lg border p-3">
+          <p className="text-xs text-gray-500">Suggested</p>
+          <p className="text-lg font-semibold">{peso(expected)}</p>
+        </div>
+        <div className="rounded-lg border p-3">
+          <p className="text-xs text-gray-500">Collected</p>
+          <p className="text-lg font-semibold">{peso(collected)}</p>
+        </div>
+        <div className="rounded-lg border p-3">
+          <p className="text-xs text-gray-500">Complete</p>
+          <p className="text-lg font-semibold">{paid}</p>
+        </div>
+        <div className="rounded-lg border p-3">
+          <p className="text-xs text-gray-500">Partial</p>
+          <p className={`text-lg font-semibold ${partial > 0 ? "text-amber-600" : ""}`}>{partial}</p>
+        </div>
+        <div className="rounded-lg border p-3">
+          <p className="text-xs text-gray-500">None yet</p>
+          <p className={`text-lg font-semibold ${unpaid > 0 ? "text-amber-600" : ""}`}>{unpaid}</p>
+        </div>
+      </div>
+      {summary.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {summary.map((r) => (
+            <Badge key={r.bec_id ?? `name-${r.bec_name}`} variant="secondary" className="font-normal">
+              {r.bec_name}: {peso(r.collected)}/{peso(r.expected_due)} · {r.paid}/{r.donors} complete
+            </Badge>
+          ))}
+        </div>
+      )}
+    </>
+  );
+}
+
+interface DonorTableBodyProps {
+  donors: Donor[]; donorSearch: string; donorPage: number; donorTotal: number;
+  donorTotalPages: number; onLedger: (donor: Donor) => void; onEdit: (donor: Donor) => void;
+  onToggle: (donor: Donor) => void; onPrevPage: () => void; onNextPage: () => void;
+}
+
+function DonorTableBody(props: DonorTableBodyProps) {
+  const { donors, donorSearch, donorPage, donorTotal, donorTotalPages } = props;
+  if (donors.length === 0) {
+    return (
+      <p className="text-sm text-gray-500 py-6 text-center">
+        {donorSearch ? "No donors match your search." : "No donors yet — add or import some."}
+      </p>
+    );
+  }
+  return (
+    <>
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Name</TableHead>
+            <TableHead className="hidden md:table-cell">BEC</TableHead>
+            <TableHead className="hidden sm:table-cell">Suggested</TableHead>
+            <TableHead className="hidden lg:table-cell">Linked User</TableHead>
+            <TableHead className="text-right">Actions</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {donors.map((d) => (
+            <TableRow key={d.id} className={d.is_active !== 1 ? "opacity-60" : ""}>
+              <TableCell className="font-medium">
+                {d.name}
+                {d.is_active !== 1 && <Badge variant="outline" className="ml-2 text-[10px]">inactive</Badge>}
+              </TableCell>
+              <TableCell className="hidden md:table-cell">{d.bec_name || "—"}</TableCell>
+              <TableCell className="hidden sm:table-cell">{formatDonorExpected(d)}</TableCell>
+              <TableCell className="hidden lg:table-cell">
+                {d.linked_user_name ? <Badge variant="secondary" className="font-normal">{d.linked_user_name}</Badge> : "—"}
+              </TableCell>
+              <TableCell className="text-right space-x-1">
+                <Button variant="outline" size="sm" onClick={() => props.onLedger(d)}>Ledger</Button>
+                <Button variant="ghost" size="sm" onClick={() => props.onEdit(d)} aria-label={`Edit ${d.name}`}>
+                  <Pencil className="h-4 w-4" />
+                </Button>
+                <Button variant="ghost" size="sm" onClick={() => props.onToggle(d)} aria-label={donorToggleLabel(d)}>
+                  <Trash2 className={`h-4 w-4 ${donorToggleIconClass(d)}`} />
+                </Button>
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+      {donorTotalPages > 1 && (
+        <div className="flex items-center justify-between mt-4">
+          <p className="text-sm text-gray-500">
+            Page {donorPage} of {donorTotalPages} · {donorTotal} donor{donorTotal !== 1 ? "s" : ""}
+          </p>
+          <div className="flex gap-1">
+            <Button variant="outline" size="sm" disabled={donorPage <= 1} onClick={props.onPrevPage} aria-label="Previous page">
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            <Button variant="outline" size="sm" disabled={donorPage >= donorTotalPages} onClick={props.onNextPage} aria-label="Next page">
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
 export default function FinancePanel() {
   const now = new Date();
 
@@ -201,8 +400,13 @@ export default function FinancePanel() {
     } catch { /* non-fatal */ }
   }, [authHeaders]);
 
-  useEffect(() => { fetchBecs(); fetchSummary(); fetchPending(); }, [fetchBecs, fetchSummary, fetchPending]);
-  useEffect(() => { fetchDonors(); }, [fetchDonors]);
+  const refreshDonorsView = useCallback(() => {
+    void fetchDonors();
+    void fetchSummary();
+  }, [fetchDonors, fetchSummary]);
+
+  useEffect(() => { void fetchBecs(); void fetchSummary(); void fetchPending(); }, [fetchBecs, fetchSummary, fetchPending]);
+  useEffect(() => { void fetchDonors(); }, [fetchDonors]);
 
   useEffect(() => {
     if (!userSearch.trim()) { setUserResults([]); return; }
@@ -237,7 +441,7 @@ export default function FinancePanel() {
       if (!res.ok) throw new Error(data.message || "Failed");
       toast.success(editingBec ? "BEC updated" : "BEC added");
       setBecDialogOpen(false);
-      fetchBecs(); fetchSummary();
+      void fetchBecs(); void fetchSummary();
     } catch (e: any) {
       toast.error(e.message);
     } finally {
@@ -275,7 +479,7 @@ export default function FinancePanel() {
       if (!res.ok) throw new Error(data.message || "Failed");
       toast.success(editingDonor ? "Donor updated" : "Donor added");
       setDonorDialogOpen(false);
-      fetchDonors(); fetchSummary();
+      refreshDonorsView();
     } catch (e: any) {
       toast.error(e.message);
     } finally {
@@ -298,7 +502,7 @@ export default function FinancePanel() {
       });
       if (!res.ok) throw new Error("Failed");
       toast.success(deactivating ? "Donor deactivated" : "Donor reactivated");
-      fetchDonors(); fetchSummary();
+      refreshDonorsView();
     } catch {
       toast.error("Failed to update donor");
     }
@@ -308,7 +512,7 @@ export default function FinancePanel() {
   const openLedger = (donor: Donor) => {
     setDetailMonth(null);
     setLedgerYear(now.getFullYear());
-    fetchLedger(donor.id, now.getFullYear());
+    void fetchLedger(donor.id, now.getFullYear());
   };
 
   const openPaymentForm = (month: number, payment: Payment | null = null) => {
@@ -324,45 +528,29 @@ export default function FinancePanel() {
 
   const savePayment = async () => {
     if (!ledger) return;
-    const amount = parseFloat(payAmount);
+    const amount = Number.parseFloat(payAmount);
     if (!Number.isFinite(amount) || amount <= 0) { toast.error("Enter a valid amount"); return; }
     if (editingPayment?.status === "confirmed" && !voidReason.trim()) {
       toast.error("Reason for correction is required"); return;
     }
     setSavingPayment(true);
     try {
-      let res: Response;
-      if (editingPayment) {
-        const body: Record<string, unknown> = { amount, method: payMethod, reference: payRef || null };
-        // Confirmed payments are corrected immutably (void original + replacement);
-        // the server requires a reason for the correction.
-        if (editingPayment.status === "confirmed") {
-          body["void_reason"] = voidReason || null;
-        }
-        res = await fetch(`${API}/finance/payments/${editingPayment.id}`, {
-          method: "PUT",
-          headers: { ...authHeaders(), "Content-Type": "application/json" },
-          body: JSON.stringify(body),
-        });
-      } else {
-        const fd = new FormData();
-        fd.append("donor_id", ledger.donor.id);
-        fd.append("year", String(ledgerYear));
-        fd.append("month", String(payMonth));
-        fd.append("amount", String(amount));
-        fd.append("method", payMethod);
-        if (payRef) fd.append("reference", payRef);
-        if (payReceipt) fd.append("receipt", payReceipt);
-        res = await fetch(`${API}/finance/payments`, { method: "POST", headers: authHeaders(), body: fd });
-      }
+      const res = editingPayment
+        ? await updatePaymentRequest(editingPayment, {
+            amount, method: payMethod, reference: payRef || null, voidReason,
+            authHeaders: authHeaders(),
+          })
+        : await createPaymentRequest({
+            donorId: ledger.donor.id, year: ledgerYear, month: payMonth,
+            amount, method: payMethod, reference: payRef, receipt: payReceipt,
+            authHeaders: authHeaders(),
+          });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || "Failed");
-      toast.success(editingPayment?.status === "confirmed"
-        ? "Payment corrected — original voided, replacement recorded"
-        : editingPayment ? "Payment corrected" : `${MONTHS_FULL[payMonth - 1]} payment recorded`);
+      toast.success(paymentSuccessMessage(editingPayment, payMonth));
       setPayOpen(false);
-      fetchLedger(ledger.donor.id, ledgerYear);
-      fetchSummary();
+      void fetchLedger(ledger.donor.id, ledgerYear);
+      void fetchSummary();
     } catch (e: any) {
       toast.error(e.message);
     } finally {
@@ -382,8 +570,8 @@ export default function FinancePanel() {
       if (!res.ok) throw new Error(data.message || "Failed");
       toast.success(action === "approve" ? "Contribution approved" : "Contribution rejected");
       setMatchReport(null);
-      fetchPending(); fetchSummary(); fetchBecs();
-      if (ledger) fetchLedger(ledger.donor.id, ledgerYear);
+      void fetchPending(); void fetchSummary(); void fetchBecs();
+      if (ledger) void fetchLedger(ledger.donor.id, ledgerYear);
     } catch (e: any) {
       toast.error(e.message);
     } finally {
@@ -408,7 +596,7 @@ export default function FinancePanel() {
     if (!matchReport) return;
     const body = matchDonorId ? { donor_id: matchDonorId } : { new_donor_name: matchNewName.trim() };
     if (!matchDonorId && !matchNewName.trim()) { toast.error("Pick a donor or enter a new name"); return; }
-    actOnPending(matchReport.id, "approve", body);
+    void actOnPending(matchReport.id, "approve", body);
   };
 
   const openVoid = (payment: Payment) => {
@@ -433,8 +621,8 @@ export default function FinancePanel() {
       toast.success("Payment voided");
       setVoidOpen(false);
       setVoidTarget(null);
-      if (ledger) fetchLedger(ledger.donor.id, ledgerYear);
-      fetchSummary();
+      if (ledger) void fetchLedger(ledger.donor.id, ledgerYear);
+      void fetchSummary();
     } catch (e: any) {
       toast.error(e.message || "Failed to void payment");
     } finally {
@@ -466,7 +654,7 @@ export default function FinancePanel() {
       else toast.success(`Imported ${data.data.imported} donor(s)`);
       setImportOpen(false);
       setImportRows([]);
-      fetchBecs(); fetchDonors(); fetchSummary();
+      void fetchBecs(); void fetchDonors(); void fetchSummary();
     } catch (e: any) {
       toast.error(e.message);
     } finally {
@@ -521,10 +709,7 @@ export default function FinancePanel() {
   const donorTotalPages = Math.max(1, Math.ceil(donorTotal / PAGE_SIZE));
   const years = [now.getFullYear() - 1, now.getFullYear(), now.getFullYear() + 1];
 
-  const cellClass = (status: string) =>
-    status === "paid" ? "bg-green-50 border-green-200" :
-    status === "partial" ? "bg-amber-50 border-amber-300" :
-    "border-dashed hover:border-primary hover:bg-primary/5";
+  const cellClass = (status: string) => cellClassFor(status);
 
   const ledgerHistory = ledger
     ? ledger.months
@@ -547,7 +732,7 @@ export default function FinancePanel() {
               <Select value={String(sumMonth)} onValueChange={(v) => setSumMonth(Number(v))}>
                 <SelectTrigger className="w-[130px] h-9" aria-label="Summary month"><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  {MONTHS_FULL.map((m, i) => <SelectItem key={i} value={String(i + 1)}>{m}</SelectItem>)}
+                  {MONTHS_FULL.map((m, i) => <SelectItem key={`month-${i + 1}`} value={String(i + 1)}>{m}</SelectItem>)}
                 </SelectContent>
               </Select>
               <Select value={String(sumYear)} onValueChange={(v) => setSumYear(Number(v))}>
@@ -556,7 +741,7 @@ export default function FinancePanel() {
                   {years.map((y) => <SelectItem key={y} value={String(y)}>{y}</SelectItem>)}
                 </SelectContent>
               </Select>
-              <Button variant="outline" size="sm" onClick={exportCsv} aria-label="Export CSV">
+              <Button variant="outline" size="sm" onClick={() => { void exportCsv(); }} aria-label="Export CSV">
                 <Download className="h-4 w-4" />
               </Button>
             </div>
@@ -567,48 +752,9 @@ export default function FinancePanel() {
             <div className="flex items-center gap-2 text-sm text-gray-500 py-2">
               <Loader2 className="h-4 w-4 animate-spin" /> Loading…
             </div>
-          ) : (() => {
-            const expected = summary.reduce((s, r) => s + Number(r.expected_due), 0);
-            const collected = summary.reduce((s, r) => s + Number(r.collected), 0);
-            const paid = summary.reduce((s, r) => s + r.paid, 0);
-            const partial = summary.reduce((s, r) => s + r.partial, 0);
-            const unpaid = summary.reduce((s, r) => s + r.unpaid, 0);
-            return (
-              <>
-                <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-4">
-                  <div className="rounded-lg border p-3">
-                    <p className="text-xs text-gray-500">Suggested</p>
-                    <p className="text-lg font-semibold">{peso(expected)}</p>
-                  </div>
-                  <div className="rounded-lg border p-3">
-                    <p className="text-xs text-gray-500">Collected</p>
-                    <p className="text-lg font-semibold">{peso(collected)}</p>
-                  </div>
-                  <div className="rounded-lg border p-3">
-                    <p className="text-xs text-gray-500">Complete</p>
-                    <p className="text-lg font-semibold">{paid}</p>
-                  </div>
-                  <div className="rounded-lg border p-3">
-                    <p className="text-xs text-gray-500">Partial</p>
-                    <p className={`text-lg font-semibold ${partial > 0 ? "text-amber-600" : ""}`}>{partial}</p>
-                  </div>
-                  <div className="rounded-lg border p-3">
-                    <p className="text-xs text-gray-500">None yet</p>
-                    <p className={`text-lg font-semibold ${unpaid > 0 ? "text-amber-600" : ""}`}>{unpaid}</p>
-                  </div>
-                </div>
-                {summary.length > 0 && (
-                  <div className="flex flex-wrap gap-2">
-                    {summary.map((r) => (
-                      <Badge key={r.bec_id ?? "none"} variant="secondary" className="font-normal">
-                        {r.bec_name}: {peso(r.collected)}/{peso(r.expected_due)} · {r.paid}/{r.donors} complete
-                      </Badge>
-                    ))}
-                  </div>
-                )}
-              </>
-            );
-          })()}
+          ) : (
+            <SummaryTotals summary={summary} />
+          )}
         </CardContent>
       </Card>
 
@@ -643,11 +789,11 @@ export default function FinancePanel() {
                 <div className="flex items-center gap-2">
                   <span className="font-semibold">{peso(r.amount)}</span>
                   <Button size="sm" className="bg-green-600 hover:bg-green-700" disabled={actingPending === r.id}
-                    onClick={() => handleApprove(r)}>
+                    onClick={() => { void handleApprove(r); }}>
                     {actingPending === r.id ? <Loader2 className="h-4 w-4 animate-spin" /> : "Approve"}
                   </Button>
                   <Button size="sm" variant="outline" className="text-red-600 border-red-200" disabled={actingPending === r.id}
-                    onClick={() => actOnPending(r.id, "reject")}>Reject</Button>
+                    onClick={() => { void actOnPending(r.id, "reject"); }}>Reject</Button>
                 </div>
               </div>
             ))}
@@ -712,67 +858,19 @@ export default function FinancePanel() {
             <div className="flex items-center gap-2 text-sm text-gray-500 py-6 justify-center">
               <Loader2 className="h-4 w-4 animate-spin" /> Loading…
             </div>
-          ) : donors.length === 0 ? (
-            <p className="text-sm text-gray-500 py-6 text-center">
-              {donorSearch ? "No donors match your search." : "No donors yet — add or import some."}
-            </p>
           ) : (
-            <>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Name</TableHead>
-                    <TableHead className="hidden md:table-cell">BEC</TableHead>
-                    <TableHead className="hidden sm:table-cell">Suggested</TableHead>
-                    <TableHead className="hidden lg:table-cell">Linked User</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {donors.map((d) => {
-                    const exp = d.expected_amount ?? d.bec_expected;
-                    return (
-                      <TableRow key={d.id} className={d.is_active !== 1 ? "opacity-60" : ""}>
-                        <TableCell className="font-medium">
-                          {d.name}
-                          {d.is_active !== 1 && <Badge variant="outline" className="ml-2 text-[10px]">inactive</Badge>}
-                        </TableCell>
-                        <TableCell className="hidden md:table-cell">{d.bec_name || "—"}</TableCell>
-                        <TableCell className="hidden sm:table-cell">{exp != null ? peso(exp) : "—"}</TableCell>
-                        <TableCell className="hidden lg:table-cell">
-                          {d.linked_user_name ? <Badge variant="secondary" className="font-normal">{d.linked_user_name}</Badge> : "—"}
-                        </TableCell>
-                        <TableCell className="text-right space-x-1">
-                          <Button variant="outline" size="sm" onClick={() => openLedger(d)}>Ledger</Button>
-                          <Button variant="ghost" size="sm" onClick={() => openDonorDialog(d)} aria-label={`Edit ${d.name}`}>
-                            <Pencil className="h-4 w-4" />
-                          </Button>
-                          <Button variant="ghost" size="sm" onClick={() => toggleDonor(d)}
-                            aria-label={d.is_active === 1 ? `Deactivate ${d.name}` : `Reactivate ${d.name}`}>
-                            <Trash2 className={`h-4 w-4 ${d.is_active === 1 ? "text-red-500" : "text-gray-400"}`} />
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
-              {donorTotalPages > 1 && (
-                <div className="flex items-center justify-between mt-4">
-                  <p className="text-sm text-gray-500">
-                    Page {donorPage} of {donorTotalPages} · {donorTotal} donor{donorTotal !== 1 ? "s" : ""}
-                  </p>
-                  <div className="flex gap-1">
-                    <Button variant="outline" size="sm" disabled={donorPage <= 1} onClick={() => setDonorPage((p) => p - 1)} aria-label="Previous page">
-                      <ChevronLeft className="h-4 w-4" />
-                    </Button>
-                    <Button variant="outline" size="sm" disabled={donorPage >= donorTotalPages} onClick={() => setDonorPage((p) => p + 1)} aria-label="Next page">
-                      <ChevronRight className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
-              )}
-            </>
+            <DonorTableBody
+              donors={donors}
+              donorSearch={donorSearch}
+              donorPage={donorPage}
+              donorTotal={donorTotal}
+              donorTotalPages={donorTotalPages}
+              onLedger={openLedger}
+              onEdit={openDonorDialog}
+              onToggle={(d) => { void toggleDonor(d); }}
+              onPrevPage={() => setDonorPage((p) => p - 1)}
+              onNextPage={() => setDonorPage((p) => p + 1)}
+            />
           )}
         </CardContent>
       </Card>
@@ -784,7 +882,7 @@ export default function FinancePanel() {
             <DialogTitle>{editingBec ? "Edit BEC" : "Add BEC"}</DialogTitle>
             <DialogDescription>{editingBec ? `Update ${editingBec.name}.` : "Create a new community."}</DialogDescription>
           </DialogHeader>
-          <form onSubmit={(e) => { e.preventDefault(); saveBec(); }} className="space-y-4">
+          <form onSubmit={(e) => { e.preventDefault(); void saveBec(); }} className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="bec-name">Name <span className="text-red-500">*</span></Label>
               <Input id="bec-name" value={becName} required autoFocus onChange={(e) => setBecName(e.target.value)}
@@ -813,7 +911,7 @@ export default function FinancePanel() {
             <DialogTitle>{editingDonor ? "Edit Donor" : "Add Donor"}</DialogTitle>
             <DialogDescription>{editingDonor ? "Update donor details." : "Register a new contribution donor."}</DialogDescription>
           </DialogHeader>
-          <form onSubmit={(e) => { e.preventDefault(); saveDonor(); }} className="space-y-4">
+          <form onSubmit={(e) => { e.preventDefault(); void saveDonor(); }} className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="d-name">Name <span className="text-red-500">*</span></Label>
               <Input id="d-name" value={dForm.name} required autoFocus
@@ -891,13 +989,13 @@ export default function FinancePanel() {
           <div className="flex items-center gap-2 mb-2">
             <Label htmlFor="ledger-year" className="text-sm">Year</Label>
             <Select value={String(ledgerYear)}
-              onValueChange={(v) => { setLedgerYear(Number(v)); ledger && fetchLedger(ledger.donor.id, Number(v)); }}>
+              onValueChange={(v) => { setLedgerYear(Number(v)); if (ledger) void fetchLedger(ledger.donor.id, Number(v)); }}>
               <SelectTrigger id="ledger-year" className="w-[95px] h-9"><SelectValue /></SelectTrigger>
               <SelectContent>
                 {years.map((y) => <SelectItem key={y} value={String(y)}>{y}</SelectItem>)}
               </SelectContent>
             </Select>
-            <Button variant="outline" size="sm" onClick={exportStatement} disabled={!ledger} aria-label="Export statement">
+            <Button variant="outline" size="sm" onClick={() => { void exportStatement(); }} disabled={!ledger} aria-label="Export statement">
               <Download className="h-4 w-4" /> Statement
             </Button>
           </div>
@@ -919,7 +1017,7 @@ export default function FinancePanel() {
                     </p>
                   )}
                   <p className="text-[10px] text-primary">
-                    {m.status === "partial" ? `${peso(m.balance)} to go` : m.status === "paid" ? "complete" : "+ record"}
+                    {m.status === "partial" ? `${peso(m.balance)} to go` : monthActionLabel(m.status)}
                   </p>
                 </button>
               ))}
@@ -962,12 +1060,12 @@ export default function FinancePanel() {
                         <div key={p.id} className="px-3 py-2 text-sm border-b border-b-gray-100 last:border-0 flex flex-wrap items-center gap-2">
                           <span className="w-20 text-gray-600">{new Date(p.created_at).toISOString().slice(0, 10)}</span>
                           <span className="w-16 text-gray-600 capitalize">{MONTHS[p.month - 1]}</span>
-                          <span className={`w-20 text-right font-semibold ${(p.status === "rejected" || p.status === "voided") ? "line-through text-gray-400" : ""}`}>{peso(p.amount)}</span>
+                          <span className={`w-20 text-right font-semibold ${isStruckThrough(p.status) ? "line-through text-gray-400" : ""}`}>{peso(p.amount)}</span>
                           <span className="w-16 text-gray-600 capitalize">{p.method}</span>
                           <span className="w-24 text-gray-600 truncate">{p.reference || "—"}</span>
                           <span className="w-20 text-gray-600 text-[11px]">{p.receipt_no || "—"}</span>
                           <span className="flex items-center gap-1">
-                            <Badge variant={p.status === "confirmed" ? "default" : p.status === "pending" ? "secondary" : "destructive"} className="text-[10px]">
+                            <Badge variant={paymentBadgeVariant(p.status)} className="text-[10px]">
                               {p.status}
                             </Badge>
                             {p.status === "voided" && (
@@ -1011,7 +1109,7 @@ export default function FinancePanel() {
                 {detailMonth.payments.map((p) => (
                   <div key={p.id} className="flex items-center justify-between border rounded-lg px-3 py-2">
                     <div>
-                      <p className={`font-semibold ${(p.status === "rejected" || p.status === "voided") ? "line-through text-gray-400" : ""}`}>
+                      <p className={`font-semibold ${isStruckThrough(p.status) ? "line-through text-gray-400" : ""}`}>
                         {peso(p.amount)}
                         {p.status === "pending" && (
                           <Badge className="ml-1.5 bg-amber-100 text-amber-800 border-0 text-[10px]">pending</Badge>
@@ -1070,7 +1168,7 @@ export default function FinancePanel() {
               {ledger?.donor.name} · {MONTHS_FULL[payMonth - 1]} {ledgerYear}
             </DialogDescription>
           </DialogHeader>
-          <form onSubmit={(e) => { e.preventDefault(); savePayment(); }} className="space-y-4">
+          <form onSubmit={(e) => { e.preventDefault(); void savePayment(); }} className="space-y-4">
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-2">
                 <Label htmlFor="p-amount">Amount (₱) <span className="text-red-500">*</span></Label>
@@ -1167,7 +1265,7 @@ export default function FinancePanel() {
             )}
             {importErrors.length > 0 && (
               <div className="text-sm text-amber-700 max-h-28 overflow-y-auto space-y-0.5">
-                {importErrors.slice(0, 10).map((e, i) => <p key={i}>Row {e.row}: {e.message}</p>)}
+                {importErrors.slice(0, 10).map((e) => <p key={`import-row-${e.row}`}>Row {e.row}: {e.message}</p>)}
                 {importErrors.length > 10 && <p>…and {importErrors.length - 10} more</p>}
               </div>
             )}
@@ -1177,7 +1275,7 @@ export default function FinancePanel() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setImportOpen(false)}>Cancel</Button>
-            <Button onClick={runImport} disabled={importing || !importRows.length}>
+            <Button onClick={() => { void runImport(); }} disabled={importing || !importRows.length}>
               {importing && <Loader2 className="h-4 w-4 mr-1 animate-spin" />}
               Import {importRows.length > 0 ? importRows.length : ""} Donors
             </Button>
@@ -1191,7 +1289,15 @@ export default function FinancePanel() {
           <DialogHeader>
             <DialogTitle>Match Donor</DialogTitle>
             <DialogDescription>
-              {matchReport && `${matchReport.submitted_by_name || "A member"} reported ${peso(matchReport.amount)} for ${MONTHS_FULL[matchReport.month - 1]} ${matchReport.year}. Pick the donor record — or create one (auto-links their account).`}
+              {matchReport ? (
+                <>
+                  {matchReport.submitted_by_name || matchReport.donor_name || "A member"} reported{" "}
+                  {peso(matchReport.amount)} for {MONTHS_FULL[matchReport.month - 1]} {matchReport.year}.
+                  Pick the donor record — or create one (auto-links their account).
+                </>
+              ) : (
+                "Pick the donor record — or create one (auto-links their account)."
+              )}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3">
@@ -1215,7 +1321,7 @@ export default function FinancePanel() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setMatchReport(null)}>Cancel</Button>
-            <Button onClick={confirmApprove} disabled={actingPending === matchReport?.id}>
+            <Button onClick={() => { void confirmApprove(); }} disabled={actingPending === matchReport?.id}>
               {actingPending === matchReport?.id && <Loader2 className="h-4 w-4 mr-1 animate-spin" />}
               Approve &amp; {matchDonorId ? "Match" : "Create Donor"}
             </Button>
