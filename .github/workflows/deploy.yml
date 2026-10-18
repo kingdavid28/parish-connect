@@ -1,8 +1,16 @@
-name: Deploy to Hostinger
+name: Deploy to Hostinger (San Vicente Ferrer Parish only)
 
 on:
   push:
     branches: [main, master]
+    # Kawayan (Saint Raphael) runs on Render + Cloudflare Pages + CockroachDB
+    # and auto-deploys from main itself — never send it to Hostinger.
+    # Skip this workflow for backend-only changes.
+    paths-ignore:
+      - 'backend/**'
+      - 'PARISH-SETUP.md'
+      - '.env.san-raphael'
+      - 'backend/.env.san-raphael'
 
 jobs:
   deploy:
