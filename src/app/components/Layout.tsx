@@ -10,8 +10,8 @@ export default function Layout() {
       {/* Navbar is outside content wrapper for fixed positioning */}
       <Navbar />
 
-      {/* Content wrapper with proper z-index stacking */}
-      <div className="viewport-content">
+      {/* Content wrapper with proper z-index stacking and padding to avoid overlap with fixed nav bars */}
+      <div className="viewport-content pb-20 md:pb-0">
         <Outlet />
       </div>
 
