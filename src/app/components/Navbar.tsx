@@ -19,14 +19,6 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
-import {
-  Breadcrumb,
-  BreadcrumbList,
-  BreadcrumbItem,
-  BreadcrumbLink,
-  BreadcrumbPage,
-  BreadcrumbSeparator,
-} from "./ui/breadcrumb";
 export default function Navbar() {
   const { user, logout, isAuthenticated, isAdmin } = useAuth();
   const { parish } = useParishConfig();
@@ -69,21 +61,6 @@ export default function Navbar() {
     return location.pathname === path;
   };
 
-  const pageLabels: Record<string, string> = {
-    "/": "Feed",
-    "/messages": "Messages",
-    "/records": "Records",
-    "/rewards": "Rewards",
-    "/wallet": "Wallet",
-    "/membership": "Members",
-    "/admin": "Manage",
-  };
-
-  const getCurrentPageLabel = () => {
-    if (location.pathname.startsWith("/profile/")) return "Profile";
-    return pageLabels[location.pathname] || "Feed";
-  };
-
   const getInitials = (name: string) =>
     name.split(" ").map((n) => n[0]).join("").toUpperCase();
 
@@ -116,7 +93,7 @@ export default function Navbar() {
             <Link to="/" className="flex items-center gap-2.5 min-w-0">
               <img src={parish.logoUrl} alt={parish.name} className="h-10 w-auto object-contain shrink-0" width={40} height={40} />
               <div className="leading-tight min-w-0">
-                <span className="block text-sm sm:text-base font-semibold text-gray-900 truncate max-w-[150px] sm:max-w-[280px] md:max-w-[220px] lg:max-w-[280px]">
+                <span className="block text-sm sm:text-base font-semibold text-gray-900 truncate max-w-[150px] sm:max-w-[280px] md:max-w-none">
                   <span className="sm:hidden">{parish.shortName}</span>
                   <span className="hidden sm:inline">{parish.name}</span>
                 </span>
@@ -124,30 +101,26 @@ export default function Navbar() {
               </div>
             </Link>
 
-            {/* Desktop Breadcrumb — shows current location within the app */}
-            <Breadcrumb className="hidden md:flex items-center gap-1 max-w-xs shrink-0" aria-label="Breadcrumb">
-                <BreadcrumbList className="flex items-center gap-1 px-3 py-1.5 rounded-full bg-gray-50 border border-gray-200">
-                  <BreadcrumbItem>
-                    <BreadcrumbLink asChild>
-                      <Link
-                        to="/"
-                        className="flex items-center gap-1.5 text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors"
-                      >
-                        <Home className="h-3.5 w-3.5" />
-                        {parish.shortName}
-                      </Link>
-                    </BreadcrumbLink>
-                  </BreadcrumbItem>
-                  <BreadcrumbSeparator>
-                    <ChevronDown className="h-3 w-3 text-gray-400 shrink-0" />
-                  </BreadcrumbSeparator>
-                  <BreadcrumbItem>
-                    <BreadcrumbPage className="text-sm font-medium text-gray-900 truncate max-w-[180px]">
-                      {getCurrentPageLabel()}
-                    </BreadcrumbPage>
-                  </BreadcrumbItem>
-                </BreadcrumbList>
-              </Breadcrumb>
+            {/* Desktop Nav - centered */}
+            <div className="hidden md:flex items-center gap-1">
+              {visibleNavLinks.map((link) => {
+                const Icon = link.icon;
+                const active = isActive(link.path);
+                return (
+                  <Link
+                    key={link.path}
+                    to={link.path}
+                    className={`relative flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-all ${active
+                      ? "bg-blue-600 text-white shadow-sm"
+                      : "text-gray-600 hover:bg-gray-100 hover:text-gray-900"
+                      }`}
+                  >
+                    <Icon className="h-4 w-4" />
+                    <span>{link.label}</span>
+                  </Link>
+                );
+              })}
+            </div>
 
             {/* User Menu */}
             <div className="flex items-center gap-2">
