@@ -86,14 +86,14 @@ export default function Navbar() {
   return (
     <>
       {/* Top Bar */}
-      <nav className="sticky top-0 z-50 bg-white/95 backdrop-blur-sm border-b border-gray-100">
+      <nav className="sticky top-0 z-50 bg-white border-b border-gray-100">
         <div className="max-w-7xl mx-auto px-4">
           <div className="flex justify-between items-center h-14">
             {/* Logo */}
             <Link to="/" className="flex items-center gap-2.5 min-w-0">
               <img src={parish.logoUrl} alt={parish.name} className="h-10 w-auto object-contain shrink-0" width={40} height={40} />
               <div className="leading-tight min-w-0">
-                <span className="block text-sm sm:text-base font-semibold text-gray-900 truncate max-w-[150px] sm:max-w-[280px] md:max-w-none">
+                <span className="block text-sm sm:text-base font-semibold text-gray-900 truncate max-w-[150px] sm:max-w-[280px] md:max-w-[260px] lg:max-w-[320px]">
                   <span className="sm:hidden">{parish.shortName}</span>
                   <span className="hidden sm:inline">{parish.name}</span>
                 </span>
@@ -110,7 +110,7 @@ export default function Navbar() {
                   <Link
                     key={link.path}
                     to={link.path}
-                    className={`relative flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-all ${active
+                    className={`relative flex items-center gap-2 px-3 py-1.5 rounded-full text-[13px] font-medium transition-all ${active
                       ? "bg-blue-600 text-white shadow-sm"
                       : "text-gray-600 hover:bg-gray-100 hover:text-gray-900"
                       }`}
