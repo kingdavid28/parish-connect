@@ -66,6 +66,7 @@ app.get("/api/health", async (req, res) => {
     await pool.query("SELECT 1");
     res.json({ success: true, message: `${config.parish.name} API is running` });
   } catch (err) {
+    console.error("Health check failed:", err?.message ?? err);
     res.status(503).json({ success: false, message: "Database unavailable" });
   }
 });
@@ -77,10 +78,10 @@ app.use((req, res) => {
 
 // Global error handler
 app.use((err, req, res, next) => {
-  if (err && err.message === "Not allowed by CORS") {
+  if (err?.message === "Not allowed by CORS") {
     return res.status(403).json({ success: false, message: "Origin not allowed" });
   }
-  if (err && err.code === "LIMIT_FILE_SIZE") {
+  if (err?.code === "LIMIT_FILE_SIZE") {
     return res.status(400).json({ success: false, message: "File too large" });
   }
   console.error("Unhandled error:", err.message);

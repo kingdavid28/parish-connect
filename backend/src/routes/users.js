@@ -4,13 +4,11 @@ const multer = require("multer");
 const pool = require("../db/pool");
 const config = require("../config");
 const { authenticate, requireRole } = require("../middleware/auth");
-const { uuid, getClientIp, auditLog } = require("../lib/helpers");
+const { uuid, getClientIp, auditLog, isValidEmail } = require("../lib/helpers");
 const { storeImage } = require("../lib/storage");
 
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 2 * 1024 * 1024 } });
-
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 /** Is the given user the parent (earliest-created) superadmin? */
 async function isParentSuperAdmin(user) {
@@ -87,7 +85,7 @@ router.post("/", authenticate, requireRole("admin", "superadmin"), async (req, r
   if (!name || !email || !password || !role) {
     return res.status(400).json({ success: false, message: "name, email, password and role are required" });
   }
-  if (!EMAIL_RE.test(email)) {
+  if (!isValidEmail(email)) {
     return res.status(400).json({ success: false, message: "Invalid email address" });
   }
   if (password.length < 8) {
@@ -129,7 +127,7 @@ router.post("/", authenticate, requireRole("admin", "superadmin"), async (req, r
 router.get("/:id", authenticate, async (req, res) => {
   try {
     const { rows } = await pool.query(
-      `SELECT id, name, email, role, parish_id, avatar, member_since, last_login, created_by, created_at
+      `SELECT id, name, email, role, parish_id, avatar, bio, member_since, last_login, created_by, created_at
        FROM users WHERE id = $1 AND is_active = 1 LIMIT 1`,
       [req.params.id]
     );
@@ -143,7 +141,7 @@ router.get("/:id", authenticate, async (req, res) => {
         success: true,
         data: {
           id: target.id, name: target.name, email: target.email, role: target.role,
-          avatar: target.avatar, member_since: target.member_since, created_at: target.created_at,
+          avatar: target.avatar, bio: target.bio, member_since: target.member_since, created_at: target.created_at,
         },
       });
     }
@@ -166,8 +164,13 @@ router.put("/:id", authenticate, async (req, res) => {
 
   let newRole = req.body?.role || null;
   const newName = req.body?.name != null ? String(req.body.name).trim() : null;
+  const bioProvided = typeof req.body?.bio === "string";
+  const newBio = bioProvided ? req.body.bio.trim() || null : null;
   if (newRole && !isSuperAdmin) newRole = null;
-  if (!newRole && !newName) {
+  if (newBio && newBio.length > 500) {
+    return res.status(400).json({ success: false, message: "Bio must be 500 characters or fewer" });
+  }
+  if (!newRole && !newName && !bioProvided) {
     return res.status(400).json({ success: false, message: "Nothing to update" });
   }
 
@@ -209,6 +212,7 @@ router.put("/:id", authenticate, async (req, res) => {
     const updates = [];
     const params = [];
     if (newName) { params.push(newName); updates.push(`name = $${params.length}`); }
+    if (bioProvided) { params.push(newBio); updates.push(`bio = $${params.length}`); }
     if (newRole) { params.push(newRole); updates.push(`role = $${params.length}`); }
     params.push(id);
     await pool.query(`UPDATE users SET ${updates.join(", ")}, updated_at = NOW() WHERE id = $${params.length}`, params);

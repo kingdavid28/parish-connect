@@ -551,11 +551,11 @@ export default function FinancePanel() {
     } catch { /* non-fatal */ }
   }, [authHeaders]);
 
-  const fetchDonors = useCallback(async () => {
+  const fetchDonors = useCallback(async (search = donorSearch, page = donorPage) => {
     setLoadingDonors(true);
     try {
-      const params = new URLSearchParams({ page: String(donorPage), limit: String(PAGE_SIZE) });
-      if (donorSearch.trim()) params.set("search", donorSearch.trim());
+      const params = new URLSearchParams({ page: String(page), limit: String(PAGE_SIZE) });
+      if (search.trim()) params.set("search", search.trim());
       const res = await fetch(`${API}/finance/donors?${params}`, { headers: authHeaders() });
       const data = await res.json();
       if (data.success) {
@@ -736,7 +736,12 @@ export default function FinancePanel() {
     });
   };
 
-  const actOnPending = async (id: string, action: "approve" | "reject", body: object = {}) => {
+  const actOnPending = async (
+    id: string,
+    action: "approve" | "reject",
+    body: { donor_id?: string; new_donor_name?: string } = {},
+    matchedDonorName?: string,
+  ) => {
     setActingPending(id);
     try {
       const res = await fetch(`${API}/finance/payments/${id}/${action}`, {
@@ -749,6 +754,19 @@ export default function FinancePanel() {
       toast.success(action === "approve" ? "Contribution approved" : "Contribution rejected");
       setMatchReport(null);
       void fetchPending(); void fetchSummary(); void fetchBecs();
+      if (action === "approve") {
+        const donorName = matchedDonorName || body.new_donor_name?.trim();
+        if (donorName) {
+          if (donorSearch !== donorName || donorPage !== 1) {
+            setDonorSearch(donorName);
+            setDonorPage(1);
+          } else {
+            void fetchDonors(donorName, 1);
+          }
+        } else {
+          void fetchDonors();
+        }
+      }
       if (ledger) void fetchLedger(ledger.donor.id, ledgerYear);
     } catch (e: any) {
       toast.error(e.message);
@@ -759,7 +777,7 @@ export default function FinancePanel() {
 
   // Approve click: linked donor → approve directly; unlinked → open match dialog
   const handleApprove = async (r: PendingReport) => {
-    if (r.donor_id) return actOnPending(r.id, "approve");
+    if (r.donor_id) return actOnPending(r.id, "approve", {}, r.donor_name || undefined);
     setMatchReport(r);
     setMatchDonorId("");
     setMatchNewName(r.submitted_by_name || r.donor_name || "");
@@ -774,7 +792,8 @@ export default function FinancePanel() {
     if (!matchReport) return;
     const body = matchDonorId ? { donor_id: matchDonorId } : { new_donor_name: matchNewName.trim() };
     if (!matchDonorId && !matchNewName.trim()) { toast.error("Pick a donor or enter a new name"); return; }
-    void actOnPending(matchReport.id, "approve", body);
+    const donorName = matchDonors.find((donor) => donor.id === matchDonorId)?.name || matchNewName.trim();
+    void actOnPending(matchReport.id, "approve", body, donorName);
   };
 
   const openVoid = (payment: Payment) => {

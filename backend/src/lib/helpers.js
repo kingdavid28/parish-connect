@@ -1,4 +1,4 @@
-const crypto = require("crypto");
+const crypto = require("node:crypto");
 const pool = require("../db/pool");
 
 /** RFC 4122 UUID v4 */
@@ -17,6 +17,13 @@ function getClientIp(req) {
 function strimwidth(str, max) {
   if (!str) return "";
   return str.length > max ? str.slice(0, max - 1) + "…" : str;
+}
+
+function isValidEmail(email) {
+  const parts = String(email).split("@");
+  if (parts.length !== 2 || !parts[0] || !parts[1] || /\s/.test(email)) return false;
+  const lastDot = parts[1].lastIndexOf(".");
+  return lastDot > 0 && lastDot < parts[1].length - 1;
 }
 
 /** Write an audit log entry (best-effort).
@@ -40,10 +47,10 @@ async function auditLog(userId, action, targetType, targetId, ip, client, detail
 /** Escape user text for safe embedding in HTML emails */
 function esc(str) {
   return String(str ?? "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;");
 }
 
 /** Philippine peso-style number format: 10000 -> "10,000" / 10.5 -> "10.50" */
@@ -73,4 +80,5 @@ async function withTransaction(fn) {
   }
 }
 
-module.exports = { uuid, getClientIp, strimwidth, auditLog, esc, numFormat, withTransaction };
+module.exports = { uuid, getClientIp, strimwidth, isValidEmail, auditLog, esc, numFormat, withTransaction };
+

@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from "react";
 
 export interface User {
   id: string;
@@ -7,6 +7,7 @@ export interface User {
   role: "superadmin" | "admin" | "parishioner";
   parishId: string;
   avatar?: string;
+  bio?: string;
   memberSince?: string;
   lastLogin?: string;
 }
@@ -67,14 +68,14 @@ function getStoredToken(): string | null {
   return localStorage.getItem(TOKEN_KEY) || sessionStorage.getItem(TOKEN_KEY);
 }
 
-function storeToken(token: string, rememberMe: boolean): void {
-  if (rememberMe) {
-    localStorage.setItem(TOKEN_KEY, token);
-    sessionStorage.removeItem(TOKEN_KEY);
-  } else {
-    sessionStorage.setItem(TOKEN_KEY, token);
-    localStorage.removeItem(TOKEN_KEY);
-  }
+function storeTokenPersistent(token: string): void {
+  localStorage.setItem(TOKEN_KEY, token);
+  sessionStorage.removeItem(TOKEN_KEY);
+}
+
+function storeTokenSession(token: string): void {
+  sessionStorage.setItem(TOKEN_KEY, token);
+  localStorage.removeItem(TOKEN_KEY);
 }
 
 function clearStoredToken(): void {
@@ -82,7 +83,7 @@ function clearStoredToken(): void {
   sessionStorage.removeItem(TOKEN_KEY);
 }
 
-export function AuthProvider({ children }: { children: React.ReactNode }) {
+export function AuthProvider({ children }: { readonly children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [token, setToken] = useState<string | null>(() => getStoredToken());
   const [isLoading, setIsLoading] = useState(true);
@@ -148,7 +149,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
 
     const { token: newToken, user: newUser } = json.data;
-    storeToken(newToken, rememberMe);
+    if (rememberMe) {
+      storeTokenPersistent(newToken);
+    } else {
+      storeTokenSession(newToken);
+    }
     setToken(newToken);
     setUser(newUser);
   }, []);
@@ -176,20 +181,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     );
   }
 
+  const contextValue = useMemo(
+    () => ({
+      user,
+      token,
+      login,
+      logout,
+      isAuthenticated: !!user,
+      isAdmin: user?.role === "admin" || user?.role === "superadmin",
+      isSuperAdmin: user?.role === "superadmin",
+      isLoading,
+      hasPermission,
+    }),
+    [user, token, login, logout, isLoading, hasPermission]
+  );
+
   return (
-    <AuthContext.Provider
-      value={{
-        user,
-        token,
-        login,
-        logout,
-        isAuthenticated: !!user,
-        isAdmin: user?.role === "admin" || user?.role === "superadmin",
-        isSuperAdmin: user?.role === "superadmin",
-        isLoading,
-        hasPermission,
-      }}
-    >
+    <AuthContext.Provider value={contextValue}>
       {children}
     </AuthContext.Provider>
   );

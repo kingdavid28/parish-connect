@@ -5,16 +5,18 @@ import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card"
 import { Avatar, AvatarImage, AvatarFallback } from "../components/ui/avatar";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
+import { Label } from "../components/ui/label";
+import { Textarea } from "../components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
 import { Badge } from "../components/ui/badge";
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle,
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from "../components/ui/dialog";
 import {
   Calendar, Mail, Shield, BookOpen, Heart, MessageCircle, Loader, Send, Crown,
-  UserCheck, UserPlus, Church, Cake, Star, Zap,
+  UserCheck, UserPlus, Church, Cake, Zap, Pencil,
 } from "lucide-react";
-import { format, formatDistanceToNow } from "date-fns";
+import { formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
 import { KudosButton } from "../components/KudosButton";
 
@@ -55,23 +57,32 @@ function safeTimeAgo(d: string): string {
     date = new Date(d);
     
     // If invalid, try ISO format parsing (Safari is stricter)
-    if (isNaN(date.getTime())) {
+    if (Number.isNaN(date.getTime())) {
       // Try parsing with timezone handling
       const isoString = d.replace(/ /, 'T');
       date = new Date(isoString);
     }
     
     // If still invalid, try manual parsing
-    if (isNaN(date.getTime())) {
+    if (Number.isNaN(date.getTime())) {
       const parsed = Date.parse(d);
-      if (!isNaN(parsed)) {
+      if (!Number.isNaN(parsed)) {
         date = new Date(parsed);
       }
     }
     
-    if (isNaN(date.getTime())) return '';
+    if (Number.isNaN(date.getTime())) return '';
     return formatDistanceToNow(date, { addSuffix: true });
   } catch { return ''; }
+}
+
+function getPostTypeLabel(type: string): string {
+  switch (type) {
+    case "parish_event": return "Event";
+    case "research": return "Research";
+    case "baptism_anniversary": return "Baptism";
+    default: return "Community";
+  }
 }
 
 export default function Profile() {
@@ -80,6 +91,10 @@ export default function Profile() {
   const [profileData, setProfileData] = useState<ProfileData | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("timeline");
+  const [profileEditorOpen, setProfileEditorOpen] = useState(false);
+  const [profileNameDraft, setProfileNameDraft] = useState("");
+  const [profileBioDraft, setProfileBioDraft] = useState("");
+  const [savingProfile, setSavingProfile] = useState(false);
 
   // Follow state
   const [isFollowing, setIsFollowing] = useState(false);
@@ -108,14 +123,14 @@ export default function Profile() {
 
   useEffect(() => {
     if (!profileId) return;
-    fetchProfile();
-    fetchFollowStatus();
-    fetchUserRewards();
+    void fetchProfile();
+    void fetchFollowStatus();
+    void fetchUserRewards();
   }, [profileId]);
 
   useEffect(() => {
-    if (activeTab === 'timeline' && profileData && !sacramentRecord && !loadingTimeline) fetchTimeline();
-    if (activeTab === 'posts' && profileData && userPosts.length === 0 && !loadingPosts) fetchUserPosts();
+    if (activeTab === 'timeline' && profileData && !sacramentRecord && !loadingTimeline) void fetchTimeline();
+    if (activeTab === 'posts' && profileData && userPosts.length === 0 && !loadingPosts) void fetchUserPosts();
   }, [activeTab, profileData]);
 
   const fetchProfile = async () => {
@@ -129,6 +144,48 @@ export default function Profile() {
       setProfileData(data.data || data);
     } catch { toast.error('Failed to load profile'); }
     finally { setLoading(false); }
+  };
+
+  const openProfileEditor = () => {
+    if (!profileData) return;
+    setProfileNameDraft(profileData.name);
+    setProfileBioDraft(profileData.bio || "");
+    setProfileEditorOpen(true);
+  };
+
+  const saveProfile = async (event: React.SubmitEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const name = profileNameDraft.trim();
+    const bio = profileBioDraft.trim();
+    if (!name) {
+      toast.error("Name is required");
+      return;
+    }
+    if (bio.length > 500) {
+      toast.error("Bio must be 500 characters or fewer");
+      return;
+    }
+
+    setSavingProfile(true);
+    try {
+      const res = await fetch(`${API}/users/${profileId}`, {
+        method: "PUT",
+        headers: {
+          Authorization: `Bearer ${getToken()}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ name, bio }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || "Failed to update profile");
+      setProfileData((current) => current ? { ...current, name, bio } : current);
+      setProfileEditorOpen(false);
+      toast.success("Profile updated");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to update profile");
+    } finally {
+      setSavingProfile(false);
+    }
   };
 
   const fetchFollowStatus = async () => {
@@ -278,7 +335,14 @@ export default function Profile() {
                   <h1 className="text-3xl font-semibold">{profileData.name}</h1>
                   {getRoleBadge(profileData.role)}
                 </div>
-                <p className="text-gray-600 mb-4">{profileData.bio || "No bio yet"}</p>
+                <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+                  <p className="text-gray-600">{profileData.bio || "No bio yet"}</p>
+                  {isOwnProfile && (
+                    <Button variant="outline" size="sm" onClick={openProfileEditor}>
+                      <Pencil className="mr-2 h-4 w-4" />Edit Profile
+                    </Button>
+                  )}
+                </div>
                 <div className="flex flex-wrap gap-4 mb-2 text-sm text-gray-600">
                   <div className="flex items-center gap-1"><Mail className="h-4 w-4" />{profileData.email}</div>
                   {(profileData.member_since || profileData.created_at) && (
@@ -396,14 +460,14 @@ export default function Profile() {
                   <div className="flex items-center gap-2 mb-3">
                     <Badge variant="secondary" className="flex items-center gap-1 text-xs">
                       {getPostIcon(post.type)}
-                      {post.type === 'parish_event' ? 'Event' : post.type === 'research' ? 'Research' : post.type === 'baptism_anniversary' ? 'Baptism' : 'Community'}
+                      {getPostTypeLabel(post.type)}
                     </Badge>
                     <span className="text-xs text-gray-400">{safeTimeAgo(post.created_at)}</span>
                   </div>
                   <p className="text-gray-800 whitespace-pre-wrap">{post.content}</p>
                   {post.image_url && (
                     <div className="mt-3 rounded-lg overflow-hidden bg-gray-100">
-                      <img src={post.image_url} alt="Post image" className="w-full object-contain max-h-[500px]" loading="lazy" decoding="async"
+                      <img src={post.image_url} alt={`Post by ${post.author_name}`} className="w-full object-contain max-h-[500px]" loading="lazy" decoding="async"
                         onError={(e) => { (e.currentTarget.parentElement as HTMLElement).style.display = 'none'; }} />
                     </div>
                   )}
@@ -461,6 +525,48 @@ export default function Profile() {
           </DialogContent>
         </Dialog>
       </div>
+
+      <Dialog open={profileEditorOpen} onOpenChange={setProfileEditorOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Edit Profile</DialogTitle>
+            <DialogDescription>Update your name and a short bio visible on your parish profile.</DialogDescription>
+          </DialogHeader>
+          <form onSubmit={saveProfile} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="profile-name">Name</Label>
+              <Input
+                id="profile-name"
+                value={profileNameDraft}
+                maxLength={100}
+                required
+                onChange={(event) => setProfileNameDraft(event.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="profile-bio">Bio</Label>
+              <Textarea
+                id="profile-bio"
+                value={profileBioDraft}
+                maxLength={500}
+                rows={4}
+                placeholder="Tell the parish community about yourself"
+                onChange={(event) => setProfileBioDraft(event.target.value)}
+              />
+              <p className="text-right text-xs text-gray-500">{profileBioDraft.length}/500</p>
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setProfileEditorOpen(false)} disabled={savingProfile}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={savingProfile || !profileNameDraft.trim()}>
+                {savingProfile ? <Loader className="mr-2 h-4 w-4 animate-spin" /> : null}
+                Save Profile
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

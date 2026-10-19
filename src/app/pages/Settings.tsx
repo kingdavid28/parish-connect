@@ -30,8 +30,21 @@ import {
   Loader,
 } from "lucide-react";
 import { toast } from "sonner";
-import { usePushNotifications } from "../hooks/usePushNotifications";
+import { usePushNotifications, type PushPermission } from "../hooks/usePushNotifications";
 import { TEXT_SIZE_OPTIONS, useAccessibility } from "../context/AccessibilityContext";
+
+const getToken = () => localStorage.getItem("parish_token") || sessionStorage.getItem("parish_token");
+
+function pushNotificationDescription(permission: PushPermission, isSubscribed: boolean): string {
+  if (permission === "denied") return "Blocked in browser — enable in site settings";
+  if (isSubscribed) return "You'll receive push notifications on this device";
+  return "Get notified about parish activity on this device";
+}
+
+function pushButtonLabel(isLoading: boolean, isSubscribed: boolean): string {
+  if (isLoading) return "Loading";
+  return isSubscribed ? "Disable" : "Enable";
+}
 
 function DisplayPreferences() {
   const { textSize, setTextSize } = useAccessibility();
@@ -68,9 +81,182 @@ function DisplayPreferences() {
   );
 }
 
+function NotificationSettings() {
+  const { isSupported, permission, isSubscribed, isLoading, subscribe, unsubscribe } = usePushNotifications();
+  const [emailNotifications, setEmailNotifications] = useState(true);
+  const [newPostNotifications, setNewPostNotifications] = useState(true);
+  const [eventReminders, setEventReminders] = useState(true);
+  const [researchUpdates, setResearchUpdates] = useState(true);
+
+  const handleTogglePush = async () => {
+    if (isSubscribed) {
+      const ok = await unsubscribe();
+      if (ok) toast.success("Push notifications disabled");
+      else toast.error("Failed to disable push notifications");
+      return;
+    }
+    if (permission === "denied") {
+      toast.error("Notifications are blocked. Enable them in your browser settings.");
+      return;
+    }
+    const ok = await subscribe();
+    if (ok) toast.success("Push notifications enabled");
+    else if (permission !== "granted") toast.info("Notification permission was not granted");
+    else toast.error("Failed to enable push notifications");
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Bell className="h-5 w-5" />
+          Notifications
+        </CardTitle>
+        <CardDescription>Manage how and when you receive notifications</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-6">
+        {isSupported ? (
+          <div className="flex items-center justify-between">
+            <div className="space-y-0.5">
+              <Label className="flex items-center gap-2">
+                {isSubscribed ? <Bell className="h-4 w-4 text-blue-600" /> : <BellOff className="h-4 w-4 text-gray-400" />}
+                Push Notifications
+              </Label>
+              <p className="text-sm text-gray-500">{pushNotificationDescription(permission, isSubscribed)}</p>
+            </div>
+            <Button
+              variant={isSubscribed ? "outline" : "default"}
+              size="sm"
+              onClick={handleTogglePush}
+              disabled={isLoading || permission === "denied"}
+            >
+              {isLoading ? <Loader className="h-4 w-4 animate-spin" /> : pushButtonLabel(isLoading, isSubscribed)}
+            </Button>
+          </div>
+        ) : (
+          <p className="text-sm text-gray-500">Push notifications are not supported in this browser.</p>
+        )}
+        <Separator />
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="space-y-0.5">
+              <Label>Email Notifications</Label>
+              <p className="text-sm text-gray-500">Receive email updates about parish activity</p>
+            </div>
+            <Switch checked={emailNotifications} onCheckedChange={setEmailNotifications} />
+          </div>
+          <div className="flex items-center justify-between">
+            <div className="space-y-0.5">
+              <Label>New Posts</Label>
+              <p className="text-sm text-gray-500">Notifications when people you follow post</p>
+            </div>
+            <Switch checked={newPostNotifications} onCheckedChange={setNewPostNotifications} />
+          </div>
+          <div className="flex items-center justify-between">
+            <div className="space-y-0.5">
+              <Label>Event Reminders</Label>
+              <p className="text-sm text-gray-500">Reminders for upcoming parish events</p>
+            </div>
+            <Switch checked={eventReminders} onCheckedChange={setEventReminders} />
+          </div>
+          <div className="flex items-center justify-between">
+            <div className="space-y-0.5">
+              <Label>Research Updates</Label>
+              <p className="text-sm text-gray-500">Updates on family lineage research</p>
+            </div>
+            <Switch checked={researchUpdates} onCheckedChange={setResearchUpdates} />
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+interface AvatarUploadInput {
+  userId: string;
+  fallbackAvatar: string;
+  input: HTMLInputElement | null;
+  setAvatarPreview: React.Dispatch<React.SetStateAction<string>>;
+  setIsUploading: React.Dispatch<React.SetStateAction<boolean>>;
+}
+
+async function uploadAvatarFile(file: File, input: AvatarUploadInput) {
+  if (file.size > 2 * 1024 * 1024) {
+    toast.error("File too large. Max 2MB.");
+    return;
+  }
+  if (!["image/jpeg", "image/png", "image/gif", "image/webp"].includes(file.type)) {
+    toast.error("Invalid file type. Use JPG, PNG, GIF, or WebP.");
+    return;
+  }
+
+  const reader = new FileReader();
+  reader.onload = (event) => input.setAvatarPreview(event.target?.result as string);
+  reader.readAsDataURL(file);
+
+  try {
+    input.setIsUploading(true);
+    const formData = new FormData();
+    formData.append("avatar", file);
+    const response = await fetch(`${API}/users/${input.userId}/avatar`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${getToken()}` },
+      body: formData,
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.message || "Upload failed");
+    input.setAvatarPreview(data.data.avatar);
+    toast.success("Photo updated successfully");
+  } catch (err) {
+    toast.error(err instanceof Error ? err.message : "Failed to upload photo");
+    input.setAvatarPreview(input.fallbackAvatar);
+  } finally {
+    input.setIsUploading(false);
+    if (input.input) input.input.value = "";
+  }
+}
+
+interface PasswordChangeInput {
+  currentPassword: string;
+  newPassword: string;
+  confirmPassword: string;
+  setIsSaving: React.Dispatch<React.SetStateAction<boolean>>;
+  clearFields: () => void;
+}
+
+async function changePassword(input: PasswordChangeInput) {
+  if (!input.currentPassword || !input.newPassword) {
+    toast.error("Please fill in all password fields");
+    return;
+  }
+  if (input.newPassword !== input.confirmPassword) {
+    toast.error("New passwords don't match");
+    return;
+  }
+  if (input.newPassword.length < 8) {
+    toast.error("Password must be at least 8 characters");
+    return;
+  }
+  try {
+    input.setIsSaving(true);
+    const response = await fetch(`${API}/auth/password`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${getToken()}` },
+      body: JSON.stringify({ currentPassword: input.currentPassword, newPassword: input.newPassword }),
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.message || "Failed to change password");
+    toast.success("Password changed successfully");
+    input.clearFields();
+  } catch (err) {
+    toast.error(err instanceof Error ? err.message : "Failed to change password");
+  } finally {
+    input.setIsSaving(false);
+  }
+}
+
 export default function Settings() {
   const { user } = useAuth();
-  const { isSupported, permission, isSubscribed, isLoading: pushLoading, subscribe, unsubscribe } = usePushNotifications();
   const [showPassword, setShowPassword] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
@@ -79,7 +265,7 @@ export default function Settings() {
 
   const [name, setName] = useState(user?.name || "");
   const email = user?.email || "";
-  const [bio, setBio] = useState("");
+  const [bio, setBio] = useState(user?.bio || "");
   const [phone, setPhone] = useState("");
 
   const [currentPassword, setCurrentPassword] = useState("");
@@ -90,14 +276,6 @@ export default function Settings() {
   const [showBaptismDate, setShowBaptismDate] = useState(true);
   const [showFamilyConnections, setShowFamilyConnections] = useState(true);
   const [allowMessages, setAllowMessages] = useState(true);
-  const [emailNotifications, setEmailNotifications] = useState(true);
-  const [newPostNotifications, setNewPostNotifications] = useState(true);
-  const [eventReminders, setEventReminders] = useState(true);
-  const [researchUpdates, setResearchUpdates] = useState(true);
-
-  const API_BASE_URL = API;
-  const getToken = () => localStorage.getItem('parish_token') || sessionStorage.getItem('parish_token');
-
   const handleAvatarClick = () => {
     fileInputRef.current?.click();
   };
@@ -105,58 +283,26 @@ export default function Settings() {
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-
-    if (file.size > 2 * 1024 * 1024) {
-      toast.error("File too large. Max 2MB.");
-      return;
-    }
-
-    if (!['image/jpeg', 'image/png', 'image/gif', 'image/webp'].includes(file.type)) {
-      toast.error("Invalid file type. Use JPG, PNG, GIF, or WebP.");
-      return;
-    }
-
-    // Show preview immediately
-    const reader = new FileReader();
-    reader.onload = (ev) => setAvatarPreview(ev.target?.result as string);
-    reader.readAsDataURL(file);
-
-    // Upload
-    try {
-      setIsUploading(true);
-      const formData = new FormData();
-      formData.append('avatar', file);
-
-      const response = await fetch(`${API_BASE_URL}/users/${user?.id}/avatar`, {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${getToken()}` },
-        body: formData,
-      });
-
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.message || 'Upload failed');
-
-      setAvatarPreview(data.data.avatar);
-      toast.success("Photo updated successfully");
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to upload photo");
-      setAvatarPreview(user?.avatar || "");
-    } finally {
-      setIsUploading(false);
-      if (fileInputRef.current) fileInputRef.current.value = '';
-    }
+    if (!user?.id) return;
+    await uploadAvatarFile(file, {
+      userId: user.id,
+      fallbackAvatar: user.avatar || "",
+      input: fileInputRef.current,
+      setAvatarPreview,
+      setIsUploading,
+    });
   };
 
   const handleSaveProfile = async () => {
     try {
       setIsSaving(true);
-      const response = await fetch(`${API_BASE_URL}/users/${user?.id}`, {
+      const response = await fetch(`${API}/users/${user?.id}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${getToken()}`,
         },
-        body: JSON.stringify({ name }),
+        body: JSON.stringify({ name, bio }),
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.message || 'Failed to save');
@@ -169,59 +315,20 @@ export default function Settings() {
   };
 
   const handleChangePassword = async () => {
-    if (!currentPassword || !newPassword) {
-      toast.error("Please fill in all password fields");
-      return;
-    }
-    if (newPassword !== confirmPassword) {
-      toast.error("New passwords don't match");
-      return;
-    }
-    if (newPassword.length < 8) {
-      toast.error("Password must be at least 8 characters");
-      return;
-    }
-    try {
-      setIsSaving(true);
-      const response = await fetch(`${API_BASE_URL}/auth/password`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${getToken()}`,
-        },
-        body: JSON.stringify({ currentPassword, newPassword }),
-      });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.message || 'Failed to change password');
-      toast.success("Password changed successfully");
-      setCurrentPassword("");
-      setNewPassword("");
-      setConfirmPassword("");
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to change password");
-    } finally {
-      setIsSaving(false);
-    }
+    await changePassword({
+      currentPassword,
+      newPassword,
+      confirmPassword,
+      setIsSaving,
+      clearFields: () => {
+        setCurrentPassword("");
+        setNewPassword("");
+        setConfirmPassword("");
+      },
+    });
   };
 
   const handleSavePrivacy = () => toast.success("Privacy settings updated!");
-
-  const handleTogglePush = async () => {
-    if (isSubscribed) {
-      const ok = await unsubscribe();
-      if (ok) toast.success("Push notifications disabled");
-      else toast.error("Failed to disable push notifications");
-    } else {
-      if (permission === "denied") {
-        toast.error("Notifications are blocked. Enable them in your browser settings.");
-        return;
-      }
-      const ok = await subscribe();
-      if (ok) toast.success("Push notifications enabled");
-      else if (permission !== "granted") toast.info("Notification permission was not granted");
-      else toast.error("Failed to enable push notifications");
-    }
-  };
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -363,85 +470,7 @@ export default function Settings() {
             </CardContent>
           </Card>
 
-          {/* Notification Settings */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Bell className="h-5 w-5" />
-                Notifications
-              </CardTitle>
-              <CardDescription>Manage how and when you receive notifications</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              {/* Push notifications toggle */}
-              {isSupported ? (
-                <div className="flex items-center justify-between">
-                  <div className="space-y-0.5">
-                    <Label className="flex items-center gap-2">
-                      {isSubscribed ? <Bell className="h-4 w-4 text-blue-600" /> : <BellOff className="h-4 w-4 text-gray-400" />}
-                      Push Notifications
-                    </Label>
-                    <p className="text-sm text-gray-500">
-                      {permission === "denied"
-                        ? "Blocked in browser — enable in site settings"
-                        : isSubscribed
-                          ? "You'll receive push notifications on this device"
-                          : "Get notified about parish activity on this device"}
-                    </p>
-                  </div>
-                  <Button
-                    variant={isSubscribed ? "outline" : "default"}
-                    size="sm"
-                    onClick={handleTogglePush}
-                    disabled={pushLoading || permission === "denied"}
-                  >
-                    {pushLoading ? (
-                      <Loader className="h-4 w-4 animate-spin" />
-                    ) : isSubscribed ? (
-                      "Disable"
-                    ) : (
-                      "Enable"
-                    )}
-                  </Button>
-                </div>
-              ) : (
-                <p className="text-sm text-gray-500">
-                  Push notifications are not supported in this browser.
-                </p>
-              )}
-              <Separator />
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <div className="space-y-0.5">
-                    <Label>Email Notifications</Label>
-                    <p className="text-sm text-gray-500">Receive email updates about parish activity</p>
-                  </div>
-                  <Switch checked={emailNotifications} onCheckedChange={setEmailNotifications} />
-                </div>
-                <div className="flex items-center justify-between">
-                  <div className="space-y-0.5">
-                    <Label>New Posts</Label>
-                    <p className="text-sm text-gray-500">Notifications when people you follow post</p>
-                  </div>
-                  <Switch checked={newPostNotifications} onCheckedChange={setNewPostNotifications} />
-                </div>
-                <div className="flex items-center justify-between">
-                  <div className="space-y-0.5">
-                    <Label>Event Reminders</Label>
-                    <p className="text-sm text-gray-500">Reminders for upcoming parish events</p>
-                  </div>
-                  <Switch checked={eventReminders} onCheckedChange={setEventReminders} />
-                </div>
-                <div className="flex items-center justify-between">
-                  <div className="space-y-0.5">
-                    <Label>Research Updates</Label>
-                    <p className="text-sm text-gray-500">Updates on family lineage research</p>
-                  </div>
-                  <Switch checked={researchUpdates} onCheckedChange={setResearchUpdates} />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+          <NotificationSettings />
 
           {/* Security Settings */}
           <Card>

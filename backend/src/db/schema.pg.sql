@@ -14,6 +14,7 @@ CREATE TABLE IF NOT EXISTS users (
                 CHECK (role IN ('superadmin','admin','parishioner')),
   parish_id     VARCHAR(100) NOT NULL DEFAULT 'parish',
   avatar        VARCHAR(500) NULL,
+  bio           TEXT         NULL,
   baptism_date  DATE         NULL,
   member_since  DATE         NULL,
   created_by    VARCHAR(36)  NULL REFERENCES users(id) ON DELETE SET NULL,
@@ -22,6 +23,7 @@ CREATE TABLE IF NOT EXISTS users (
   created_at    TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
   updated_at    TIMESTAMP    DEFAULT CURRENT_TIMESTAMP
 );
+ALTER TABLE users ADD COLUMN IF NOT EXISTS bio TEXT NULL;
 
 CREATE TABLE IF NOT EXISTS posts (
   id             VARCHAR(36)  NOT NULL PRIMARY KEY,

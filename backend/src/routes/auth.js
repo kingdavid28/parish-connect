@@ -4,7 +4,7 @@ const jwt = require("jsonwebtoken");
 const pool = require("../db/pool");
 const config = require("../config");
 const { authenticate } = require("../middleware/auth");
-const { uuid, getClientIp, auditLog, esc } = require("../lib/helpers");
+const { uuid, getClientIp, auditLog, esc, isValidEmail } = require("../lib/helpers");
 const { awardPoints } = require("../lib/rewards");
 const { sendEmail } = require("../lib/mailer");
 const { findSacramentRecord } = require("../lib/sacramentLookup");
@@ -30,7 +30,6 @@ function recordFail(key) {
   }
 }
 
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const PASSWORD_OK = (p) => p.length >= 8 && /[A-Z]/.test(p) && /[a-z]/.test(p) && /\d/.test(p);
 
 const publicUser = (u) => ({
@@ -40,6 +39,7 @@ const publicUser = (u) => ({
   role: u.role,
   parishId: u.parish_id,
   avatar: u.avatar,
+  bio: u.bio,
   memberSince: u.member_since,
   lastLogin: u.last_login,
 });
@@ -102,7 +102,7 @@ router.post("/register", async (req, res) => {
   if (!name || !email || !password) {
     return res.status(400).json({ success: false, message: "Name, email and password are required" });
   }
-  if (!EMAIL_RE.test(email)) {
+  if (!isValidEmail(email)) {
     return res.status(400).json({ success: false, message: "Invalid email address" });
   }
   if (!PASSWORD_OK(password)) {
@@ -122,8 +122,7 @@ router.post("/register", async (req, res) => {
           message: "Your name was not found in the parish records. Please use the exact name as it appears in the sacramental records.",
         });
       }
-      const parentsName = String(sacRecord.parents_name || "").toLowerCase();
-      if (!parentsName || !parentsName.includes(fatherFirstName.toLowerCase())) {
+      if (!sacRecord.parents_name?.toLowerCase().includes(fatherFirstName.toLowerCase())) {
         return res.status(403).json({
           success: false,
           message: "The father's first name does not match our records. Please try again.",
@@ -174,7 +173,7 @@ router.post("/register", async (req, res) => {
 router.get("/me", authenticate, async (req, res) => {
   try {
     const { rows } = await pool.query(
-      "SELECT id, name, email, role, parish_id, avatar, member_since, last_login FROM users WHERE id = $1 AND is_active = 1 LIMIT 1",
+      "SELECT id, name, email, role, parish_id, avatar, bio, member_since, last_login FROM users WHERE id = $1 AND is_active = 1 LIMIT 1",
       [req.user.id]
     );
     if (!rows[0]) {
@@ -253,8 +252,7 @@ router.post("/forgot-password", async (req, res) => {
     if (!sacRecord) {
       return res.status(403).json({ success: false, message: "Identity verification failed. Name and birthday do not match parish records." });
     }
-    const parentsName = String(sacRecord.parents_name || "").toLowerCase();
-    if (!parentsName || !parentsName.includes(fatherFirstName.toLowerCase())) {
+    if (!sacRecord.parents_name?.toLowerCase().includes(fatherFirstName.toLowerCase())) {
       return res.status(403).json({ success: false, message: "Identity verification failed. Father's first name does not match." });
     }
 
