@@ -88,39 +88,18 @@ export default function Navbar() {
       {/* Top Bar */}
       <nav className="sticky top-0 z-50 bg-white border-b border-gray-100">
         <div className="max-w-7xl mx-auto px-4">
-          <div className="flex justify-between items-center h-14">
+          <div className="flex justify-between items-center h-14 md:h-16">
             {/* Logo */}
             <Link to="/" className="flex items-center gap-2.5 min-w-0">
-              <img src={parish.logoUrl} alt={parish.name} className="h-10 w-auto object-contain shrink-0" width={40} height={40} />
+              <img src={parish.logoUrl} alt={parish.name} className="h-10 md:h-12 w-auto object-contain shrink-0" width={40} height={40} />
               <div className="leading-tight min-w-0">
-                <span className="block text-sm sm:text-base font-semibold text-gray-900 truncate max-w-[150px] sm:max-w-[280px] md:max-w-[260px] lg:max-w-[320px]">
+                <span className="block text-base sm:text-lg md:text-2xl font-bold text-gray-900 truncate max-w-[150px] sm:max-w-[320px] md:max-w-[480px] lg:max-w-[560px]">
                   <span className="sm:hidden">{parish.shortName}</span>
                   <span className="hidden sm:inline">{parish.name}</span>
                 </span>
-                <span className="block text-[10px] font-medium uppercase tracking-wider -mt-0.5" style={{ color: parish.accentColor }}>Parish Connect</span>
+                <span className="block text-[10px] md:text-xs font-medium uppercase tracking-wider md:tracking-widest mt-0.5" style={{ color: parish.accentColor }}>Parish Connect</span>
               </div>
             </Link>
-
-            {/* Desktop Nav - centered */}
-            <div className="hidden md:flex items-center gap-1">
-              {visibleNavLinks.map((link) => {
-                const Icon = link.icon;
-                const active = isActive(link.path);
-                return (
-                  <Link
-                    key={link.path}
-                    to={link.path}
-                    className={`relative flex items-center gap-2 px-3 py-1.5 rounded-full text-[13px] font-medium transition-all ${active
-                      ? "bg-blue-600 text-white shadow-sm"
-                      : "text-gray-600 hover:bg-gray-100 hover:text-gray-900"
-                      }`}
-                  >
-                    <Icon className="h-4 w-4" />
-                    <span>{link.label}</span>
-                  </Link>
-                );
-              })}
-            </div>
 
             {/* User Menu */}
             <div className="flex items-center gap-2">
@@ -198,6 +177,32 @@ export default function Navbar() {
                 </DropdownMenuContent>
               </DropdownMenu>
             </div>
+          </div>
+        </div>
+
+        {/* Row 2 — Desktop navigation tabs (own row; mobile uses bottom tab bar) */}
+        <div className="hidden md:block border-t border-gray-100 bg-white">
+          <div className="max-w-7xl mx-auto px-4">
+            <nav aria-label="Primary" className="flex items-center justify-center flex-wrap gap-1.5 py-2">
+              {visibleNavLinks.map((link) => {
+                const Icon = link.icon;
+                const active = isActive(link.path);
+                return (
+                  <Link
+                    key={link.path}
+                    to={link.path}
+                    aria-current={active ? "page" : undefined}
+                    className={`relative flex items-center gap-2 px-4 py-1.5 rounded-full text-sm font-medium transition-all ${active
+                      ? "bg-blue-600 text-white shadow-sm"
+                      : "text-gray-600 hover:bg-gray-100 hover:text-gray-900"
+                      }`}
+                  >
+                    <Icon className="h-4 w-4" />
+                    <span>{link.label}</span>
+                  </Link>
+                );
+              })}
+            </nav>
           </div>
         </div>
       </nav>
