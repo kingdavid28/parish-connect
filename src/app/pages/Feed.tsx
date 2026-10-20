@@ -64,7 +64,7 @@ export default function Feed() {
   const [commentInputs, setCommentInputs] = useState<Record<string, string>>({});
   const [loadingComments, setLoadingComments] = useState<Record<string, boolean>>({});
 
-  useEffect(() => { fetchPosts(1); }, []);
+  useEffect(() => { void fetchPosts(1); }, []);
 
   const fetchPosts = async (p = 1) => {
     try {
@@ -133,7 +133,7 @@ export default function Feed() {
         setImagePreview(null);
         if (fileInputRef.current) fileInputRef.current.value = '';
         toast.success('Post created!');
-        fetchPosts(1);
+        void fetchPosts(1);
       } else toast.error(data.message || 'Failed to create post');
     } catch { toast.error('Failed to create post'); }
   };
@@ -239,21 +239,21 @@ export default function Feed() {
       date = new Date(dateString);
       
       // If invalid, try ISO format parsing (Safari is stricter)
-      if (isNaN(date.getTime())) {
+      if (Number.isNaN(date.getTime())) {
         // Try parsing with timezone handling
         const isoString = dateString.replace(/ /, 'T');
         date = new Date(isoString);
       }
       
       // If still invalid, try manual parsing
-      if (isNaN(date.getTime())) {
+      if (Number.isNaN(date.getTime())) {
         const parsed = Date.parse(dateString);
-        if (!isNaN(parsed)) {
+        if (!Number.isNaN(parsed)) {
           date = new Date(parsed);
         }
       }
       
-      if (isNaN(date.getTime())) return 'Invalid date';
+      if (Number.isNaN(date.getTime())) return 'Invalid date';
       return formatDistanceToNow(date, { addSuffix: true });
     } catch (error) {
       console.error('Date parsing error:', error, dateString);
@@ -396,7 +396,7 @@ export default function Feed() {
                 <div className="mb-4 rounded-lg overflow-hidden bg-gray-100">
                   <img
                     src={post.image_url}
-                    alt="Post image"
+                    alt={`Post by ${post.author_name}`}
                     className="w-full object-contain max-h-[500px]"
                     loading="lazy"
                     decoding="async"
