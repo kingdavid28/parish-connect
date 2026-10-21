@@ -911,13 +911,12 @@ export default function FinancePanel() {
   // ── Render ────────────────────────────────────────────────
   return (
     <div className="space-y-4">
-      {/* Monthly Contributions */}
+      {/* Balik Pasalamat sa Diyos */}
       <div className="mb-4">
-        <h2 className="text-2xl font-bold text-gray-900 flex items-center gap-3">
-          <PiggyBank className="h-6 w-6 text-primary" aria-hidden="true" />
-          Monthly Contributions
+        <h2 className="text-3xl font-extrabold text-gray-900 flex items-center gap-3">
+          <PiggyBank className="h-7 w-7 text-primary" aria-hidden="true" />
+          Balik Pasalamat sa Diyos
         </h2>
-        <p className="text-base text-gray-600 mt-1">Balik Pasalamat sa Diyos</p>
       </div>
       <Card>
         <CardHeader className="pb-3">
