@@ -1038,7 +1038,7 @@ export default function FinancePanel() {
             <div className="flex items-center gap-2">
               <div className="relative">
                 <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-                <Input value={donorSearch} onChange={(e) => { setDonorSearch(e.target.value); setDonorPage(1); }}
+                <Input id="donor-search" name="donorSearch" value={donorSearch} onChange={(e) => { setDonorSearch(e.target.value); setDonorPage(1); }}
                   placeholder="Search name or address…" className="pl-8 h-9 w-[200px]" aria-label="Search donors" />
               </div>
               <Button variant="outline" size="sm" onClick={() => { setImportRows([]); setImportErrors([]); setImportOpen(true); }}>

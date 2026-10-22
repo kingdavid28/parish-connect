@@ -48,6 +48,18 @@ interface UserRewards {
 import { API } from "../config";
 const getToken = () => localStorage.getItem('parish_token') || sessionStorage.getItem('parish_token');
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function isProfileData(value: unknown): value is ProfileData {
+  return isRecord(value)
+    && typeof value.id === "string"
+    && typeof value.name === "string"
+    && typeof value.email === "string"
+    && typeof value.role === "string";
+}
+
 function safeTimeAgo(d: string): string {
   try {
     // Handle various date formats including Safari's strict parsing
@@ -90,6 +102,7 @@ export default function Profile() {
   const { user: currentUser } = useAuth();
   const [profileData, setProfileData] = useState<ProfileData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [profileError, setProfileError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState("timeline");
   const [profileEditorOpen, setProfileEditorOpen] = useState(false);
   const [profileNameDraft, setProfileNameDraft] = useState("");
@@ -136,13 +149,32 @@ export default function Profile() {
   const fetchProfile = async () => {
     try {
       setLoading(true);
+      setProfileError(null);
       const res = await fetch(`${API}/users/${profileId}`, {
         headers: { 'Authorization': `Bearer ${getToken()}` },
       });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
-      setProfileData(data.data || data);
-    } catch { toast.error('Failed to load profile'); }
+      const responseText = await res.text();
+      let data: unknown;
+      try {
+        data = JSON.parse(responseText) as unknown;
+      } catch {
+        throw new Error(`Server returned an invalid response (HTTP ${res.status})`);
+      }
+      const response = isRecord(data) ? data : null;
+      if (!res.ok || response?.success === false) {
+        const message = typeof response?.message === "string" ? response.message : `Request failed (HTTP ${res.status})`;
+        throw new Error(message);
+      }
+      const profile = response && "data" in response ? response.data : data;
+      if (!isProfileData(profile)) {
+        throw new Error("The server returned incomplete profile data");
+      }
+      setProfileData(profile);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown error";
+      setProfileError(message);
+      toast.error(`Failed to load profile: ${message}`);
+    }
     finally { setLoading(false); }
   };
 
@@ -315,7 +347,16 @@ export default function Profile() {
 
   if (!profileData) return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-      <Card className="max-w-md"><CardContent className="p-6 text-center"><p className="text-gray-600">Profile not found</p></CardContent></Card>
+      <Card className="max-w-md">
+        <CardContent className="p-6 text-center space-y-3">
+          <p className="text-gray-600">Failed to load profile</p>
+          {profileError && <p role="alert" className="text-sm text-red-600">{profileError}</p>}
+          <Button variant="outline" onClick={() => { void fetchProfile(); }} disabled={loading}>
+            {loading && <Loader className="h-4 w-4 mr-2 animate-spin" />}
+            Try again
+          </Button>
+        </CardContent>
+      </Card>
     </div>
   );
 
