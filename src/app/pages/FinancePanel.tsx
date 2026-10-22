@@ -923,7 +923,7 @@ export default function FinancePanel() {
           <div className="flex flex-wrap items-center justify-between gap-3">
             <CardTitle className="flex items-center gap-2 text-base">
               <PiggyBank className="h-5 w-5 text-primary" />
-              Monthly Contributions
+              Balik Pasalamat sa Diyos
             </CardTitle>
             <div className="flex items-center gap-2">
               <Select value={String(sumMonth)} onValueChange={(v) => setSumMonth(Number(v))}>

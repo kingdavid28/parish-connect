@@ -154,7 +154,7 @@ export default function Navbar() {
                   </DropdownMenuItem>
                   <DropdownMenuItem asChild>
                     <Link to="/dues" className="cursor-pointer">
-                      <PhilippinePeso className="mr-2 h-4 w-4" />My Contributions
+                      <PhilippinePeso className="mr-2 h-4 w-4" />Balik Pasalamat sa Diyos
                     </Link>
                   </DropdownMenuItem>
                   <DropdownMenuItem asChild>

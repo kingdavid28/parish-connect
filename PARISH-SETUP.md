@@ -245,7 +245,7 @@ To disable the feature entirely: `RECORDS_MODE=off`.
 
 ---
 
-## Step 8 — BEC monthly contributions ledger
+## Step 8 — BEC Balik Pasalamat sa Diyos ledger
 
 Admin Management → **BEC Dues** tab. **All finance reads/writes are
 admin/superadmin-only** — members cannot see other people's contributions.
@@ -272,7 +272,7 @@ monthly amount per donor and how much of it they've given. Nothing is
    Deactivating a donor stops reminders while keeping their ledger.
 
 **Member self-view:** linked members see their own ledger at
-`/dues` (navbar → My Contributions) — payments, method, reference,
+`/dues` (navbar → Balik Pasalamat sa Diyos) — payments, method, reference,
 and remaining suggested amount only for themselves.
 
 **Reminders:** the monthly cron gently reminds each linked active donor
