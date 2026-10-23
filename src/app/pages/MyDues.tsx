@@ -65,7 +65,7 @@ export default function MyDues() {
   const [gcashInfo, setGcashInfo] = useState<GcashInfo | null>(null);
   const [loadingGcashInfo, setLoadingGcashInfo] = useState(true);
   const [gcashInfoError, setGcashInfoError] = useState<string | null>(null);
-  // Report-a-contribution form
+  // Donation form
   const [reportOpen, setReportOpen] = useState(false);
   const [reportMonth, setReportMonth] = useState(now.getMonth() + 1);
   const [reportAmount, setReportAmount] = useState("");
@@ -160,7 +160,7 @@ export default function MyDues() {
 
   const hasReports = (ledger?.months || []).some((m) => m.payments.length > 0);
   const becPart = ledger?.donor?.bec_name ? " · " + ledger.donor.bec_name : "";
-  const donorLabel = ledger?.donor ? ledger.donor.name + becPart : "Your reported contributions";
+  const donorLabel = ledger?.donor ? ledger.donor.name + becPart : "Your donations";
 
   const renderContent = () => {
     if (loading) {
@@ -186,7 +186,7 @@ export default function MyDues() {
         <div className="text-center py-8 space-y-2">
           <p className="text-gray-600 font-medium">No donor record linked yet.</p>
           <p className="text-sm text-gray-500">
-            Sent via GCash? Tap <strong>Report</strong> above to submit it — an admin will match it to your record.
+            Donated via GCash? Tap <strong>Donate</strong> above to submit your transfer details. An admin will match the donation to your record.
           </p>
         </div>
       );
@@ -195,7 +195,7 @@ export default function MyDues() {
       <>
         {!ledger?.donor && (
           <div className="rounded-lg bg-blue-50 border border-blue-100 px-3 py-2 mb-4 text-xs text-blue-700">
-            Awaiting admin review — your reported contributions appear below once submitted. An admin will link your donor record on approval.
+            Awaiting admin review — your submitted donations appear below. An admin will link your donor record when the donation is approved.
           </div>
         )}
         <p className="text-sm text-gray-600 mb-4">
@@ -296,7 +296,7 @@ export default function MyDues() {
             </CardTitle>
             <div className="flex flex-wrap items-center gap-2">
               <Button size="sm" onClick={() => setReportOpen(true)}>
-                <Plus className="h-4 w-4 mr-1" /> Report
+                <Plus className="h-4 w-4 mr-1" /> Donate
               </Button>
               <Select value={String(year)} onValueChange={(v) => setYear(Number(v))}>
                 <SelectTrigger className="w-[95px] h-9" aria-label="Year"><SelectValue /></SelectTrigger>
@@ -310,13 +310,13 @@ export default function MyDues() {
         <CardContent>{renderContent()}</CardContent>
       </Card>
 
-      {/* Report contribution dialog */}
+      {/* Donation dialog */}
       <Dialog open={reportOpen} onOpenChange={setReportOpen}>
         <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Balik Pasalamat sa Diyos Contribution</DialogTitle>
+            <DialogTitle>Donate to Balik Pasalamat sa Diyos</DialogTitle>
             <DialogDescription>
-              Send your contribution to the parish GCash account below. Your payment amount is not converted to wallet GBless. Receive 10 GBless after an admin confirms your contribution.
+              Donations are voluntary. Send your chosen amount to the parish GCash account below, then submit the transfer details. The donation amount is not converted to wallet GBless; receive 10 GBless only after an admin verifies and approves the donation.
             </DialogDescription>
           </DialogHeader>
           <Card>

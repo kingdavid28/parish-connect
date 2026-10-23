@@ -997,7 +997,7 @@ export default function FinancePanel() {
         <Card className="border-amber-300">
           <CardHeader className="pb-3">
             <CardTitle className="text-base flex items-center gap-2">
-              Pending Reports
+              Pending Donations
               <Badge className="bg-amber-100 text-amber-800 border-0">{pending.length}</Badge>
             </CardTitle>
           </CardHeader>
@@ -1548,7 +1548,7 @@ export default function FinancePanel() {
             <DialogDescription>
               {matchReport ? (
                 <>
-                  {matchReport.submitted_by_name || matchReport.donor_name || "A member"} reported{" "}
+                  {matchReport.submitted_by_name || matchReport.donor_name || "A member"} submitted a donation of{" "}
                   {peso(matchReport.amount)} for {MONTHS_FULL[matchReport.month - 1]} {matchReport.year}.
                   Pick the donor record — or create one (auto-links their account).
                 </>
