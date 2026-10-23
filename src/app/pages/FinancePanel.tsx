@@ -7,6 +7,7 @@ import { Badge } from "../components/ui/badge";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from "../components/ui/dialog";
+import { Checkbox } from "../components/ui/checkbox";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "../components/ui/select";
@@ -523,6 +524,10 @@ export default function FinancePanel() {
   const [matchDonorId, setMatchDonorId] = useState("");
   const [matchDonors, setMatchDonors] = useState<Donor[]>([]);
   const [matchNewName, setMatchNewName] = useState("");
+  const [verificationReport, setVerificationReport] = useState<PendingReport | null>(null);
+  const [verificationBody, setVerificationBody] = useState<{ donor_id?: string; new_donor_name?: string }>({});
+  const [verificationDonorName, setVerificationDonorName] = useState("");
+  const [verificationConfirmed, setVerificationConfirmed] = useState(false);
 
   // Summary
   const [sumYear, setSumYear] = useState(now.getFullYear());
@@ -739,7 +744,7 @@ export default function FinancePanel() {
   const actOnPending = async (
     id: string,
     action: "approve" | "reject",
-    body: { donor_id?: string; new_donor_name?: string } = {},
+    body: { donor_id?: string; new_donor_name?: string; gcash_verified?: boolean } = {},
     matchedDonorName?: string,
   ) => {
     setActingPending(id);
@@ -753,6 +758,8 @@ export default function FinancePanel() {
       if (!res.ok) throw new Error(data.message || "Failed");
       toast.success(action === "approve" ? "Contribution approved" : "Contribution rejected");
       setMatchReport(null);
+      setVerificationReport(null);
+      setVerificationConfirmed(false);
       void fetchPending(); void fetchSummary(); void fetchBecs();
       if (action === "approve") {
         const donorName = matchedDonorName || body.new_donor_name?.trim();
@@ -775,9 +782,27 @@ export default function FinancePanel() {
     }
   };
 
-  // Approve click: linked donor → approve directly; unlinked → open match dialog
+  const requestFinalApproval = (
+    report: PendingReport,
+    body: { donor_id?: string; new_donor_name?: string },
+    donorName: string,
+  ) => {
+    if (report.method === "gcash") {
+      setVerificationReport(report);
+      setVerificationBody(body);
+      setVerificationDonorName(donorName);
+      setVerificationConfirmed(false);
+      return;
+    }
+    void actOnPending(report.id, "approve", body, donorName);
+  };
+
+  // Unlinked reports must be matched before the final verification step.
   const handleApprove = async (r: PendingReport) => {
-    if (r.donor_id) return actOnPending(r.id, "approve", {}, r.donor_name || undefined);
+    if (r.donor_id) {
+      requestFinalApproval(r, { donor_id: r.donor_id }, r.donor_name || "");
+      return;
+    }
     setMatchReport(r);
     setMatchDonorId("");
     setMatchNewName(r.submitted_by_name || r.donor_name || "");
@@ -793,7 +818,19 @@ export default function FinancePanel() {
     const body = matchDonorId ? { donor_id: matchDonorId } : { new_donor_name: matchNewName.trim() };
     if (!matchDonorId && !matchNewName.trim()) { toast.error("Pick a donor or enter a new name"); return; }
     const donorName = matchDonors.find((donor) => donor.id === matchDonorId)?.name || matchNewName.trim();
-    void actOnPending(matchReport.id, "approve", body, donorName);
+    const report = matchReport;
+    setMatchReport(null);
+    requestFinalApproval(report, body, donorName);
+  };
+
+  const confirmGcashVerification = () => {
+    if (!verificationReport || !verificationConfirmed) return;
+    void actOnPending(
+      verificationReport.id,
+      "approve",
+      { ...verificationBody, gcash_verified: true },
+      verificationDonorName,
+    );
   };
 
   const openVoid = (payment: Payment) => {
@@ -991,7 +1028,9 @@ export default function FinancePanel() {
                   <span className="font-semibold">{peso(r.amount)}</span>
                   <Button size="sm" className="bg-green-600 hover:bg-green-700" disabled={actingPending === r.id}
                     onClick={() => { void handleApprove(r); }}>
-                    {actingPending === r.id ? <Loader2 className="h-4 w-4 animate-spin" /> : "Approve"}
+                    {actingPending === r.id
+                      ? <Loader2 className="h-4 w-4 animate-spin" />
+                      : r.method === "gcash" ? "Verify & approve" : "Approve"}
                   </Button>
                   <Button size="sm" variant="outline" className="text-red-600 border-red-200" disabled={actingPending === r.id}
                     onClick={() => { void actOnPending(r.id, "reject"); }}>Reject</Button>
@@ -1426,6 +1465,76 @@ export default function FinancePanel() {
             <Button onClick={() => { void runImport(); }} disabled={importing || !importRows.length}>
               {importing && <Loader2 className="h-4 w-4 mr-1 animate-spin" />}
               Import {importRows.length > 0 ? importRows.length : ""} Donors
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={!!verificationReport}
+        onOpenChange={(open) => {
+          if (!open && actingPending !== verificationReport?.id) {
+            setVerificationReport(null);
+            setVerificationConfirmed(false);
+          }
+        }}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Verify GCash transfer</DialogTitle>
+            <DialogDescription>
+              Do not approve or award GBless until the transfer is confirmed in the parish GCash account.
+            </DialogDescription>
+          </DialogHeader>
+          {verificationReport && (
+            <div className="space-y-3">
+              <div className="rounded-lg border bg-muted/30 p-3 text-sm">
+                <p><span className="font-medium">Member:</span> {verificationReport.submitted_by_name || verificationReport.donor_name || "Unknown"}</p>
+                <p><span className="font-medium">Amount:</span> {peso(verificationReport.amount)}</p>
+                <p><span className="font-medium">Sender:</span> {verificationReport.gcash_sender || "Not provided"}</p>
+                <p><span className="font-medium">Reference:</span> {verificationReport.reference || "Not provided"}</p>
+                <p><span className="font-medium">Period:</span> {MONTHS_FULL[verificationReport.month - 1]} {verificationReport.year}</p>
+                {verificationReport.receipt_url && (
+                  <a
+                    className="mt-2 inline-block text-primary underline"
+                    href={verificationReport.receipt_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    Open receipt in new tab
+                  </a>
+                )}
+              </div>
+              <label className="flex cursor-pointer items-start gap-2 rounded-lg border p-3 text-sm">
+                <Checkbox
+                  checked={verificationConfirmed}
+                  onCheckedChange={(checked) => setVerificationConfirmed(checked === true)}
+                  className="mt-0.5"
+                />
+                <span>
+                  I checked the parish GCash transaction and verified that the amount and reference match this report.
+                  Approving will record the contribution and award 10 GBless.
+                </span>
+              </label>
+            </div>
+          )}
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={actingPending === verificationReport?.id}
+              onClick={() => { setVerificationReport(null); setVerificationConfirmed(false); }}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              className="bg-green-600 hover:bg-green-700"
+              disabled={!verificationConfirmed || actingPending === verificationReport?.id}
+              onClick={confirmGcashVerification}
+            >
+              {actingPending === verificationReport?.id && <Loader2 className="mr-1 h-4 w-4 animate-spin" />}
+              Confirm verified &amp; approve
             </Button>
           </DialogFooter>
         </DialogContent>

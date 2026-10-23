@@ -281,6 +281,10 @@ The payment amount is recorded only in the contribution ledger; it is not
 converted to wallet GBless. Each approved member-submitted GCash
 contribution earns a fixed 10 GBless reward. Pending, rejected, and
 non-GCash reports earn none.
+An admin must match the reference and amount against the parish's GCash
+account before selecting the explicit **Verify & approve** confirmation.
+The server rejects GCash approvals without that verification confirmation,
+and records the contribution and reward in the same database transaction.
 GCash references are uniquely reserved across contribution reports and
 wallet top-ups while pending or approved; rejecting a report releases its
 reference for reuse.
@@ -288,6 +292,12 @@ reference for reuse.
 Before deploying this feature to an existing database, apply the additive
 SQL in `backend/src/db/migrations/gcash_contribution_rewards.sql`.
 Do not run the full migration script solely for this update.
+
+**In-app notifications:** the bell stores and displays the existing push
+events (messages, group messages, posts, kudos, gifts, reminders, top-ups,
+cash-outs) and Balik Pasalamat submission, verification, and rejection
+updates. Apply `backend/src/db/migrations/app_notifications.sql` before
+deploying the notification API.
 
 **Reminders:** the monthly cron gently reminds each linked active donor
 who has a suggested amount they haven't completed — donors with no

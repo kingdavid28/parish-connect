@@ -51,6 +51,7 @@ app.use("/api/follows", require("./routes/follows"));
 app.use("/api/messages", require("./routes/messages"));
 app.use("/api/groups", require("./routes/groups"));
 app.use("/api/push", require("./routes/push"));
+app.use("/api/notifications", require("./routes/notifications"));
 app.use("/api/community", require("./routes/community"));
 app.use("/api/rewards", require("./routes/rewards"));
 app.use("/api/wallet", require("./routes/wallet"));

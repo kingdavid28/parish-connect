@@ -1,6 +1,7 @@
 const webpush = require("web-push");
 const pool = require("../db/pool");
 const config = require("../config");
+const { uuid } = require("./helpers");
 
 let vapidReady = false;
 function ensureVapid() {
@@ -16,7 +17,41 @@ function ensureVapid() {
  * Send a push notification to all of a user's subscriptions.
  * Best-effort — never throws.
  */
-async function sendPushToUser(userId, payload) {
+function safeNotificationUrl(rawUrl) {
+  try {
+    const appUrl = new URL(config.appUrl);
+    const url = new URL(String(rawUrl || config.appBasePath || "/"), appUrl);
+    if (url.origin !== appUrl.origin) return "/";
+    const basePath = String(config.appBasePath || "").replace(/\/+$/, "");
+    const pathname = basePath && (url.pathname === basePath || url.pathname.startsWith(`${basePath}/`))
+      ? url.pathname.slice(basePath.length) || "/"
+      : url.pathname;
+    return `${pathname}${url.search}${url.hash}`;
+  } catch {
+    return "/";
+  }
+}
+
+async function createInAppNotification(userId, payload, client = pool) {
+  const title = String(payload?.title || "").trim().slice(0, 180);
+  if (!userId || !title) throw new Error("Notification recipient and title are required");
+  const result = await client.query(
+    `INSERT INTO app_notifications (id, user_id, category, title, body, url)
+     VALUES ($1, $2, $3, $4, $5, $6)
+     RETURNING id, user_id, category, title, body, url, read_at, created_at`,
+    [
+      uuid(),
+      userId,
+      String(payload.category || "activity").trim().slice(0, 50) || "activity",
+      title,
+      String(payload.body || "").trim().slice(0, 500),
+      safeNotificationUrl(payload.url),
+    ]
+  );
+  return result.rows[0];
+}
+
+async function sendWebPushToUser(userId, payload) {
   if (!ensureVapid()) return;
   try {
     const { rows: subs } = await pool.query(
@@ -45,4 +80,13 @@ async function sendPushToUser(userId, payload) {
   }
 }
 
-module.exports = { sendPushToUser };
+async function sendPushToUser(userId, payload) {
+  try {
+    await createInAppNotification(userId, payload);
+  } catch (err) {
+    console.error("createInAppNotification error:", err.message);
+  }
+  await sendWebPushToUser(userId, payload);
+}
+
+module.exports = { createInAppNotification, sendPushToUser, sendWebPushToUser };

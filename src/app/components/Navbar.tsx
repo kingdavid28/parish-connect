@@ -18,6 +18,7 @@ import {
   PhilippinePeso,
 } from "lucide-react";
 import { toast } from "sonner";
+import NotificationBell from "./NotificationBell";
 
 export default function Navbar() {
   const { user, logout, isAuthenticated, isAdmin } = useAuth();
@@ -103,6 +104,7 @@ export default function Navbar() {
 
             {/* User Menu */}
             <div className="flex items-center gap-2">
+              <NotificationBell />
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="ghost" className="relative flex items-center gap-2 h-9 px-2 rounded-full hover:bg-gray-100">

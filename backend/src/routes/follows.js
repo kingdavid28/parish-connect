@@ -2,6 +2,8 @@ const express = require("express");
 const pool = require("../db/pool");
 const { authenticate } = require("../middleware/auth");
 const { awardPoints } = require("../lib/rewards");
+const { sendPushToUser } = require("../lib/push");
+const config = require("../config");
 
 const router = express.Router();
 
@@ -22,6 +24,13 @@ router.post("/:id", authenticate, async (req, res) => {
     }
     await pool.query("INSERT INTO follows (follower_id, following_id) VALUES ($1, $2)", [req.user.id, targetId]);
     await awardPoints(targetId, "follow_received", req.user.id);
+    sendPushToUser(targetId, {
+      category: "social",
+      title: "New follower",
+      body: `${req.user.name} started following you.`,
+      tag: `follow-${req.user.id}`,
+      url: `${config.appBasePath}/profile/${req.user.id}`,
+    }).catch(() => {});
     res.json({ success: true, following: true });
   } catch (err) {
     console.error("Toggle follow error:", err.message);

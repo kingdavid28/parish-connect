@@ -7,6 +7,7 @@ const { uuid, getClientIp, auditLog } = require("../lib/helpers");
 const { storeImage } = require("../lib/storage");
 const { creditPoints, checkAndAwardBadges } = require("../lib/rewards");
 const { claimGcashReference, releaseGcashReference } = require("../lib/gcashReferences");
+const { createInAppNotification, sendWebPushToUser } = require("../lib/push");
 
 const router = express.Router();
 const adminOnly = [authenticate, requireRole("admin", "superadmin")];
@@ -557,6 +558,7 @@ router.post("/my/contributions", authenticate, upload.single("receipt"), async (
     );
     // Unlinked members can still report — admin matches a donor on approve
     const id = uuid();
+    let reviewerIds = [];
     await withTransaction(async (client) => {
       if (method === "gcash" && !(await claimGcashReference(client, reference, "contribution", id))) {
         const error = new Error("This GCash reference number has already been submitted");
@@ -568,7 +570,41 @@ router.post("/my/contributions", authenticate, upload.single("receipt"), async (
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'pending',$10)`,
         [id, rows[0]?.id || null, year, month, amount, method, reference, gcashSender, receiptUrl, req.user.id]
       );
+      const { rows: admins } = await client.query(
+        "SELECT id FROM users WHERE role IN ('admin', 'superadmin') AND is_active = 1"
+      );
+      reviewerIds = admins.map((admin) => admin.id);
+      const adminNotification = {
+        category: "finance",
+        title: "Contribution awaiting verification",
+        body: `${req.user.name} submitted a ${method} contribution of ₱${amount.toFixed(2)}.`,
+        url: `${config.appBasePath}/admin`,
+      };
+      for (const adminId of reviewerIds) {
+        await createInAppNotification(adminId, adminNotification, client);
+      }
+      await createInAppNotification(req.user.id, {
+        category: "finance",
+        title: "Contribution submitted",
+        body: "Your contribution is pending admin verification. GBless is only awarded after approval.",
+        url: `${config.appBasePath}/dues`,
+      }, client);
       await auditLog(req.user.id, "report_contribution", "contribution_payment", id, getClientIp(req), client);
+    });
+    const adminPush = {
+      category: "finance",
+      title: "Contribution awaiting verification",
+      body: `${req.user.name} submitted a ${method} contribution of ₱${amount.toFixed(2)}.`,
+      tag: `contribution-pending-${id}`,
+      url: `${config.appBasePath}/admin`,
+    };
+    await Promise.all(reviewerIds.map((adminId) => sendWebPushToUser(adminId, adminPush)));
+    await sendWebPushToUser(req.user.id, {
+      category: "finance",
+      title: "Contribution submitted",
+      body: "Your contribution is pending admin verification. GBless is only awarded after approval.",
+      tag: `contribution-submitted-${id}`,
+      url: `${config.appBasePath}/dues`,
     });
     res.status(201).json({ success: true, message: "Contribution reported — pending admin approval", data: { id } });
   } catch (err) {
@@ -611,6 +647,8 @@ router.post("/payments/:id/approve", ...adminOnly, async (req, res) => {
     let payment;
     let donorId;
     let missingDonor = false;
+    let verificationRequired = false;
+    let selfReview = false;
 
     await withTransaction(async (client) => {
       const { rows } = await client.query(
@@ -619,6 +657,14 @@ router.post("/payments/:id/approve", ...adminOnly, async (req, res) => {
       );
       payment = rows[0];
       if (!payment) return;
+      if (payment.submitted_by === req.user.id) {
+        selfReview = true;
+        return;
+      }
+      if (payment.method === "gcash" && req.body?.gcash_verified !== true) {
+        verificationRequired = true;
+        return;
+      }
 
       // Resolve which donor this payment belongs to while holding its row lock.
       donorId = payment.donor_id || String(req.body?.donor_id || "").trim() || null;
@@ -652,6 +698,16 @@ router.post("/payments/:id/approve", ...adminOnly, async (req, res) => {
           client
         );
       }
+      if (payment.submitted_by) {
+        await createInAppNotification(payment.submitted_by, {
+          category: "finance",
+          title: payment.method === "gcash" ? "Contribution verified — 10 GBless awarded" : "Contribution approved",
+          body: payment.method === "gcash"
+            ? "Your GCash contribution was verified and recorded. 10 GBless has been added to your wallet."
+            : "Your contribution report was approved and recorded.",
+          url: `${config.appBasePath}${payment.method === "gcash" ? "/wallet" : "/dues"}`,
+        }, client);
+      }
       let receiptNo = null;
       try {
         receiptNo = await ensureReceiptNo(client, {
@@ -663,7 +719,13 @@ router.post("/payments/:id/approve", ...adminOnly, async (req, res) => {
       }
       await auditLog(req.user.id, "approve_payment", "contribution_payment", req.params.id, getClientIp(req), client, {
         before: { status: "pending", donor_id: payment.donor_id },
-        after: { status: "confirmed", donor_id: donorId, recorded_by: req.user.id, receipt_no: receiptNo },
+        after: {
+          status: "confirmed",
+          donor_id: donorId,
+          recorded_by: req.user.id,
+          gcash_verified: payment.method === "gcash",
+          receipt_no: receiptNo,
+        },
       });
     });
 
@@ -673,8 +735,25 @@ router.post("/payments/:id/approve", ...adminOnly, async (req, res) => {
     if (missingDonor) {
       return badRequest(res, "Select a donor for this report (donor_id or new_donor_name)");
     }
+    if (selfReview) {
+      return res.status(403).json({ success: false, message: "You cannot approve your own contribution report" });
+    }
+    if (verificationRequired) {
+      return badRequest(res, "Verify the GCash transfer before approving this contribution");
+    }
     if (payment.submitted_by && payment.method === "gcash") {
       await checkAndAwardBadges(payment.submitted_by);
+    }
+    if (payment.submitted_by) {
+      await sendWebPushToUser(payment.submitted_by, {
+        category: "finance",
+        title: payment.method === "gcash" ? "Contribution verified — 10 GBless awarded" : "Contribution approved",
+        body: payment.method === "gcash"
+          ? "Your GCash contribution was verified and recorded. 10 GBless has been added to your wallet."
+          : "Your contribution report was approved and recorded.",
+        tag: `contribution-approved-${req.params.id}`,
+        url: `${config.appBasePath}${payment.method === "gcash" ? "/wallet" : "/dues"}`,
+      });
     }
     res.json({ success: true, message: "Contribution approved", data: { donor_id: donorId } });
   } catch (err) {
@@ -698,6 +777,14 @@ router.post("/payments/:id/reject", ...adminOnly, async (req, res) => {
       );
       if (updateResult.rowCount > 0) {
         await releaseGcashReference(client, "contribution", req.params.id);
+        if (existing.submitted_by) {
+          await createInAppNotification(existing.submitted_by, {
+            category: "finance",
+            title: "Contribution report not approved",
+            body: "Your contribution report could not be verified. Please contact the parish office if you need help.",
+            url: `${config.appBasePath}/dues`,
+          }, client);
+        }
       }
       await auditLog(req.user.id, "reject_payment", "contribution_payment", req.params.id, getClientIp(req), client, {
         before: { status: existing.status },
@@ -706,6 +793,15 @@ router.post("/payments/:id/reject", ...adminOnly, async (req, res) => {
     });
     if (updateResult.rowCount === 0) {
       return res.status(409).json({ success: false, message: "Payment is no longer pending" });
+    }
+    if (existing.submitted_by) {
+      await sendWebPushToUser(existing.submitted_by, {
+        category: "finance",
+        title: "Contribution report not approved",
+        body: "Your contribution report could not be verified. Please contact the parish office if you need help.",
+        tag: `contribution-rejected-${req.params.id}`,
+        url: `${config.appBasePath}/dues`,
+      });
     }
     res.json({ success: true, message: "Contribution rejected" });
   } catch (err) {
