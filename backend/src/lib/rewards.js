@@ -34,6 +34,19 @@ async function awardPoints(userId, action, refId = null) {
       if (rows.length) return;
     }
 
+    /** Credit GBless inside a caller-owned transaction. */
+    async function creditPoints(userId, points, action, refId, client) {
+      await client.query(
+        "INSERT INTO point_transactions (id, user_id, action, points, ref_id) VALUES ($1, $2, $3, $4, $5)",
+        [uuid(), userId, action, points, refId]
+      );
+      await client.query(
+        `INSERT INTO user_points (user_id, total_points) VALUES ($1, $2)
+         ON CONFLICT (user_id) DO UPDATE SET total_points = user_points.total_points + $2, updated_at = NOW()`,
+        [userId, points]
+      );
+    }
+
     await pool.query(
       "INSERT INTO point_transactions (id, user_id, action, points, ref_id) VALUES ($1, $2, $3, $4, $5)",
       [uuid(), userId, action, points, refId]
@@ -97,4 +110,4 @@ async function checkAndAwardBadges(userId) {
   }
 }
 
-module.exports = { POINTS, BADGES, awardPoints, checkAndAwardBadges };
+module.exports = { POINTS, BADGES, awardPoints, creditPoints, checkAndAwardBadges };

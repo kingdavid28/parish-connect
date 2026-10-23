@@ -4,10 +4,11 @@ const pool = require("../db/pool");
 const config = require("../config");
 const { authenticate, requireRole } = require("../middleware/auth");
 const { uuid, esc } = require("../lib/helpers");
-const { checkAndAwardBadges } = require("../lib/rewards");
+const { creditPoints, checkAndAwardBadges } = require("../lib/rewards");
 const { sendPushToUser } = require("../lib/push");
 const { sendEmail } = require("../lib/mailer");
 const { storeImage } = require("../lib/storage");
+const { claimGcashReference, releaseGcashReference } = require("../lib/gcashReferences");
 
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
@@ -48,19 +49,6 @@ async function deductPoints(userId, amount, action, refId = null) {
   } finally {
     client.release();
   }
-}
-
-/** Credit GBless. If `client` is given, participates in its transaction. */
-async function creditPoints(userId, amount, action, refId = null, client = pool) {
-  await client.query(
-    "INSERT INTO point_transactions (id, user_id, action, points, ref_id) VALUES ($1, $2, $3, $4, $5)",
-    [uuid(), userId, action, amount, refId]
-  );
-  await client.query(
-    `INSERT INTO user_points (user_id, total_points) VALUES ($1, $2)
-     ON CONFLICT (user_id) DO UPDATE SET total_points = user_points.total_points + $2, updated_at = NOW()`,
-    [userId, amount]
-  );
 }
 
 async function notifyAdmins(payload) {
@@ -130,6 +118,12 @@ router.post("/topup", authenticate, upload.single("receipt"), async (req, res) =
   if (!gcashRef || !gcashSender) {
     return res.status(400).json({ success: false, message: "GCash reference number and sender name are required" });
   }
+  if (gcashRef.length > 100 || gcashSender.length > 100) {
+    return res.status(400).json({ success: false, message: "GCash reference and sender name must be 100 characters or fewer" });
+  }
+  if (!Number.isFinite(amountPhp)) {
+    return res.status(400).json({ success: false, message: "Enter a valid top-up amount" });
+  }
   if (amountPhp < 1) {
     return res.status(400).json({ success: false, message: "Minimum top-up is ₱1" });
   }
@@ -149,20 +143,27 @@ router.post("/topup", authenticate, upload.single("receipt"), async (req, res) =
   const gblessAmount = Math.round(amountPhp * GBLESS_PER_PHP);
 
   try {
-    const { rows: dup } = await pool.query(
-      "SELECT id FROM gbless_topup_requests WHERE gcash_ref = $1 AND status != 'rejected' LIMIT 1",
-      [gcashRef]
-    );
-    if (dup.length) {
-      return res.status(409).json({ success: false, message: "This GCash reference number has already been submitted" });
-    }
-
     const id = uuid();
-    await pool.query(
-      `INSERT INTO gbless_topup_requests (id, user_id, gcash_ref, gcash_sender, amount_php, gbless_amount, receipt_url)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-      [id, req.user.id, gcashRef, gcashSender, amountPhp, gblessAmount, receiptUrl]
-    );
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const claimed = await claimGcashReference(client, gcashRef, "topup", id);
+      if (!claimed) {
+        await client.query("ROLLBACK");
+        return res.status(409).json({ success: false, message: "This GCash reference number has already been submitted" });
+      }
+      await client.query(
+        `INSERT INTO gbless_topup_requests (id, user_id, gcash_ref, gcash_sender, amount_php, gbless_amount, receipt_url)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        [id, req.user.id, gcashRef, gcashSender, amountPhp, gblessAmount, receiptUrl]
+      );
+      await client.query("COMMIT");
+    } catch (err) {
+      await client.query("ROLLBACK").catch(() => {});
+      throw err;
+    } finally {
+      client.release();
+    }
 
     await notifyAdmins({
       title: "💰 New Top-up Request",
@@ -383,6 +384,9 @@ router.post("/admin/topup", authenticate, requireRole("admin", "superadmin"), as
       "UPDATE gbless_topup_requests SET status = $1, admin_note = $2, reviewed_by = $3, reviewed_at = NOW() WHERE id = $4",
       [decision, note || null, req.user.id, requestId]
     );
+    if (decision === "rejected") {
+      await releaseGcashReference(client, "topup", requestId);
+    }
 
     if (decision === "approved") {
       await creditPoints(topup.user_id, parseInt(topup.gbless_amount, 10), "topup_approved", requestId, client);

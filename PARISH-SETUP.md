@@ -275,6 +275,20 @@ monthly amount per donor and how much of it they've given. Nothing is
 `/dues` (navbar → Balik Pasalamat sa Diyos) — payments, method, reference,
 and remaining suggested amount only for themselves.
 
+Members can submit GCash transfers from this page with the parish GCash
+number/QR, sender name, reference number, amount, and optional receipt.
+The payment amount is recorded only in the contribution ledger; it is not
+converted to wallet GBless. Each approved member-submitted GCash
+contribution earns a fixed 10 GBless reward. Pending, rejected, and
+non-GCash reports earn none.
+GCash references are uniquely reserved across contribution reports and
+wallet top-ups while pending or approved; rejecting a report releases its
+reference for reuse.
+
+Before deploying this feature to an existing database, apply the additive
+SQL in `backend/src/db/migrations/gcash_contribution_rewards.sql`.
+Do not run the full migration script solely for this update.
+
 **Reminders:** the monthly cron gently reminds each linked active donor
 who has a suggested amount they haven't completed — donors with no
 suggested amount are never reminded. `contribution_reminders`

@@ -5,12 +5,15 @@ const config = require("../config");
 const { authenticate, requireRole } = require("../middleware/auth");
 const { uuid, getClientIp, auditLog } = require("../lib/helpers");
 const { storeImage } = require("../lib/storage");
+const { creditPoints, checkAndAwardBadges } = require("../lib/rewards");
+const { claimGcashReference, releaseGcashReference } = require("../lib/gcashReferences");
 
 const router = express.Router();
 const adminOnly = [authenticate, requireRole("admin", "superadmin")];
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
 
 const VALID_METHODS = new Set(["cash", "gcash", "bank", "other"]);
+const CONTRIBUTION_REWARD_POINTS = 10;
 const EXPECTED_SQL = "COALESCE(d.expected_amount, b.expected_amount, 0)::float";
 
 function financeEnabled(res) {
@@ -520,12 +523,22 @@ router.post("/my/contributions", authenticate, upload.single("receipt"), async (
   const month = Number.parseInt(body.month || now.getMonth() + 1, 10);
   const amount = Number.parseFloat(body.amount);
   const method = VALID_METHODS.has(String(body.method)) ? String(body.method) : "gcash";
-  const reference = String(body.reference || "").trim() || null;
+  const reference = String(body.gcash_ref || body.reference || "").trim() || null;
+  const gcashSender = String(body.gcash_sender || "").trim() || null;
 
   if (!validYear(year)) return badRequest(res, "year is required");
   if (!validMonth(month)) return badRequest(res, "month must be 1-12");
   if (!Number.isFinite(amount) || amount <= 0 || amount >= 1000000) {
     return badRequest(res, "amount must be between 0 and 1,000,000");
+  }
+  if (method === "gcash" && (!reference || !gcashSender)) {
+    return badRequest(res, "GCash reference number and sender name are required");
+  }
+  if (reference && reference.length > 120) {
+    return badRequest(res, "reference must be 120 characters or fewer");
+  }
+  if (gcashSender && gcashSender.length > 100) {
+    return badRequest(res, "GCash sender name must be 100 characters or fewer");
   }
 
   let receiptUrl = null;
@@ -544,14 +557,24 @@ router.post("/my/contributions", authenticate, upload.single("receipt"), async (
     );
     // Unlinked members can still report — admin matches a donor on approve
     const id = uuid();
-    await pool.query(
-      `INSERT INTO contribution_payments (id, donor_id, year, month, amount, method, reference, receipt_url, status, submitted_by)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'pending',$9)`,
-      [id, rows[0]?.id || null, year, month, amount, method, reference, receiptUrl, req.user.id]
-    );
-    await auditLog(req.user.id, "report_contribution", "contribution_payment", id, getClientIp(req));
+    await withTransaction(async (client) => {
+      if (method === "gcash" && !(await claimGcashReference(client, reference, "contribution", id))) {
+        const error = new Error("This GCash reference number has already been submitted");
+        error.code = "23505";
+        throw error;
+      }
+      await client.query(
+        `INSERT INTO contribution_payments (id, donor_id, year, month, amount, method, reference, gcash_sender, receipt_url, status, submitted_by)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'pending',$10)`,
+        [id, rows[0]?.id || null, year, month, amount, method, reference, gcashSender, receiptUrl, req.user.id]
+      );
+      await auditLog(req.user.id, "report_contribution", "contribution_payment", id, getClientIp(req), client);
+    });
     res.status(201).json({ success: true, message: "Contribution reported — pending admin approval", data: { id } });
   } catch (err) {
+    if (String(err.code) === "23505") {
+      return res.status(409).json({ success: false, message: "This GCash reference number has already been submitted" });
+    }
     serverError(res, "Contribution report error", err);
   }
 });
@@ -563,7 +586,7 @@ router.get("/contributions/pending", ...adminOnly, async (req, res) => {
   if (!financeEnabled(res)) return;
   try {
     const { rows } = await pool.query(
-      `SELECT c.id, c.year, c.month, c.amount, c.method, c.reference, c.receipt_url, c.created_at,
+      `SELECT c.id, c.year, c.month, c.amount, c.method, c.reference, c.gcash_sender, c.receipt_url, c.created_at,
               d.id AS donor_id, d.name AS donor_name, b.name AS bec_name, u.name AS submitted_by_name
        FROM contribution_payments c
        LEFT JOIN donors d ON d.id = c.donor_id
@@ -591,7 +614,7 @@ router.post("/payments/:id/approve", ...adminOnly, async (req, res) => {
 
     await withTransaction(async (client) => {
       const { rows } = await client.query(
-        "SELECT id, donor_id, submitted_by, year FROM contribution_payments WHERE id = $1 AND status = 'pending' FOR UPDATE",
+        "SELECT id, donor_id, submitted_by, year, method FROM contribution_payments WHERE id = $1 AND status = 'pending' FOR UPDATE",
         [req.params.id]
       );
       payment = rows[0];
@@ -620,6 +643,15 @@ router.post("/payments/:id/approve", ...adminOnly, async (req, res) => {
          WHERE id=$1`,
         [req.params.id, donorId, req.user.id]
       );
+      if (payment.submitted_by && payment.method === "gcash") {
+        await creditPoints(
+          payment.submitted_by,
+          CONTRIBUTION_REWARD_POINTS,
+          "contribution_approved",
+          req.params.id,
+          client
+        );
+      }
       let receiptNo = null;
       try {
         receiptNo = await ensureReceiptNo(client, {
@@ -641,6 +673,9 @@ router.post("/payments/:id/approve", ...adminOnly, async (req, res) => {
     if (missingDonor) {
       return badRequest(res, "Select a donor for this report (donor_id or new_donor_name)");
     }
+    if (payment.submitted_by && payment.method === "gcash") {
+      await checkAndAwardBadges(payment.submitted_by);
+    }
     res.json({ success: true, message: "Contribution approved", data: { donor_id: donorId } });
   } catch (err) {
     serverError(res, "Payment approve error", err);
@@ -661,6 +696,9 @@ router.post("/payments/:id/reject", ...adminOnly, async (req, res) => {
         "UPDATE contribution_payments SET status='rejected', updated_at=NOW() WHERE id=$1 AND status='pending'",
         [req.params.id]
       );
+      if (updateResult.rowCount > 0) {
+        await releaseGcashReference(client, "contribution", req.params.id);
+      }
       await auditLog(req.user.id, "reject_payment", "contribution_payment", req.params.id, getClientIp(req), client, {
         before: { status: existing.status },
         after: { status: "rejected" },

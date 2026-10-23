@@ -60,7 +60,7 @@ interface LedgerMonth {
 }
 interface PendingReport {
   id: string; year: number; month: number; amount: number; method: string;
-  reference: string | null; receipt_url: string | null; created_at: string;
+  reference: string | null; gcash_sender: string | null; receipt_url: string | null; created_at: string;
   donor_id: string | null; donor_name: string | null; bec_name: string | null;
   submitted_by_name: string | null;
 }
@@ -976,6 +976,7 @@ export default function FinancePanel() {
                   <p className="text-xs text-gray-500">
                     {MONTHS_FULL[r.month - 1]} {r.year} · {r.method}
                     {r.reference && ` · ref ${r.reference}`}
+                    {r.gcash_sender && ` · sender ${r.gcash_sender}`}
                     {r.submitted_by_name && ` · by ${r.submitted_by_name}`}
                     {r.receipt_url && (
                       <> · <button type="button" className="text-primary hover:underline"
@@ -984,6 +985,9 @@ export default function FinancePanel() {
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
+                  {r.method === "gcash" && (
+                    <Badge className="bg-violet-100 text-violet-800 border-0 text-[10px]">+10 GBless on approval</Badge>
+                  )}
                   <span className="font-semibold">{peso(r.amount)}</span>
                   <Button size="sm" className="bg-green-600 hover:bg-green-700" disabled={actingPending === r.id}
                     onClick={() => { void handleApprove(r); }}>

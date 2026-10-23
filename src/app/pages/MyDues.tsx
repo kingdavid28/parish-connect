@@ -14,6 +14,7 @@ import { Loader2, PhilippinePeso, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { API } from "../config";
 import ImageLightbox from "../components/ImageLightbox";
+import GcashPaymentDetails from "../components/GcashPaymentDetails";
 
 const MONTHS_FULL = ["January","February","March","April","May","June",
   "July","August","September","October","November","December"];
@@ -34,6 +35,11 @@ interface MyLedger {
   donor: { id: string; name: string; bec_name: string | null } | null;
   year: number; expected: number; months: LedgerMonth[];
   annual_expected: number; annual_paid: number; net_balance: number; total_pending: number;
+}
+interface GcashInfo {
+  gcash_number: string;
+  gcash_name: string;
+  gcash_qr_url: string;
 }
 
 const peso = (n: number) => `₱${Number(n || 0).toLocaleString("en-PH", { minimumFractionDigits: 2 })}`;
@@ -56,11 +62,15 @@ export default function MyDues() {
   const [loading, setLoading] = useState(true);
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   const [ledgerError, setLedgerError] = useState<string | null>(null);
+  const [gcashInfo, setGcashInfo] = useState<GcashInfo | null>(null);
+  const [loadingGcashInfo, setLoadingGcashInfo] = useState(true);
+  const [gcashInfoError, setGcashInfoError] = useState<string | null>(null);
   // Report-a-contribution form
   const [reportOpen, setReportOpen] = useState(false);
   const [reportMonth, setReportMonth] = useState(now.getMonth() + 1);
   const [reportAmount, setReportAmount] = useState("");
   const [reportRef, setReportRef] = useState("");
+  const [reportSender, setReportSender] = useState("");
   const [reportReceipt, setReportReceipt] = useState<File | null>(null);
   const [reporting, setReporting] = useState(false);
 
@@ -82,11 +92,36 @@ export default function MyDues() {
     }
   }, [year]);
 
-  useEffect(() => { void fetchLedger(); }, [fetchLedger]);
+  const fetchGcashInfo = useCallback(async () => {
+    setLoadingGcashInfo(true);
+    setGcashInfoError(null);
+    try {
+      const res = await fetch(`${API}/wallet/gcash-info`, {
+        headers: { Authorization: `Bearer ${getToken()}` },
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.message || "Unable to load parish GCash details");
+      }
+      setGcashInfo(data.data);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unable to load parish GCash details";
+      setGcashInfoError(message);
+    } finally {
+      setLoadingGcashInfo(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void fetchLedger();
+    void fetchGcashInfo();
+  }, [fetchLedger, fetchGcashInfo]);
 
   const submitReport = async () => {
     const amount = Number.parseFloat(reportAmount);
     if (!Number.isFinite(amount) || amount <= 0) { toast.error("Enter a valid amount"); return; }
+    if (!reportRef.trim()) { toast.error("GCash reference number is required"); return; }
+    if (!reportSender.trim()) { toast.error("GCash sender name or number is required"); return; }
     setReporting(true);
     try {
       const fd = new FormData();
@@ -94,7 +129,8 @@ export default function MyDues() {
       fd.append("month", String(reportMonth));
       fd.append("amount", String(amount));
       fd.append("method", "gcash");
-      if (reportRef) fd.append("reference", reportRef);
+      fd.append("gcash_ref", reportRef.trim());
+      fd.append("gcash_sender", reportSender.trim());
       if (reportReceipt) fd.append("receipt", reportReceipt);
       const res = await fetch(`${API}/finance/my/contributions`, {
         method: "POST",
@@ -102,10 +138,10 @@ export default function MyDues() {
         body: fd,
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.message || "Failed");
-      toast.success("Contribution reported — pending admin approval");
+      if (!res.ok || !data.success) throw new Error(data.message || "Failed to submit contribution");
+      toast.success("Contribution submitted. 10 GBless will be rewarded after admin approval.");
       setReportOpen(false);
-      setReportAmount(""); setReportRef(""); setReportReceipt(null);
+      setReportAmount(""); setReportRef(""); setReportSender(""); setReportReceipt(null);
       void fetchLedger();
     } catch (e: any) {
       toast.error(e.message);
@@ -276,13 +312,47 @@ export default function MyDues() {
 
       {/* Report contribution dialog */}
       <Dialog open={reportOpen} onOpenChange={setReportOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Report a Contribution</DialogTitle>
+            <DialogTitle>Balik Pasalamat sa Diyos Contribution</DialogTitle>
             <DialogDescription>
-              Sent via GCash? Enter the details and a parish admin will confirm it.
+              Send your contribution to the parish GCash account below. Your payment amount is not converted to wallet GBless. Receive 10 GBless after an admin confirms your contribution.
             </DialogDescription>
           </DialogHeader>
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base">Step 1 — Send GCash to the parish</CardTitle>
+              <p className="text-sm text-muted-foreground">
+                Send your chosen contribution amount. Admin will verify the transfer before recording it.
+              </p>
+            </CardHeader>
+            <CardContent>
+              {loadingGcashInfo ? (
+                <div className="flex items-center gap-2 text-sm text-gray-500">
+                  <Loader2 className="h-4 w-4 animate-spin" /> Loading parish GCash details…
+                </div>
+              ) : gcashInfoError ? (
+                <div className="space-y-2 text-sm text-red-600">
+                  <p>{gcashInfoError}</p>
+                  <Button type="button" size="sm" variant="outline" onClick={() => { void fetchGcashInfo(); }}>
+                    Try again
+                  </Button>
+                </div>
+              ) : gcashInfo ? (
+                <GcashPaymentDetails
+                  number={gcashInfo.gcash_number}
+                  name={gcashInfo.gcash_name}
+                  qrUrl={gcashInfo.gcash_qr_url}
+                  onShowQr={() => setLightboxUrl(gcashInfo.gcash_qr_url)}
+                />
+              ) : null}
+            </CardContent>
+          </Card>
+          <div className="space-y-1 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+            <p className="font-medium">GBless reward</p>
+            <p>Once approved, this contribution earns 10 GBless. The contribution amount itself is not added to your GBless wallet.</p>
+          </div>
+          <div className="text-sm font-semibold">Step 2 — Submit your transfer details</div>
           <form onSubmit={(e) => { e.preventDefault(); void submitReport(); }} className="space-y-4">
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-2">
@@ -301,20 +371,35 @@ export default function MyDues() {
               </div>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="r-ref">GCash Reference No.</Label>
-              <Input id="r-ref" value={reportRef} placeholder="e.g. 1234567890"
+              <Label htmlFor="r-ref">GCash Reference Number <span className="text-red-500">*</span></Label>
+              <Input id="r-ref" value={reportRef} placeholder="e.g. 1234567890" required maxLength={100}
                 onChange={(e) => setReportRef(e.target.value)} />
             </div>
             <div className="space-y-2">
+              <Label htmlFor="r-sender">Your GCash Name / Number <span className="text-red-500">*</span></Label>
+              <Input id="r-sender" value={reportSender} placeholder="Name or number registered with GCash"
+                required maxLength={100} onChange={(e) => setReportSender(e.target.value)} />
+            </div>
+            <div className="space-y-2">
               <Label htmlFor="r-receipt">Receipt Screenshot (optional)</Label>
-              <Input id="r-receipt" type="file" accept="image/*"
-                onChange={(e) => setReportReceipt(e.target.files?.[0] || null)} />
+              <Input id="r-receipt" type="file" accept="image/jpeg,image/png,image/webp"
+                onChange={(e) => {
+                  const file = e.target.files?.[0] || null;
+                  if (file && file.size > 5 * 1024 * 1024) {
+                    toast.error("Receipt image too large. Maximum size is 5MB.");
+                    e.target.value = "";
+                    setReportReceipt(null);
+                    return;
+                  }
+                  setReportReceipt(file);
+                }} />
+              <p className="text-xs text-gray-500">A receipt speeds up admin verification. Maximum 5MB.</p>
             </div>
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setReportOpen(false)}>Cancel</Button>
-              <Button type="submit" disabled={reporting}>
+              <Button type="submit" disabled={reporting || loadingGcashInfo || !!gcashInfoError || !gcashInfo}>
                 {reporting && <Loader2 className="h-4 w-4 mr-1 animate-spin" />}
-                Submit Report
+                Submit Contribution
               </Button>
             </DialogFooter>
           </form>

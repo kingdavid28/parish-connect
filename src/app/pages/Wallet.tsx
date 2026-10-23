@@ -10,13 +10,14 @@ import { Separator } from "../components/ui/separator";
 import { Avatar, AvatarImage, AvatarFallback } from "../components/ui/avatar";
 import {
     Wallet as WalletIcon, ArrowDownCircle, ArrowUpCircle, Gift,
-    Loader, Zap, Clock, CheckCircle2, XCircle, Info, ImageIcon, X, ZoomIn,
+    Loader, Zap, Clock, CheckCircle2, XCircle, Info, ImageIcon, X,
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
 
 import { API } from "../config";
 import ImageLightbox from "../components/ImageLightbox";
+import GcashPaymentDetails from "../components/GcashPaymentDetails";
 const getToken = () =>
     localStorage.getItem("parish_token") || sessionStorage.getItem("parish_token");
 
@@ -77,6 +78,7 @@ const TX_LABELS: Record<string, string> = {
     follow_received: "Gained a follower",
     daily_login: "Daily login",
     topup_approved: "GCash top-up",
+    contribution_approved: "Balik Pasalamat sa Diyos contribution reward",
     gift_received: "Gift received",
     gift_sent: "Gift sent",
     cashout_reserved: "Cash-out (reserved)",
@@ -87,6 +89,7 @@ const TX_ICONS: Record<string, string> = {
     post_created: "✍️", comment_added: "💬", like_received: "❤️",
     kudos_received: "💛", kudos_sent: "💛", follow_received: "🤝", daily_login: "☀️",
     topup_approved: "💰", gift_received: "🎁", gift_sent: "🎁",
+    contribution_approved: "🙏",
     cashout_reserved: "💸", cashout_refunded: "↩️",
 };
 
@@ -370,32 +373,13 @@ export default function Wallet() {
                                 <CardDescription>{gcashInfo.note}</CardDescription>
                             </CardHeader>
                             <CardContent className="space-y-4">
-                                <div className="flex flex-col sm:flex-row gap-4 items-center">
-                                    {gcashInfo.gcash_qr_url && (
-                                        <button type="button" onClick={() => setLightboxUrl(gcashInfo.gcash_qr_url)}
-                                            className="relative group cursor-zoom-in" aria-label="Enlarge GCash QR code"
-                                            title="Tap to enlarge">
-                                            <img src={gcashInfo.gcash_qr_url} alt="GCash QR" className="w-40 h-40 rounded-xl border object-contain bg-white"
-                                                decoding="async" onError={(e) => { e.currentTarget.closest('button')!.style.display = 'none'; }} />
-                                            <span className="absolute bottom-1.5 right-1.5 rounded-full bg-black/60 p-1.5 text-white opacity-0 group-hover:opacity-100 transition-opacity">
-                                                <ZoomIn className="h-4 w-4" />
-                                            </span>
-                                        </button>
-                                    )}
-                                    <div className="space-y-2 text-sm">
-                                        <div>
-                                            <p className="text-gray-500">GCash Number</p>
-                                            <p className="text-xl font-bold tracking-widest">{gcashInfo.gcash_number}</p>
-                                        </div>
-                                        <div>
-                                            <p className="text-gray-500">Account Name</p>
-                                            <p className="font-semibold">{gcashInfo.gcash_name}</p>
-                                        </div>
-                                        <div className="bg-yellow-50 border border-yellow-200 rounded px-3 py-2">
-                                            <p className="font-medium text-yellow-700">{gcashInfo.rate_label}</p>
-                                        </div>
-                                    </div>
-                                </div>
+                                <GcashPaymentDetails
+                                    number={gcashInfo.gcash_number}
+                                    name={gcashInfo.gcash_name}
+                                    qrUrl={gcashInfo.gcash_qr_url}
+                                    onShowQr={() => setLightboxUrl(gcashInfo.gcash_qr_url)}
+                                    rateLabel={gcashInfo.rate_label}
+                                />
                             </CardContent>
                         </Card>
                     )}
