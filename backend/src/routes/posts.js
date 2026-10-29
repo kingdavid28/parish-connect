@@ -12,6 +12,44 @@ const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
 
 const VALID_TYPES = ["community", "baptism_anniversary", "parish_event", "research"];
+const NOTIFICATION_BATCH_SIZE = 25;
+
+async function notifyPostAudience(post, author) {
+  try {
+    const isAdminPost = ["admin", "superadmin"].includes(author.role);
+    const query = isAdminPost
+      ? {
+          text: `SELECT id AS recipient_id FROM users
+                 WHERE role = 'parishioner' AND is_active = 1 AND id <> $1`,
+          values: [author.id],
+        }
+      : {
+          text: `SELECT f.follower_id AS recipient_id
+                 FROM follows f
+                 JOIN users u ON u.id = f.follower_id
+                 WHERE f.following_id = $1 AND u.is_active = 1`,
+          values: [author.id],
+        };
+    const { rows } = await pool.query(query.text, query.values);
+    const preview = post.content.length > 120 ? `${post.content.slice(0, 120)}…` : post.content;
+    const payload = {
+      category: "posts",
+      title: isAdminPost ? "New parish post" : `${author.name} posted`,
+      body: preview,
+      tag: `new-post-${post.id}`,
+      url: `${config.appBasePath}/`,
+    };
+
+    for (let index = 0; index < rows.length; index += NOTIFICATION_BATCH_SIZE) {
+      const batch = rows.slice(index, index + NOTIFICATION_BATCH_SIZE);
+      await Promise.all(
+        batch.map(({ recipient_id }) => sendPushToUser(recipient_id, payload))
+      );
+    }
+  } catch (err) {
+    console.error("Notify post audience error:", err.message);
+  }
+}
 
 // GET /api/posts?page=&limit=
 router.get("/", authenticate, async (req, res) => {
@@ -73,20 +111,7 @@ router.post("/", authenticate, upload.single("image"), async (req, res) => {
       [id, req.user.id, content, type, imageUrl]
     );
 
-    // Notify followers of the post author (best-effort)
-    const { rows: followers } = await pool.query(
-      "SELECT follower_id FROM follows WHERE following_id = $1",
-      [req.user.id]
-    );
-    const preview = content.length > 80 ? content.slice(0, 80) + "…" : content;
-    for (const f of followers) {
-      sendPushToUser(f.follower_id, {
-        title: `${req.user.name} posted`,
-        body: preview,
-        tag: "new-post-" + id,
-        url: `${config.appBasePath}/`,
-      }).catch(() => {});
-    }
+    void notifyPostAudience({ id, content }, req.user);
 
     await awardPoints(req.user.id, "post_created", id);
     await auditLog(req.user.id, "create_post", "post", id, getClientIp(req));
