@@ -630,16 +630,16 @@ export default function Wallet() {
                                 )}
                                 <div className="space-y-2">
                                     {history.transactions.map((tx, i) => (
-                                        <div key={i} className="flex items-center justify-between border rounded-lg px-4 py-3 bg-white">
-                                            <div className="flex items-center gap-3">
-                                                <span className="text-lg">{TX_ICONS[tx.action] ?? "⚡"}</span>
-                                                <div>
-                                                    <p className="text-sm font-medium">{TX_LABELS[tx.action] ?? tx.action}</p>
-                                                    {tx.ref_name && <p className="text-xs text-gray-400">{tx.ref_name}</p>}
+                                        <div key={i} className="flex items-start justify-between gap-3 border rounded-lg px-4 py-3 bg-white">
+                                            <div className="flex min-w-0 flex-1 items-start gap-3">
+                                                <span className="shrink-0 text-lg">{TX_ICONS[tx.action] ?? "⚡"}</span>
+                                                <div className="min-w-0">
+                                                    <p className="break-words text-sm font-medium">{TX_LABELS[tx.action] ?? tx.action}</p>
+                                                    {tx.ref_name && <p className="break-words text-xs text-gray-400">{tx.ref_name}</p>}
                                                     <p className="text-xs text-gray-400">{safeFormatDate(tx.created_at)}</p>
                                                 </div>
                                             </div>
-                                            <span className={`text-sm font-semibold ${tx.points >= 0 ? "text-green-600" : "text-red-500"}`}>
+                                            <span className={`shrink-0 whitespace-nowrap text-sm font-semibold ${tx.points >= 0 ? "text-green-600" : "text-red-500"}`}>
                                                 {tx.points >= 0 ? "+" : ""}{tx.points.toLocaleString()}
                                             </span>
                                         </div>
