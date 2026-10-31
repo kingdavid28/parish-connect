@@ -432,10 +432,10 @@ export default function Membership() {
         if (v === 'families' && families.length === 0) fetchFamilies();
         if (v === 'ministries' && ministries.length === 0) fetchMinistries();
       }}>
-        <TabsList>
-          <TabsTrigger value="directory">Member Directory</TabsTrigger>
-          <TabsTrigger value="families">Family Groups</TabsTrigger>
-          <TabsTrigger value="ministries">Ministries</TabsTrigger>
+        <TabsList className="grid w-full grid-cols-3 sm:w-fit">
+          <TabsTrigger value="directory" className="h-auto min-h-8 whitespace-normal px-1 text-center text-xs leading-tight sm:px-3 sm:text-sm">Member Directory</TabsTrigger>
+          <TabsTrigger value="families" className="h-auto min-h-8 whitespace-normal px-1 text-center text-xs leading-tight sm:px-3 sm:text-sm">Family Groups</TabsTrigger>
+          <TabsTrigger value="ministries" className="h-auto min-h-8 whitespace-normal px-1 text-center text-xs leading-tight sm:px-3 sm:text-sm">Ministries</TabsTrigger>
         </TabsList>
 
         <TabsContent value="directory" className="space-y-4">

@@ -410,11 +410,11 @@ export default function AdminManagement() {
         </div>
 
         <Tabs defaultValue="users" onValueChange={(v) => { if (v === 'audit' && auditLogs.length === 0) fetchAuditLogs(1); }}>
-          <TabsList className="mb-6">
-            <TabsTrigger value="users"><Shield className="h-4 w-4 mr-1.5" />Users</TabsTrigger>
-            <TabsTrigger value="wallet"><WalletIcon className="h-4 w-4 mr-1.5" />GBless Wallet</TabsTrigger>
-            <TabsTrigger value="finance"><ClipboardList className="h-4 w-4 mr-1.5" />BEC Dues</TabsTrigger>
-            {canViewAudit && <TabsTrigger value="audit"><ClipboardList className="h-4 w-4 mr-1.5" />Audit Log</TabsTrigger>}
+          <TabsList className={`mb-6 grid h-auto w-full grid-cols-2 sm:w-fit ${canViewAudit ? "sm:grid-cols-4" : "sm:grid-cols-3"}`}>
+            <TabsTrigger value="users" className="min-h-9 whitespace-normal px-1 text-xs sm:px-3 sm:text-sm"><Shield className="h-4 w-4 mr-1.5" />Users</TabsTrigger>
+            <TabsTrigger value="wallet" className="min-h-9 whitespace-normal px-1 text-xs sm:px-3 sm:text-sm"><WalletIcon className="h-4 w-4 mr-1.5" />GBless Wallet</TabsTrigger>
+            <TabsTrigger value="finance" className="min-h-9 whitespace-normal px-1 text-xs sm:px-3 sm:text-sm"><ClipboardList className="h-4 w-4 mr-1.5" />BEC Dues</TabsTrigger>
+            {canViewAudit && <TabsTrigger value="audit" className="min-h-9 whitespace-normal px-1 text-xs sm:px-3 sm:text-sm"><ClipboardList className="h-4 w-4 mr-1.5" />Audit Log</TabsTrigger>}
           </TabsList>
           <TabsContent value="users">
 

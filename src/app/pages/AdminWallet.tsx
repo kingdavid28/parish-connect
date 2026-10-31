@@ -153,15 +153,15 @@ export default function AdminWallet() {
             </div>
 
             <Tabs value={tab} onValueChange={setTab}>
-                <TabsList>
-                    <TabsTrigger value="topups">
+                <TabsList className="grid w-full grid-cols-2 sm:w-fit">
+                    <TabsTrigger value="topups" className="min-h-9 whitespace-normal px-1 text-xs sm:px-3 sm:text-sm">
                         <ArrowDownCircle className="h-4 w-4 mr-1.5" />
                         Top-ups
                         {topups.length > 0 && (
                             <span className="ml-1.5 bg-blue-600 text-white text-xs rounded-full px-1.5 py-0.5">{topups.length}</span>
                         )}
                     </TabsTrigger>
-                    <TabsTrigger value="cashouts">
+                    <TabsTrigger value="cashouts" className="min-h-9 whitespace-normal px-1 text-xs sm:px-3 sm:text-sm">
                         <ArrowUpCircle className="h-4 w-4 mr-1.5" />
                         Cash-outs
                         {cashouts.length > 0 && (

@@ -357,11 +357,11 @@ export default function Wallet() {
             </div>
 
             <Tabs value={tab} onValueChange={setTab}>
-                <TabsList className="grid w-full grid-cols-4">
-                    <TabsTrigger value="balance"><ArrowDownCircle className="h-4 w-4 mr-1" />Buy</TabsTrigger>
-                    <TabsTrigger value="gift"><Gift className="h-4 w-4 mr-1" />Gift</TabsTrigger>
-                    <TabsTrigger value="cashout"><ArrowUpCircle className="h-4 w-4 mr-1" />Cash Out</TabsTrigger>
-                    <TabsTrigger value="history"><Clock className="h-4 w-4 mr-1" />History</TabsTrigger>
+                <TabsList className="grid h-auto w-full grid-cols-2 sm:grid-cols-4">
+                    <TabsTrigger value="balance" className="min-h-9 whitespace-normal px-1 text-xs sm:px-2 sm:text-sm"><ArrowDownCircle className="h-4 w-4 mr-1" />Buy</TabsTrigger>
+                    <TabsTrigger value="gift" className="min-h-9 whitespace-normal px-1 text-xs sm:px-2 sm:text-sm"><Gift className="h-4 w-4 mr-1" />Gift</TabsTrigger>
+                    <TabsTrigger value="cashout" className="min-h-9 whitespace-normal px-1 text-xs sm:px-2 sm:text-sm"><ArrowUpCircle className="h-4 w-4 mr-1" />Cash Out</TabsTrigger>
+                    <TabsTrigger value="history" className="min-h-9 whitespace-normal px-1 text-xs sm:px-2 sm:text-sm"><Clock className="h-4 w-4 mr-1" />History</TabsTrigger>
                 </TabsList>
 
                 {/* ── BUY TAB ── */}

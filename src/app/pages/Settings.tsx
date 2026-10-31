@@ -499,8 +499,8 @@ export default function Settings() {
                 <Label htmlFor="confirm-password">Confirm New Password</Label>
                 <Input id="confirm-password" type={showPassword ? "text" : "password"} value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} placeholder="Confirm new password" />
               </div>
-              <div className="flex justify-end">
-                <Button onClick={handleChangePassword} disabled={isSaving}>
+              <div className="flex flex-col sm:flex-row sm:justify-end">
+                <Button onClick={handleChangePassword} disabled={isSaving} className="w-full justify-center sm:w-auto">
                   <Lock className="h-4 w-4 mr-2" />
                   Change Password
                 </Button>

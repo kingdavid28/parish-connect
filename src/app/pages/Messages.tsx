@@ -23,21 +23,21 @@ function safeTimeAgo(dateStr: string): string {
         date = new Date(dateStr);
         
         // If invalid, try ISO format parsing (Safari is stricter)
-        if (isNaN(date.getTime())) {
+        if (Number.isNaN(date.getTime())) {
             // Try parsing with timezone handling
             const isoString = dateStr.replace(/ /, 'T');
             date = new Date(isoString);
         }
         
         // If still invalid, try manual parsing
-        if (isNaN(date.getTime())) {
+        if (Number.isNaN(date.getTime())) {
             const parsed = Date.parse(dateStr);
-            if (!isNaN(parsed)) {
+            if (!Number.isNaN(parsed)) {
                 date = new Date(parsed);
             }
         }
         
-        if (isNaN(date.getTime())) return '';
+        if (Number.isNaN(date.getTime())) return '';
         return formatDistanceToNow(date, { addSuffix: true });
     } catch { return ''; }
 }
@@ -89,7 +89,7 @@ export default function Messages() {
     const fileInputRef = useRef<HTMLInputElement>(null);
     const messagesEndRef = useRef<HTMLDivElement>(null);
 
-    useEffect(() => { fetchConversations(); fetchGroups(); }, []);
+    useEffect(() => { void fetchConversations(); void fetchGroups(); }, []);
     useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
 
     const fetchConversations = async () => {
@@ -120,13 +120,13 @@ export default function Messages() {
         finally { setLoadingMsgs(false); }
     };
 
-    const openDirectChat = async (conv: Conversation) => {
+    const openDirectChat = (conv: Conversation) => {
         setActiveChat({ id: conv.id, name: conv.name, avatar: conv.avatar });
         setChatType('direct');
         setMessages([]);
         // Clear unread count immediately in the sidebar
         setConversations(prev => prev.map(c => c.id === conv.id ? { ...c, unread_count: 0 } : c));
-        loadDirectMessages(conv.id);
+        void loadDirectMessages(conv.id);
     };
 
     const startDirectChat = (u: UserItem) => {
@@ -135,7 +135,7 @@ export default function Messages() {
         setChatType('direct');
         setMessages([]);
         setConversations(prev => prev.map(c => c.id === u.id ? { ...c, unread_count: 0 } : c));
-        loadDirectMessages(u.id);
+        void loadDirectMessages(u.id);
     };
 
     const openGroupChat = async (group: GroupChat) => {
@@ -166,8 +166,8 @@ export default function Messages() {
                 setMessages([...messages, { ...data.data, sender_name: user?.name || '', sender_avatar: user?.avatar || '' }]);
                 setNewMessage(''); clearImage();
                 // Refresh conversation list so last_message and unread counts update
-                if (chatType === 'direct') fetchConversations();
-                else fetchGroups();
+                if (chatType === 'direct') void fetchConversations();
+                else void fetchGroups();
             } else toast.error(data.message || 'Failed to send');
         } catch { toast.error('Failed to send'); }
     };
@@ -193,17 +193,17 @@ export default function Messages() {
         finally { setUsersLoaded(true); }
     };
 
-    const openCreateGroup = async () => {
+    const openCreateGroup = () => {
         setShowCreateGroup(true);
         setGroupName(""); setSelectedMembers([]);
-        fetchAvailableUsers();
+        void fetchAvailableUsers();
     };
 
     const openNewMessage = () => {
         setShowNewMessage(true);
         setUserSearch("");
         setAvailableUsers([]);
-        fetchAvailableUsers();
+        void fetchAvailableUsers();
     };
 
     const handleCreateGroup = async () => {
@@ -218,7 +218,7 @@ export default function Messages() {
             if (data.success) {
                 toast.success('Group created!');
                 setShowCreateGroup(false);
-                fetchGroups();
+                void fetchGroups();
             } else toast.error(data.message || 'Failed');
         } catch { toast.error('Failed to create group'); }
     };
@@ -229,18 +229,18 @@ export default function Messages() {
 
     return (
         <div className="max-w-4xl mx-auto px-4 py-6 pb-20 md:pb-6">
-            <div className="mb-6 flex items-center justify-between">
-                <div className="flex items-center gap-3">
+            <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex min-w-0 items-center gap-3">
                     <div className="bg-blue-600 p-2 rounded-lg"><MessageCircle className="h-6 w-6 text-white" /></div>
                     <div>
-                        <h1 className="text-3xl font-semibold text-white">Messages</h1>
+                        <h1 className="text-2xl sm:text-3xl font-semibold text-white">Messages</h1>
                         <p className="text-white">Direct messages and group chats</p>
                     </div>
                 </div>
                 {tab === 'direct' ? (
-                    <Button onClick={openNewMessage} size="sm"><Plus className="h-4 w-4 mr-2" />New Message</Button>
+                    <Button onClick={openNewMessage} size="sm" className="w-full justify-center sm:w-auto"><Plus className="h-4 w-4 mr-2" />New Message</Button>
                 ) : (
-                    <Button onClick={openCreateGroup} size="sm"><Plus className="h-4 w-4 mr-2" />New Group</Button>
+                    <Button onClick={openCreateGroup} size="sm" className="w-full justify-center sm:w-auto"><Plus className="h-4 w-4 mr-2" />New Group</Button>
                 )}
             </div>
 
@@ -344,7 +344,11 @@ export default function Messages() {
                                             {msg.sender_id !== user?.id && chatType === 'group' && (
                                                 <p className={`text-xs font-medium mb-1 ${msg.sender_id === user?.id ? 'text-blue-200' : 'text-gray-500'}`}>{msg.sender_name}</p>
                                             )}
-                                            {msg.image_url && <img src={msg.image_url} alt="" className="max-h-48 rounded mb-2 cursor-pointer" onClick={() => window.open(msg.image_url!, '_blank')} loading="lazy" />}
+                                            {msg.image_url && (
+                                                <a href={msg.image_url} target="_blank" rel="noopener noreferrer" aria-label="Open attached image in a new tab">
+                                                    <img src={msg.image_url} alt="" className="max-h-48 rounded mb-2" loading="lazy" />
+                                                </a>
+                                            )}
                                             {msg.content && <p className="text-sm">{msg.content}</p>}
                                             <p className={`text-xs mt-1 ${msg.sender_id === user?.id ? 'text-blue-200' : 'text-gray-400'}`}>{safeTimeAgo(msg.created_at)}</p>
                                         </div>
@@ -367,7 +371,14 @@ export default function Messages() {
                                 <Button variant="ghost" size="sm" onClick={() => fileInputRef.current?.click()}>
                                     <ImageIcon className="h-5 w-5 text-gray-500" />
                                 </Button>
-                                <Input placeholder="Type a message..." value={newMessage} onChange={(e) => setNewMessage(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSend()} />
+                                <Input
+  id="new-message"
+  name="newMessage"
+  placeholder="Type a message..."
+  value={newMessage}
+  onChange={(e) => setNewMessage(e.target.value)}
+  onKeyDown={(e) => e.key === 'Enter' && handleSend()}
+/>
                                 <Button onClick={handleSend}><Send className="h-4 w-4" /></Button>
                             </div>
                         </>

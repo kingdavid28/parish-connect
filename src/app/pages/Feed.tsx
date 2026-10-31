@@ -376,7 +376,7 @@ export default function Feed() {
                     <AvatarFallback>{post.author_name?.[0] ?? '?'}</AvatarFallback>
                   </Avatar>
                   <div className="min-w-0">
-                    <p className="font-medium truncate">{post.author_name}</p>
+                    <p className="font-medium break-words [overflow-wrap:anywhere]">{post.author_name}</p>
                     <p className="text-sm text-gray-500">
                       {safeFormatDate(post.created_at)}
                     </p>
@@ -396,7 +396,7 @@ export default function Feed() {
                 <div className="mb-4 rounded-lg overflow-hidden bg-gray-100">
                   <img
                     src={post.image_url}
-                    alt={`Post by ${post.author_name}`}
+                    alt="Post attachment"
                     className="w-full object-contain max-h-[500px]"
                     loading="lazy"
                     decoding="async"
@@ -448,10 +448,10 @@ export default function Feed() {
                         <AvatarImage src={comment.author_avatar} alt={comment.author_name} loading="lazy" />
                         <AvatarFallback className="text-xs">{comment.author_name?.[0] ?? '?'}</AvatarFallback>
                       </Avatar>
-                      <div className="flex-1 bg-gray-50 rounded-lg p-3">
-                        <div className="flex items-center gap-2 mb-1">
-                          <span className="text-sm font-medium">{comment.author_name}</span>
-                          <span className="text-xs text-gray-400">
+                      <div className="flex-1 min-w-0 bg-gray-50 rounded-lg p-3">
+                        <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1 mb-1 min-w-0">
+                          <span className="text-sm font-medium break-words [overflow-wrap:anywhere]">{comment.author_name}</span>
+                          <span className="text-xs text-gray-400 shrink-0">
                             {safeFormatDate(comment.created_at)}
                           </span>
                         </div>

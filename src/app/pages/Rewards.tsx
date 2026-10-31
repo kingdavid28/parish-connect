@@ -192,9 +192,9 @@ export default function Rewards() {
 
             <Tabs value={tab} onValueChange={setTab}>
                 <TabsList className="grid w-full grid-cols-3">
-                    <TabsTrigger value="overview">Overview</TabsTrigger>
-                    <TabsTrigger value="badges">Badges</TabsTrigger>
-                    <TabsTrigger value="leaderboard">Leaderboard</TabsTrigger>
+                    <TabsTrigger value="overview" className="whitespace-normal px-1 text-center text-xs sm:px-2 sm:text-sm">Overview</TabsTrigger>
+                    <TabsTrigger value="badges" className="whitespace-normal px-1 text-center text-xs sm:px-2 sm:text-sm">Badges</TabsTrigger>
+                    <TabsTrigger value="leaderboard" className="whitespace-normal px-1 text-center text-xs sm:px-2 sm:text-sm">Leaderboard</TabsTrigger>
                 </TabsList>
 
                 {/* Overview — recent activity */}

@@ -442,9 +442,9 @@ export default function ParishRecords() {
       ) : (
 
       <Tabs defaultValue="baptism" className="space-y-6">
-        <TabsList>
-          <TabsTrigger value="baptism">Baptism Records</TabsTrigger>
-          <TabsTrigger value="confirmation">Confirmation Records</TabsTrigger>
+        <TabsList className="grid w-full grid-cols-2 sm:w-fit">
+          <TabsTrigger value="baptism" className="h-auto min-h-8 whitespace-normal px-1 text-center text-xs leading-tight sm:px-3 sm:text-sm">Baptism Records</TabsTrigger>
+          <TabsTrigger value="confirmation" className="h-auto min-h-8 whitespace-normal px-1 text-center text-xs leading-tight sm:px-3 sm:text-sm">Confirmation Records</TabsTrigger>
         </TabsList>
 
         <TabsContent value="baptism" className="space-y-4">

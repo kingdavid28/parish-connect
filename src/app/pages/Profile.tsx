@@ -430,9 +430,9 @@ export default function Profile() {
         {/* Tabs */}
         <Tabs value={activeTab} onValueChange={setActiveTab}>
           <TabsList className="grid w-full grid-cols-3">
-            <TabsTrigger value="timeline">Timeline</TabsTrigger>
-            <TabsTrigger value="posts">Posts</TabsTrigger>
-            <TabsTrigger value="research">Research</TabsTrigger>
+            <TabsTrigger value="timeline" className="whitespace-normal px-1 text-center text-xs sm:px-2 sm:text-sm">Timeline</TabsTrigger>
+            <TabsTrigger value="posts" className="whitespace-normal px-1 text-center text-xs sm:px-2 sm:text-sm">Posts</TabsTrigger>
+            <TabsTrigger value="research" className="whitespace-normal px-1 text-center text-xs sm:px-2 sm:text-sm">Research</TabsTrigger>
           </TabsList>
 
           {/* Timeline Tab - Sacramental Record */}
