@@ -1,5 +1,6 @@
 import { Dialog, DialogClose, DialogContent, DialogTitle } from "./ui/dialog";
 import { X } from "lucide-react";
+import { proxyImageUrl } from "../lib/imageProxy";
 
 interface ImageLightboxProps {
   src: string | null;
@@ -19,7 +20,7 @@ export default function ImageLightbox({ src, alt = "Image", onClose }: ImageLigh
         {src && (
           <div className="relative">
             <img
-              src={src}
+              src={proxyImageUrl(src)}
               alt={alt}
               className="max-h-[88vh] max-w-[95vw] rounded-xl object-contain shadow-2xl"
             />

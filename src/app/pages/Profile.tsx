@@ -46,6 +46,7 @@ interface UserRewards {
 }
 
 import { API } from "../config";
+import { proxyImageUrl } from "../lib/imageProxy";
 const getToken = () => localStorage.getItem('parish_token') || sessionStorage.getItem('parish_token');
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -368,7 +369,7 @@ export default function Profile() {
           <CardContent className="pt-6">
             <div className="flex flex-col md:flex-row items-start md:items-center gap-6">
               <Avatar className="h-32 w-32">
-                <AvatarImage src={profileData.avatar || ""} alt={profileData.name} />
+                <AvatarImage src={proxyImageUrl(profileData.avatar || "")} alt={profileData.name} />
                 <AvatarFallback className="text-3xl">{profileData.name?.charAt(0) || "?"}</AvatarFallback>
               </Avatar>
               <div className="flex-1">
@@ -508,7 +509,7 @@ export default function Profile() {
                   <p className="text-gray-800 whitespace-pre-wrap">{post.content}</p>
                   {post.image_url && (
                     <div className="mt-3 rounded-lg overflow-hidden bg-gray-100">
-                      <img src={post.image_url} alt={`Post by ${post.author_name}`} className="w-full object-contain max-h-[500px]" loading="lazy" decoding="async"
+                      <img src={proxyImageUrl(post.image_url)} alt={`Post by ${post.author_name}`} className="w-full object-contain max-h-[500px]" loading="lazy" decoding="async"
                         onError={(e) => { (e.currentTarget.parentElement as HTMLElement).style.display = 'none'; }} />
                     </div>
                   )}
@@ -537,7 +538,7 @@ export default function Profile() {
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
                 <Avatar className="h-8 w-8">
-                  <AvatarImage src={profileData.avatar || ""} alt={profileData.name} />
+                  <AvatarImage src={proxyImageUrl(profileData.avatar || "")} alt={profileData.name} />
                   <AvatarFallback>{profileData.name[0]}</AvatarFallback>
                 </Avatar>
                 {profileData.name}

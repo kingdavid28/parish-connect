@@ -21,6 +21,7 @@ import {
 import { toast } from "sonner";
 import { API } from "../config";
 import ImageLightbox from "../components/ImageLightbox";
+import { proxyImageUrl } from "../lib/imageProxy";
 import { parseDonorsCsv, DONORS_CSV_TEMPLATE } from "../lib/parseCsv";
 
 const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
@@ -1497,7 +1498,7 @@ export default function FinancePanel() {
                 {verificationReport.receipt_url && (
                   <a
                     className="mt-2 inline-block text-primary underline"
-                    href={verificationReport.receipt_url}
+                    href={proxyImageUrl(verificationReport.receipt_url)}
                     target="_blank"
                     rel="noopener noreferrer"
                   >

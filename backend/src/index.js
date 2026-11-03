@@ -26,6 +26,10 @@ app.use(cors({
 app.use(express.json({ limit: "100kb" }));
 app.use(express.urlencoded({ extended: true, limit: "100kb" }));
 
+// Image proxy — mounted before the rate limiter so image-heavy pages
+// (feeds of avatars/post photos) don't burn the request quota.
+app.use("/api/files", require("./routes/files"));
+
 // Global rate limiter
 app.use(rateLimit({
   windowMs: 15 * 60 * 1000,

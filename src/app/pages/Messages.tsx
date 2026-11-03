@@ -57,6 +57,7 @@ interface Msg {
 interface UserItem { id: string; name: string; avatar: string; role?: string; }
 
 import { API } from "../config";
+import { proxyImageUrl } from "../lib/imageProxy";
 const getToken = () => localStorage.getItem('parish_token') || sessionStorage.getItem('parish_token');
 
 export default function Messages() {
@@ -265,7 +266,7 @@ export default function Messages() {
                             {conversations.map((conv) => (
                                 <button key={conv.id} onClick={() => openDirectChat(conv)}
                                     className={`w-full flex items-center gap-3 p-3 hover:bg-gray-50 border-b text-left ${activeChat?.id === conv.id && chatType === 'direct' ? 'bg-blue-50' : ''}`}>
-                                    <Avatar className="h-10 w-10"><AvatarImage src={conv.avatar} /><AvatarFallback>{conv.name?.[0] ?? '?'}</AvatarFallback></Avatar>
+                                    <Avatar className="h-10 w-10"><AvatarImage src={proxyImageUrl(conv.avatar)} /><AvatarFallback>{conv.name?.[0] ?? '?'}</AvatarFallback></Avatar>
                                     <div className="flex-1 min-w-0">
                                         <div className="flex items-center justify-between">
                                             <span className="font-medium text-sm truncate">{conv.name}</span>
@@ -324,7 +325,7 @@ export default function Messages() {
                                         <Users className="h-4 w-4 text-blue-600" />
                                     </div>
                                 ) : (
-                                    <Avatar className="h-8 w-8"><AvatarImage src={activeChat.avatar} /><AvatarFallback>{activeChat.name?.[0] ?? '?'}</AvatarFallback></Avatar>
+                                    <Avatar className="h-8 w-8"><AvatarImage src={proxyImageUrl(activeChat.avatar)} /><AvatarFallback>{activeChat.name?.[0] ?? '?'}</AvatarFallback></Avatar>
                                 )}
                                 <span className="font-medium">{activeChat.name}</span>
                                 {chatType === 'group' && <Badge variant="secondary" className="text-xs">Group</Badge>}
@@ -337,7 +338,7 @@ export default function Messages() {
                                     <div key={msg.id} className={`flex ${msg.sender_id === user?.id ? 'justify-end' : 'justify-start'}`}>
                                         {msg.sender_id !== user?.id && chatType === 'group' && (
                                             <Avatar className="h-6 w-6 mr-2 mt-1 flex-shrink-0">
-                                                <AvatarImage src={msg.sender_avatar} /><AvatarFallback className="text-xs">{(msg.sender_name || '?')[0]}</AvatarFallback>
+                                                <AvatarImage src={proxyImageUrl(msg.sender_avatar)} /><AvatarFallback className="text-xs">{(msg.sender_name || '?')[0]}</AvatarFallback>
                                             </Avatar>
                                         )}
                                         <div className={`max-w-[75%] rounded-lg px-4 py-2 ${msg.sender_id === user?.id ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-800'}`}>
@@ -345,8 +346,8 @@ export default function Messages() {
                                                 <p className={`text-xs font-medium mb-1 ${msg.sender_id === user?.id ? 'text-blue-200' : 'text-gray-500'}`}>{msg.sender_name}</p>
                                             )}
                                             {msg.image_url && (
-                                                <a href={msg.image_url} target="_blank" rel="noopener noreferrer" aria-label="Open attached image in a new tab">
-                                                    <img src={msg.image_url} alt="" className="max-h-48 rounded mb-2" loading="lazy" />
+                                                <a href={proxyImageUrl(msg.image_url)} target="_blank" rel="noopener noreferrer" aria-label="Open attached image in a new tab">
+                                                    <img src={proxyImageUrl(msg.image_url)} alt="" className="max-h-48 rounded mb-2" loading="lazy" />
                                                 </a>
                                             )}
                                             {msg.content && <p className="text-sm">{msg.content}</p>}

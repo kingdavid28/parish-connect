@@ -1,4 +1,5 @@
 import { ZoomIn } from "lucide-react";
+import { proxyImageUrl } from "../lib/imageProxy";
 
 interface GcashPaymentDetailsProps {
   number: string;
@@ -26,7 +27,7 @@ export default function GcashPaymentDetails({
           title="Tap to enlarge"
         >
           <img
-            src={qrUrl}
+            src={proxyImageUrl(qrUrl)}
             alt="GCash QR"
             className="w-40 h-40 rounded-xl border object-contain bg-white"
             decoding="async"

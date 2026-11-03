@@ -35,7 +35,19 @@ export const APP_URL =
  */
 export function resolveAssetUrl(v?: string | null): string {
   if (!v) return "";
-  if (/^https?:\/\//.test(v) || v.startsWith("data:")) return v;
+  if (/^https?:\/\//.test(v)) {
+    // R2 public URLs route through the API proxy so images load even when
+    // the pub-*.r2.dev host is unreachable or the bucket isn't public.
+    try {
+      const u = new URL(v);
+      if (u.hostname.endsWith(".r2.dev")) {
+        const key = u.pathname.replace(/^\/+/, "");
+        if (key) return `${API}/files/${key}`;
+      }
+    } catch { /* leave as-is */ }
+    return v;
+  }
+  if (v.startsWith("data:")) return v;
   const rel = v.replace(/^\.?\//, "");
   return `${BASE_PATH}/${rel}`;
 }

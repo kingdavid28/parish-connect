@@ -43,6 +43,7 @@ interface Post {
 }
 
 import { API as API_BASE_URL, APP_URL } from "../config";
+import { proxyImageUrl } from "../lib/imageProxy";
 const getToken = () => localStorage.getItem('parish_token') || sessionStorage.getItem('parish_token');
 
 export default function Feed() {
@@ -380,7 +381,7 @@ export default function Feed() {
               <div className="flex items-start justify-between gap-2">
                 <div className="flex items-center space-x-3 min-w-0">
                   <Avatar className="shrink-0">
-                    <AvatarImage src={post.author_avatar} alt={post.author_name} loading="lazy" />
+                    <AvatarImage src={proxyImageUrl(post.author_avatar)} alt={post.author_name} loading="lazy" />
                     <AvatarFallback>{post.author_name?.[0] ?? '?'}</AvatarFallback>
                   </Avatar>
                   <div className="min-w-0">
@@ -405,7 +406,7 @@ export default function Feed() {
               {post.image_url && (
                 <div className="mb-4 rounded-lg overflow-hidden bg-gray-100">
                   <img
-                    src={post.image_url}
+                    src={proxyImageUrl(post.image_url)}
                     alt="Post attachment"
                     className="w-full object-contain max-h-[500px]"
                     loading="lazy"
@@ -461,7 +462,7 @@ export default function Feed() {
                   {(commentsData[post.id] || []).map((comment) => (
                     <div key={comment.id} className="flex items-start space-x-3">
                       <Avatar className="h-8 w-8">
-                        <AvatarImage src={comment.author_avatar} alt={comment.author_name} loading="lazy" />
+                        <AvatarImage src={proxyImageUrl(comment.author_avatar)} alt={comment.author_name} loading="lazy" />
                         <AvatarFallback className="text-xs">{comment.author_name?.[0] ?? '?'}</AvatarFallback>
                       </Avatar>
                       <div className="flex-1 min-w-0 bg-gray-50 rounded-lg p-3">

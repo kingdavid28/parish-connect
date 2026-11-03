@@ -43,6 +43,34 @@ async function main() {
       console.log(`Migrated ${moved.rowCount} contribution(s) into contribution_payments.`);
     }
     await pool.query("DROP TABLE IF EXISTS contributions");
+
+    // One-shot URL rewrite: stored pub-*.r2.dev URLs → API proxy URLs so
+    // images serve through /api/files even if the bucket's public URL is
+    // unreachable or disabled. Idempotent — REPLACE is a no-op on rerun.
+    const r2Base = (process.env.R2_PUBLIC_URL || "").replace(/\/$/, "");
+    const apiBase = (process.env.API_PUBLIC_URL || "").replace(/\/$/, "");
+    if (r2Base && apiBase) {
+      const columns = [
+        ["users", "avatar"],
+        ["posts", "image_url"],
+        ["messages", "image_url"],
+        ["group_chats", "avatar"],
+        ["group_messages", "image_url"],
+        ["contribution_payments", "receipt_url"],
+        ["gbless_topup_requests", "receipt_url"],
+      ];
+      let rewritten = 0;
+      for (const [table, col] of columns) {
+        const r = await pool.query(
+          `UPDATE ${table} SET ${col} = REPLACE(${col}, $1, $2) WHERE ${col} LIKE $3`,
+          [r2Base, `${apiBase}/api/files`, `${r2Base}/%`]
+        );
+        rewritten += r.rowCount;
+      }
+      if (rewritten > 0) {
+        console.log(`Rewrote ${rewritten} stored image URL(s) to the /api/files proxy.`);
+      }
+    }
   } finally {
     await pool.end();
   }

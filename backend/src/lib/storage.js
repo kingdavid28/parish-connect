@@ -1,4 +1,4 @@
-const { S3Client, PutObjectCommand, DeleteObjectCommand } = require("@aws-sdk/client-s3");
+const { S3Client, PutObjectCommand, DeleteObjectCommand, GetObjectCommand } = require("@aws-sdk/client-s3");
 const config = require("../config");
 const { uuid } = require("./helpers");
 
@@ -107,7 +107,10 @@ async function storeImage(file, folder, maxBytes) {
   if (!mimeType || !ALLOWED_TYPES[mimeType]) {
     return { error: "Invalid image type. Allowed: JPG, PNG, GIF, WebP" };
   }
-  const publicBaseUrl = getPublicBaseUrl();
+  // Proxy mode: serve uploads through this API (/api/files/<key>) when
+  // API_PUBLIC_URL is configured — no dependency on the bucket's public URL.
+  const proxyBaseUrl = config.apiPublicUrl ? `${config.apiPublicUrl}/api/files` : null;
+  const publicBaseUrl = proxyBaseUrl || getPublicBaseUrl();
   if (!publicBaseUrl) {
     return { error: "Public file storage URL is invalid. Check the R2_PUBLIC_URL setting." };
   }
@@ -126,19 +129,21 @@ async function storeImage(file, folder, maxBytes) {
       })
     );
     const url = `${publicBaseUrl}/${key}`;
-    try {
-      await verifyPublicUrl(url);
-    } catch (err) {
+    if (!proxyBaseUrl) {
       try {
-        await client.send(new DeleteObjectCommand({ Bucket: config.r2.bucket, Key: key }));
-      } catch (cleanupError) {
-        console.error("R2 cleanup failed for an inaccessible upload:", cleanupError.message);
+        await verifyPublicUrl(url);
+      } catch (err) {
+        try {
+          await client.send(new DeleteObjectCommand({ Bucket: config.r2.bucket, Key: key }));
+        } catch (cleanupError) {
+          console.error("R2 cleanup failed for an inaccessible upload:", cleanupError.message);
+        }
+        console.error("R2 public image check failed:", err.message);
+        return {
+          error:
+            "Image storage is unavailable. Check that R2_PUBLIC_URL is correct and the bucket's public URL is enabled.",
+        };
       }
-      console.error("R2 public image check failed:", err.message);
-      return {
-        error:
-          "Image storage is unavailable. Check that R2_PUBLIC_URL is correct and the bucket's public URL is enabled.",
-      };
     }
     return { url };
   } catch (err) {
@@ -147,4 +152,31 @@ async function storeImage(file, folder, maxBytes) {
   }
 }
 
-module.exports = { storeImage };
+/**
+ * Stream a stored object from R2.
+ * @param {string} key
+ * @returns {Promise<{body?: ReadableStream, contentType?: string, contentLength?: number, notFound?: boolean, error?: string}>}
+ */
+async function getFile(key) {
+  const client = getClient();
+  if (!client) return { error: "File storage is not configured" };
+  if (!key) return { error: "Missing file key" };
+  try {
+    const response = await client.send(
+      new GetObjectCommand({ Bucket: config.r2.bucket, Key: key })
+    );
+    return {
+      body: response.Body,
+      contentType: response.ContentType,
+      contentLength: response.ContentLength,
+    };
+  } catch (err) {
+    if (err && (err.name === "NoSuchKey" || err.$metadata?.httpStatusCode === 404)) {
+      return { notFound: true };
+    }
+    console.error("R2 get error:", err.message);
+    return { error: "Failed to read file" };
+  }
+}
+
+module.exports = { storeImage, getFile };

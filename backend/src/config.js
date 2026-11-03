@@ -85,6 +85,11 @@ module.exports = {
     publicUrl: (process.env.R2_PUBLIC_URL || "").replace(/\/$/, ""),
   },
 
+  // Canonical public origin of THIS api (no trailing slash). When set,
+  // uploaded files are served through /api/files/<key> on this origin
+  // instead of the R2 public bucket URL.
+  apiPublicUrl: (process.env.API_PUBLIC_URL || "").replace(/\/$/, ""),
+
   // Registration identity verification: when RECORDS_MODE=internal, new users
   // are verified against the internal sacramental_records table. Set to "0"
   // to disable verification (open registration).
