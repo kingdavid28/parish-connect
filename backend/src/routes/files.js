@@ -28,6 +28,9 @@ router.get("/*", async (req, res) => {
   if (result.contentLength) res.setHeader("Content-Length", result.contentLength);
   res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
   res.setHeader("X-Content-Type-Options", "nosniff");
+  // Images are embedded cross-origin (pages.dev frontend → onrender.com API);
+  // helmet's default CORP same-origin would block the <img> embed entirely.
+  res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
 
   result.body.pipe(res);
   result.body.on("error", (err) => {
