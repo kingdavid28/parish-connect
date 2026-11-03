@@ -9,7 +9,7 @@ interface ImageLightboxProps {
 }
 
 /** Fullscreen image viewer — tap/Esc/X to close. Pass src=null when closed. */
-export default function ImageLightbox({ src, alt = "Image", onClose }: ImageLightboxProps) {
+export default function ImageLightbox({ src, alt = "Image", onClose }: Readonly<ImageLightboxProps>) {
   return (
     <Dialog open={!!src} onOpenChange={(open) => !open && onClose()}>
       <DialogContent

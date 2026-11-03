@@ -1029,9 +1029,8 @@ export default function FinancePanel() {
                   <span className="font-semibold">{peso(r.amount)}</span>
                   <Button size="sm" className="bg-green-600 hover:bg-green-700" disabled={actingPending === r.id}
                     onClick={() => { void handleApprove(r); }}>
-                    {actingPending === r.id
-                      ? <Loader2 className="h-4 w-4 animate-spin" />
-                      : r.method === "gcash" ? "Verify & approve" : "Approve"}
+                    {actingPending === r.id && <Loader2 className="h-4 w-4 animate-spin" />}
+                    {actingPending !== r.id && (r.method === "gcash" ? "Verify & approve" : "Approve")}
                   </Button>
                   <Button size="sm" variant="outline" className="text-red-600 border-red-200" disabled={actingPending === r.id}
                     onClick={() => { void actOnPending(r.id, "reject"); }}>Reject</Button>

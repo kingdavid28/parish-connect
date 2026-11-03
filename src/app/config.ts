@@ -16,11 +16,18 @@
 
 const env = import.meta.env;
 
+/** Strip trailing "/" without a regex (avoids backtracking). */
+function stripTrailingSlashes(s: string): string {
+  let end = s.length;
+  while (end > 0 && s[end - 1] === "/") end--;
+  return s.slice(0, end);
+}
+
 /** Path the SPA is served under — derived from Vite `base` ("" at domain root). */
-export const BASE_PATH = env.BASE_URL.replace(/\/+$/, "");
+export const BASE_PATH = stripTrailingSlashes(env.BASE_URL);
 
 /** API base URL — same-origin `<base>/api` unless VITE_API_BASE_URL is set. */
-export const API = (env.VITE_API_BASE_URL || `${BASE_PATH}/api`).replace(/\/+$/, "");
+export const API = stripTrailingSlashes(env.VITE_API_BASE_URL || `${BASE_PATH}/api`);
 
 /** Canonical public URL of the app (QR codes, share links, push targets). */
 export const APP_URL =
