@@ -384,7 +384,7 @@ export default function Feed() {
                     <AvatarFallback>{post.author_name?.[0] ?? '?'}</AvatarFallback>
                   </Avatar>
                   <div className="min-w-0">
-                    <p className="font-medium break-words [overflow-wrap:anywhere]">{post.author_name}</p>
+                    <p className="font-medium [overflow-wrap:anywhere]">{post.author_name}</p>
                     <p className="text-sm text-gray-500">
                       {safeFormatDate(post.created_at)}
                     </p>
@@ -466,7 +466,7 @@ export default function Feed() {
                       </Avatar>
                       <div className="flex-1 min-w-0 bg-gray-50 rounded-lg p-3">
                         <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1 mb-1 min-w-0">
-                          <span className="text-sm font-medium break-words [overflow-wrap:anywhere]">{comment.author_name}</span>
+                          <span className="text-sm font-medium [overflow-wrap:anywhere]">{comment.author_name}</span>
                           <span className="text-xs text-gray-400 shrink-0">
                             {safeFormatDate(comment.created_at)}
                           </span>
