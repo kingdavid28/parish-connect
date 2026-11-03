@@ -3,8 +3,8 @@
  * Usage: npm run migrate
  * Idempotent — safe to run repeatedly.
  */
-const fs = require("fs");
-const path = require("path");
+const fs = require("node:fs");
+const path = require("node:path");
 const { Pool } = require("pg");
 require("dotenv").config({ path: path.join(__dirname, "..", ".env") });
 
@@ -59,14 +59,15 @@ async function main() {
         ["contribution_payments", "receipt_url"],
         ["gbless_topup_requests", "receipt_url"],
       ];
-      let rewritten = 0;
-      for (const [table, col] of columns) {
-        const r = await pool.query(
-          `UPDATE ${table} SET ${col} = REPLACE(${col}, $1, $2) WHERE ${col} LIKE $3`,
-          [r2Base, `${apiBase}/api/files`, `${r2Base}/%`]
-        );
-        rewritten += r.rowCount;
-      }
+      const results = await Promise.all(
+        columns.map(([table, col]) =>
+          pool.query(
+            `UPDATE ${table} SET ${col} = REPLACE(${col}, $1, $2) WHERE ${col} LIKE $3`,
+            [r2Base, `${apiBase}/api/files`, `${r2Base}/%`]
+          )
+        )
+      );
+      const rewritten = results.reduce((sum, r) => sum + r.rowCount, 0);
       if (rewritten > 0) {
         console.log(`Rewrote ${rewritten} stored image URL(s) to the /api/files proxy.`);
       }
