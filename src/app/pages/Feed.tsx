@@ -410,8 +410,14 @@ export default function Feed() {
                     className="w-full object-contain max-h-[500px]"
                     loading="lazy"
                     decoding="async"
-                    onError={(e) => { (e.currentTarget.parentElement as HTMLElement).style.display = 'none'; }}
+                    onError={(e) => {
+                      e.currentTarget.classList.add("hidden");
+                      e.currentTarget.nextElementSibling?.classList.remove("hidden");
+                    }}
                   />
+                  <p role="status" className="hidden p-4 text-sm text-gray-600">
+                    This image couldn&apos;t be loaded. Please try uploading it again.
+                  </p>
                 </div>
               )}
 
