@@ -100,27 +100,42 @@ function parishBrandingPlugin(mode: string): Plugin {
   };
 }
 
-export default defineConfig(({ mode }) => ({
-  base: computeBase(mode),
-  plugins: [
-    react(),
-    tailwindcss(),
-    parishBrandingPlugin(mode),
-  ],
-  resolve: {
-    alias: {
-      '@': path.resolve(__dirname, './src'),
+export default defineConfig(({ mode, command }) => {
+  // San Rafael is hosted separately from its API. Without this build-time
+  // value, the app silently falls back to `<Pages-origin>/api`, which cannot
+  // reach the Node service. Permit a relative URL only when the host provides
+  // an intentional same-origin /api proxy.
+  if (mode === 'san-raphael' && command === 'build') {
+    const env = { ...loadEnv(mode, process.cwd(), ''), ...process.env };
+    if (!env.VITE_API_BASE_URL?.trim()) {
+      throw new Error(
+        'San Rafael build requires VITE_API_BASE_URL (the deployed API origin + /api, or a configured same-origin /api proxy).'
+      );
+    }
+  }
+
+  return {
+    base: computeBase(mode),
+    plugins: [
+      react(),
+      tailwindcss(),
+      parishBrandingPlugin(mode),
+    ],
+    resolve: {
+      alias: {
+        '@': path.resolve(__dirname, './src'),
+      },
     },
-  },
-  assetsInclude: ['**/*.svg', '**/*.csv'],
-  test: {
-    environment: 'jsdom',
-    globals: true,
-    setupFiles: ['./src/test/setup.ts'],
-    coverage: {
-      provider: 'v8',
-      reporter: ['text', 'html'],
-      exclude: ['node_modules/', 'src/app/components/ui/', 'dist/'],
+    assetsInclude: ['**/*.svg', '**/*.csv'],
+    test: {
+      environment: 'jsdom',
+      globals: true,
+      setupFiles: ['./src/test/setup.ts'],
+      coverage: {
+        provider: 'v8',
+        reporter: ['text', 'html'],
+        exclude: ['node_modules/', 'src/app/components/ui/', 'dist/'],
+      },
     },
-  },
-}))
+  };
+})

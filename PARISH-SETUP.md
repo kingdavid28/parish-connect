@@ -128,9 +128,18 @@ unaffected — this guide is for the **new Node.js backend** in `backend/`.
 |---|---|
 | `VITE_API_BASE_URL` | `https://your-api.onrender.com/api` |
 
-`VITE_API_BASE_URL` is the only secret-ish value — everything else (parish
-name, accent `#16a34a`, logo, base path) lives in the committed
-`.env.san-raphael` profile, loaded automatically by `--mode san-raphael`.
+`VITE_API_BASE_URL` is a public build-time setting, not a secret. The
+`.env.san-raphael` profile contains the San Rafael Node API URL so the build
+cannot inherit the legacy PHP API URL from the root `.env`. Vite embeds this
+setting in the generated JavaScript; a Cloudflare Pages build variable can
+override it, but a runtime-only Pages variable has no effect. The San Rafael
+production build fails early if the value is missing rather than silently
+sending requests to the Pages site's own `/api`. A relative value is valid
+only if the frontend host has a working same-origin `/api` reverse proxy.
+
+The other frontend defaults (parish name, accent, logo, and base path) are also
+in the committed `.env.san-raphael` profile, loaded by
+`npm run build:san-raphael`.
 
 4. Deploy. The build emits `manifest.json` (name, icons, theme color) and
    rewrites `index.html` branding from the same env vars; at runtime the app
@@ -169,13 +178,29 @@ add a `build:<parish-id>` script to `package.json`.
 
 1. R2 → **Create bucket** `parish-connect-sra-uploads`.
 2. Enable a **public URL** (`r2.dev` subdomain or a custom domain) — uploaded
-   images must be reachable by the app.
+   images must be reachable by the app. Copy the exact URL shown by Cloudflare;
+   do not construct or guess the hostname.
 3. **Manage R2 API Tokens** → create token with read/write on that bucket.
 4. Set in the API env: `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`,
    `R2_SECRET_ACCESS_KEY`, `R2_BUCKET`, `R2_PUBLIC_URL`.
 
-If R2 is not configured, the API accepts uploads but stores nothing — avatar/
-post images will 500, so configure it before launch.
+`R2_PUBLIC_URL` must be the bucket's HTTPS public base URL, without a trailing
+slash. The API checks that each uploaded image is publicly reachable before
+returning its URL; failed checks remove the uploaded object and report an error
+instead of saving a broken link. Before launch, verify a real image URL from the
+bucket responds successfully over HTTPS. Existing database links are not
+rewritten when this setting changes.
+
+Post images are sent by the browser as multipart field `image` to
+`POST /api/posts`. The San Rafael Node API validates the image, stores it under
+the `posts/` prefix in R2, verifies the resulting public URL, then stores that
+absolute URL in `posts.image_url`; the feed uses the stored URL to display the
+image. Configure **all five** `R2_*` values on the Node API service, not in
+Cloudflare Pages. Without them uploads fail instead of being written to
+ephemeral server disk. Ensure the R2 public URL is readable from the internet;
+the API's URL check is the authoritative upload-time check. `ALLOWED_ORIGINS`
+on the API must also include the exact frontend origin so the browser can call
+the API.
 
 ---
 
