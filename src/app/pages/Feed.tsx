@@ -57,6 +57,7 @@ export default function Feed() {
   const [activeTab, setActiveTab] = useState("all");
   const [selectedImage, setSelectedImage] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [isCreatingPost, setIsCreatingPost] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   // Comments state
   const [expandedComments, setExpandedComments] = useState<Record<string, boolean>>({});
@@ -113,10 +114,11 @@ export default function Feed() {
   };
 
   const handleCreatePost = async () => {
-    if (!newPostContent.trim()) return;
+    if ((!newPostContent.trim() && !selectedImage) || isCreatingPost) return;
+    setIsCreatingPost(true);
     try {
       const formData = new FormData();
-      formData.append('content', newPostContent);
+      formData.append('content', newPostContent.trim());
       formData.append('type', postType);
       if (selectedImage) formData.append('image', selectedImage);
 
@@ -136,6 +138,7 @@ export default function Feed() {
         void fetchPosts(1);
       } else toast.error(data.message || 'Failed to create post');
     } catch { toast.error('Failed to create post'); }
+    finally { setIsCreatingPost(false); }
   };
 
   const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -275,7 +278,7 @@ export default function Feed() {
             </Avatar>
             <div className="flex-1 min-w-0">
               <Textarea
-                placeholder="Share with your parish community..."
+                placeholder={selectedImage ? "Add a caption (optional)..." : "Share with your parish community..."}
                 value={newPostContent}
                 onChange={(e) => setNewPostContent(e.target.value)}
                 className="mb-2 min-h-[72px] w-full resize-none text-sm"
@@ -317,8 +320,13 @@ export default function Feed() {
                   )}
                 </div>
                 {/* Right: Post button */}
-                <Button onClick={handleCreatePost} size="sm" className="h-8 px-4 shrink-0">
-                  Post
+                <Button
+                  onClick={handleCreatePost}
+                  disabled={(!newPostContent.trim() && !selectedImage) || isCreatingPost}
+                  size="sm"
+                  className="h-8 px-4 shrink-0"
+                >
+                  {isCreatingPost ? "Posting..." : "Post"}
                 </Button>
               </div>
             </div>
@@ -389,7 +397,9 @@ export default function Feed() {
               </div>
             </CardHeader>
             <CardContent>
-              <p className="text-gray-800 mb-4 whitespace-pre-wrap">{post.content}</p>
+              {post.content?.trim() && (
+                <p className="text-gray-800 mb-4 whitespace-pre-wrap">{post.content}</p>
+              )}
 
               {/* Post Image */}
               {post.image_url && (

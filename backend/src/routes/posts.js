@@ -31,7 +31,9 @@ async function notifyPostAudience(post, author) {
           values: [author.id],
         };
     const { rows } = await pool.query(query.text, query.values);
-    const preview = post.content.length > 120 ? `${post.content.slice(0, 120)}…` : post.content;
+    const preview = post.content
+      ? post.content.length > 120 ? `${post.content.slice(0, 120)}…` : post.content
+      : "Shared a photo";
     const payload = {
       category: "posts",
       title: isAdminPost ? "New parish post" : `${author.name} posted`,
@@ -85,8 +87,8 @@ router.post("/", authenticate, upload.single("image"), async (req, res) => {
   const content = String(req.body?.content || "").trim();
   const type = String(req.body?.type || "community");
 
-  if (!content) {
-    return res.status(400).json({ success: false, message: "Content is required" });
+  if (!content && !req.file) {
+    return res.status(400).json({ success: false, message: "Add text or an image to your post" });
   }
   if (content.length > 2000) {
     return res.status(400).json({ success: false, message: "Content must be under 2000 characters" });

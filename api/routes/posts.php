@@ -65,8 +65,9 @@ function createPost(): void {
         $type        = $body['type'] ?? 'community';
     }
 
-    if (!$content) {
-        jsonResponse(['success' => false, 'message' => 'Content is required'], 400);
+    $hasImage = isset($_FILES['image']) && $_FILES['image']['error'] !== UPLOAD_ERR_NO_FILE;
+    if (!$content && !$hasImage) {
+        jsonResponse(['success' => false, 'message' => 'Add text or an image to your post'], 400);
     }
 
     if (strlen($content) > 2000) {
@@ -80,16 +81,39 @@ function createPost(): void {
 
     // Handle image upload
     $imageUrl = null;
-    if (isset($_FILES['image']) && $_FILES['image']['error'] === UPLOAD_ERR_OK) {
+    if (isset($_FILES['image']) && $_FILES['image']['error'] !== UPLOAD_ERR_NO_FILE) {
+        $uploadError = $_FILES['image']['error'];
+        if ($uploadError !== UPLOAD_ERR_OK) {
+            $uploadFailure = match ($uploadError) {
+                UPLOAD_ERR_INI_SIZE, UPLOAD_ERR_FORM_SIZE => [
+                    'Image exceeds the server upload limit. Configure upload_max_filesize to at least 5M and post_max_size to at least 6M.',
+                    413,
+                ],
+                UPLOAD_ERR_PARTIAL => ['Image upload was interrupted. Please try again.', 400],
+                UPLOAD_ERR_NO_TMP_DIR, UPLOAD_ERR_CANT_WRITE, UPLOAD_ERR_EXTENSION => [
+                    'Image upload failed on the server. Please contact an administrator.',
+                    500,
+                ],
+                default => ['Image upload failed. Please try again.', 400],
+            };
+            jsonResponse(['success' => false, 'message' => $uploadFailure[0]], $uploadFailure[1]);
+        }
+
         $file = $_FILES['image'];
         $maxSize = 5 * 1024 * 1024; // 5MB
 
+        if ($file['size'] <= 0) {
+            jsonResponse(['success' => false, 'message' => 'The uploaded image is empty'], 400);
+        }
         if ($file['size'] > $maxSize) {
             jsonResponse(['success' => false, 'message' => 'Image too large. Max 5MB.'], 400);
         }
 
         $allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
         $finfo = finfo_open(FILEINFO_MIME_TYPE);
+        if ($finfo === false) {
+            jsonResponse(['success' => false, 'message' => 'Unable to validate the uploaded image'], 500);
+        }
         $mimeType = finfo_file($finfo, $file['tmp_name']);
         finfo_close($finfo);
 
@@ -106,10 +130,12 @@ function createPost(): void {
         if (!is_dir($uploadDir)) mkdir($uploadDir, 0755, true);
 
         $filename = generateUuid() . '.' . $ext;
-        if (!move_uploaded_file($file['tmp_name'], $uploadDir . $filename)) {
+        $uploadPath = $uploadDir . $filename;
+        if (!move_uploaded_file($file['tmp_name'], $uploadPath)) {
             jsonResponse(['success' => false, 'message' => 'Failed to save image'], 500);
         }
-        $imageUrl = '/parish-connect/api/uploads/posts/' . $filename;
+        $apiBasePath = rtrim(dirname($_SERVER['SCRIPT_NAME'] ?? '/api/index.php'), '/');
+        $imageUrl = $apiBasePath . '/uploads/posts/' . $filename;
     }
 
     try {
