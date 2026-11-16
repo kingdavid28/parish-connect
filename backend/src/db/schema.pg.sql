@@ -102,6 +102,54 @@ CREATE TABLE IF NOT EXISTS sacramental_records (
 );
 CREATE INDEX IF NOT EXISTS idx_sacramental_records_name ON sacramental_records(name);
 
+-- Marriage registry (church certificate + civil contract numbers on one entry).
+CREATE TABLE IF NOT EXISTS marriage_records (
+  id                VARCHAR(36)  NOT NULL PRIMARY KEY,
+  groom_name        VARCHAR(200) NOT NULL,
+  bride_name        VARCHAR(200) NOT NULL,
+  marriage_date     DATE         NOT NULL,
+  groom_father_name VARCHAR(200) NULL,
+  groom_mother_name VARCHAR(200) NULL,
+  bride_father_name VARCHAR(200) NULL,
+  bride_mother_name VARCHAR(200) NULL,
+  sponsors_names    VARCHAR(400) NULL,  -- principal sponsors / witnesses
+  priest            VARCHAR(200) NOT NULL,
+  location          VARCHAR(255) NOT NULL DEFAULT '',
+  record_number     VARCHAR(50)  NOT NULL UNIQUE,  -- church registry no.
+  contract_no       VARCHAR(100) NULL,             -- civil marriage contract no.
+  parish_id         VARCHAR(100) NOT NULL DEFAULT 'parish',
+  notes             TEXT         NULL,
+  created_by        VARCHAR(36)  NULL REFERENCES users(id) ON DELETE SET NULL,
+  created_at        TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
+  updated_at        TIMESTAMP    DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_marriage_groom ON marriage_records(groom_name);
+CREATE INDEX IF NOT EXISTS idx_marriage_bride ON marriage_records(bride_name);
+CREATE INDEX IF NOT EXISTS idx_marriage_date  ON marriage_records(marriage_date);
+
+-- Death / funeral registry.
+CREATE TABLE IF NOT EXISTS death_records (
+  id             VARCHAR(36)  NOT NULL PRIMARY KEY,
+  full_name      VARCHAR(200) NOT NULL,
+  death_date     DATE         NOT NULL,
+  birth_date     DATE         NULL,
+  age            SMALLINT     NULL,
+  residence      VARCHAR(255) NULL,
+  spouse_name    VARCHAR(200) NULL,
+  informant_name VARCHAR(200) NULL,  -- next of kin / informant
+  cause_of_death VARCHAR(255) NULL,
+  cemetery       VARCHAR(255) NULL,
+  priest         VARCHAR(200) NULL,
+  record_number  VARCHAR(50)  NOT NULL UNIQUE,
+  parish_id      VARCHAR(100) NOT NULL DEFAULT 'parish',
+  notes          TEXT         NULL,
+  created_by     VARCHAR(36)  NULL REFERENCES users(id) ON DELETE SET NULL,
+  created_at     TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
+  updated_at     TIMESTAMP    DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_death_name ON death_records(full_name);
+CREATE INDEX IF NOT EXISTS idx_death_date ON death_records(death_date);
+
 -- BEC (Basic Ecclesial Community) monthly dues ledger.
 CREATE TABLE IF NOT EXISTS becs (
   id              VARCHAR(36)   NOT NULL PRIMARY KEY,

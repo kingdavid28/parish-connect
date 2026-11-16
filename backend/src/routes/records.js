@@ -93,4 +93,207 @@ router.post("/baptism", authenticate, requireRole("admin", "superadmin"), async 
   }
 });
 
+// ─── Typed registries (marriage / death) — shared handlers ───────────────────
+// Each config declares columns, required fields, and searchable columns; the
+// factory below generates list/create/update/delete/bulk routes identically.
+const TYPED_REGISTRIES = {
+  marriage: {
+    table: "marriage_records",
+    dateCol: "marriage_date",
+    searchCols: ["groom_name", "bride_name", "record_number", "contract_no"],
+    fields: [
+      { col: "groom_name", req: true, max: 200 },
+      { col: "bride_name", req: true, max: 200 },
+      { col: "marriage_date", req: true, type: "date" },
+      { col: "groom_father_name", max: 200 },
+      { col: "groom_mother_name", max: 200 },
+      { col: "bride_father_name", max: 200 },
+      { col: "bride_mother_name", max: 200 },
+      { col: "sponsors_names", max: 400 },
+      { col: "priest", req: true, max: 200 },
+      { col: "location", max: 255 },
+      { col: "record_number", req: true, max: 50 },
+      { col: "contract_no", max: 100 },
+      { col: "notes", max: 2000 },
+    ],
+  },
+  death: {
+    table: "death_records",
+    dateCol: "death_date",
+    searchCols: ["full_name", "spouse_name", "informant_name", "record_number"],
+    fields: [
+      { col: "full_name", req: true, max: 200 },
+      { col: "death_date", req: true, type: "date" },
+      { col: "birth_date", type: "date" },
+      { col: "age", type: "int" },
+      { col: "residence", max: 255 },
+      { col: "spouse_name", max: 200 },
+      { col: "informant_name", max: 200 },
+      { col: "cause_of_death", max: 255 },
+      { col: "cemetery", max: 255 },
+      { col: "priest", max: 200 },
+      { col: "record_number", req: true, max: 50 },
+      { col: "notes", max: 2000 },
+    ],
+  },
+};
+
+function sanitizeTypedRecord(cfg, raw) {
+  const values = {};
+  for (const f of cfg.fields) {
+    let v = raw[f.col];
+    if (v === undefined || v === null || String(v).trim() === "") {
+      if (f.req) return { error: `Missing required field: ${f.col}` };
+      values[f.col] = null;
+      continue;
+    }
+    if (f.type === "date") {
+      const s = String(v).trim();
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(s) || Number.isNaN(Date.parse(s))) {
+        return { error: `${f.col} must be a date (YYYY-MM-DD)` };
+      }
+      values[f.col] = s;
+    } else if (f.type === "int") {
+      const n = parseInt(v, 10);
+      if (!Number.isFinite(n) || n < 0 || n > 150) return { error: `${f.col} must be a valid age` };
+      values[f.col] = n;
+    } else {
+      const s = String(v).trim();
+      if (f.max && s.length > f.max) return { error: `${f.col} is too long (max ${f.max})` };
+      values[f.col] = s;
+    }
+  }
+  return { values };
+}
+
+function registerTypedRoutes(key, cfg) {
+  const cols = cfg.fields.map((f) => f.col);
+
+  // GET /api/records/:type?search=&year=&page=&limit=
+  router.get(`/${key}`, authenticate, async (req, res) => {
+    const search = String(req.query.search || "").trim();
+    const year = parseInt(req.query.year || 0, 10);
+    const page = Math.max(1, parseInt(req.query.page || 1, 10));
+    const limit = Math.min(50, Math.max(1, parseInt(req.query.limit || 20, 10)));
+    const offset = (page - 1) * limit;
+
+    try {
+      const where = ["parish_id = $1"];
+      const params = [config.parish.id];
+      if (search) {
+        const like = `%${search}%`;
+        const ors = cfg.searchCols.map((c) => {
+          params.push(like);
+          return `${c} ILIKE $${params.length}`;
+        });
+        where.push(`(${ors.join(" OR ")})`);
+      }
+      if (year > 0) {
+        params.push(year);
+        where.push(`EXTRACT(YEAR FROM ${cfg.dateCol}) = $${params.length}`);
+      }
+      const whereSql = "WHERE " + where.join(" AND ");
+      const { rows: countRows } = await pool.query(
+        `SELECT COUNT(*) AS total FROM ${cfg.table} ${whereSql}`, params);
+      const total = parseInt(countRows[0].total, 10);
+      params.push(limit, offset);
+      const { rows: items } = await pool.query(
+        `SELECT * FROM ${cfg.table} ${whereSql} ORDER BY ${cfg.dateCol} DESC LIMIT $${params.length - 1} OFFSET $${params.length}`,
+        params);
+      res.json({ success: true, data: { items, total, page, pageSize: limit, hasMore: offset + items.length < total } });
+    } catch (err) {
+      console.error(`List ${key} records error:`, err.message);
+      res.status(500).json({ success: false, message: "Internal server error" });
+    }
+  });
+
+  // POST /api/records/:type — admin only
+  router.post(`/${key}`, authenticate, requireRole("admin", "superadmin"), async (req, res) => {
+    const { values, error } = sanitizeTypedRecord(cfg, req.body || {});
+    if (error) return res.status(400).json({ success: false, message: error });
+    try {
+      const { rows: dup } = await pool.query(
+        `SELECT id FROM ${cfg.table} WHERE record_number = $1 LIMIT 1`, [values.record_number]);
+      if (dup.length) return res.status(409).json({ success: false, message: "Record number already exists" });
+      const id = uuid();
+      await pool.query(
+        `INSERT INTO ${cfg.table} (${cols.join(", ")}, id, parish_id, created_by)
+         VALUES (${cols.map((_, i) => `$${i + 1}`).join(", ")}, $${cols.length + 1}, $${cols.length + 2}, $${cols.length + 3})`,
+        [...cols.map((c) => values[c]), id, config.parish.id, req.user.id]);
+      await auditLog(req.user.id, `create_${key}_record`, `${key}_record`, id, getClientIp(req));
+      res.status(201).json({ success: true, message: "Record created", data: { id } });
+    } catch (err) {
+      console.error(`Create ${key} record error:`, err.message);
+      res.status(500).json({ success: false, message: "Internal server error" });
+    }
+  });
+
+  // PUT /api/records/:type/:id — admin only
+  router.put(`/${key}/:id`, authenticate, requireRole("admin", "superadmin"), async (req, res) => {
+    const { values, error } = sanitizeTypedRecord(cfg, req.body || {});
+    if (error) return res.status(400).json({ success: false, message: error });
+    try {
+      const { rows: dup } = await pool.query(
+        `SELECT id FROM ${cfg.table} WHERE record_number = $1 AND id <> $2 LIMIT 1`,
+        [values.record_number, req.params.id]);
+      if (dup.length) return res.status(409).json({ success: false, message: "Record number already exists" });
+      const { rowCount } = await pool.query(
+        `UPDATE ${cfg.table} SET ${cols.map((c, i) => `${c} = $${i + 1}`).join(", ")}, updated_at = NOW()
+         WHERE id = $${cols.length + 1} AND parish_id = $${cols.length + 2}`,
+        [...cols.map((c) => values[c]), req.params.id, config.parish.id]);
+      if (!rowCount) return res.status(404).json({ success: false, message: "Record not found" });
+      await auditLog(req.user.id, `update_${key}_record`, `${key}_record`, req.params.id, getClientIp(req));
+      res.json({ success: true, message: "Record updated" });
+    } catch (err) {
+      console.error(`Update ${key} record error:`, err.message);
+      res.status(500).json({ success: false, message: "Internal server error" });
+    }
+  });
+
+  // DELETE /api/records/:type/:id — admin only
+  router.delete(`/${key}/:id`, authenticate, requireRole("admin", "superadmin"), async (req, res) => {
+    try {
+      const { rowCount } = await pool.query(
+        `DELETE FROM ${cfg.table} WHERE id = $1 AND parish_id = $2`, [req.params.id, config.parish.id]);
+      if (!rowCount) return res.status(404).json({ success: false, message: "Record not found" });
+      await auditLog(req.user.id, `delete_${key}_record`, `${key}_record`, req.params.id, getClientIp(req));
+      res.json({ success: true, message: "Record deleted" });
+    } catch (err) {
+      console.error(`Delete ${key} record error:`, err.message);
+      res.status(500).json({ success: false, message: "Internal server error" });
+    }
+  });
+
+  // POST /api/records/:type/bulk — admin CSV import. Body: { records: [{row?, ...}] }
+  router.post(`/${key}/bulk`, authenticate, requireRole("admin", "superadmin"), async (req, res) => {
+    const items = Array.isArray(req.body?.records) ? req.body.records : [];
+    if (!items.length) return res.status(400).json({ success: false, message: "No records provided" });
+    if (items.length > 5000) return res.status(400).json({ success: false, message: "Too many records (max 5000)" });
+
+    const errors = [];
+    let imported = 0;
+    for (const [i, raw] of items.entries()) {
+      const rowLabel = raw.row || i + 2;
+      const { values, error } = sanitizeTypedRecord(cfg, raw);
+      if (error) { errors.push({ row: rowLabel, message: error }); continue; }
+      try {
+        await pool.query(
+          `INSERT INTO ${cfg.table} (${cols.join(", ")}, id, parish_id, created_by)
+           VALUES (${cols.map((_, j) => `$${j + 1}`).join(", ")}, $${cols.length + 1}, $${cols.length + 2}, $${cols.length + 3})
+           ON CONFLICT (record_number) DO NOTHING`,
+          [...cols.map((c) => values[c]), uuid(), config.parish.id, req.user.id]);
+        imported += 1;
+      } catch (err) {
+        errors.push({ row: rowLabel, message: err.message });
+      }
+    }
+    if (imported > 0) {
+      await auditLog(req.user.id, `import_${key}_records`, `${key}_record`, String(imported), getClientIp(req));
+    }
+    res.json({ success: true, data: { imported, failed: errors.length, errors: errors.slice(0, 50) } });
+  });
+}
+
+for (const [key, cfg] of Object.entries(TYPED_REGISTRIES)) registerTypedRoutes(key, cfg);
+
 module.exports = router;

@@ -19,6 +19,7 @@ import {
 import { Label } from "../components/ui/label";
 import { Textarea } from "../components/ui/textarea";
 import { parseRecordsCsv, RECORDS_CSV_TEMPLATE, type ParsedCsvRow } from "../lib/parseCsv";
+import RegistryPanel, { MARRIAGE_PANEL, DEATH_PANEL } from "../components/RegistryPanel";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import { useParishConfig } from "../context/ParishConfigContext";
@@ -442,9 +443,11 @@ export default function ParishRecords() {
       ) : (
 
       <Tabs defaultValue="baptism" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-2 sm:w-fit">
+        <TabsList className="grid w-full grid-cols-2 sm:w-fit sm:grid-cols-4">
           <TabsTrigger value="baptism" className="h-auto min-h-8 whitespace-normal px-1 text-center text-xs leading-tight sm:px-3 sm:text-sm">Baptism Records</TabsTrigger>
           <TabsTrigger value="confirmation" className="h-auto min-h-8 whitespace-normal px-1 text-center text-xs leading-tight sm:px-3 sm:text-sm">Confirmation Records</TabsTrigger>
+          <TabsTrigger value="marriage" className="h-auto min-h-8 whitespace-normal px-1 text-center text-xs leading-tight sm:px-3 sm:text-sm">Marriage Records</TabsTrigger>
+          <TabsTrigger value="death" className="h-auto min-h-8 whitespace-normal px-1 text-center text-xs leading-tight sm:px-3 sm:text-sm">Death Records</TabsTrigger>
         </TabsList>
 
         <TabsContent value="baptism" className="space-y-4">
@@ -661,6 +664,14 @@ export default function ParishRecords() {
               <p className="text-sm text-gray-500 mt-1">Click "View" on any record to see confirmation details</p>
             </CardContent>
           </Card>
+        </TabsContent>
+
+        <TabsContent value="marriage">
+          <RegistryPanel {...MARRIAGE_PANEL} />
+        </TabsContent>
+
+        <TabsContent value="death">
+          <RegistryPanel {...DEATH_PANEL} />
         </TabsContent>
       </Tabs>
       )}
