@@ -94,7 +94,8 @@ export default function RegistryPanel(props: Readonly<RegistryPanelProps>) {
     const next: Record<string, string> = {};
     for (const f of fields) {
       const v = row?.[f.key];
-      next[f.key] = v == null ? "" : f.type === "date" ? String(v).slice(0, 10) : String(v);
+      if (v == null) next[f.key] = "";
+      else next[f.key] = f.type === "date" ? String(v).slice(0, 10) : String(v);
     }
     setForm(next);
     setDialogOpen(true);
@@ -192,6 +193,46 @@ export default function RegistryPanel(props: Readonly<RegistryPanelProps>) {
   };
   const isDateCol = (key: string) => fields.find((f) => f.key === key)?.type === "date";
 
+  const renderTableContent = () => {
+    if (loading) {
+      return <div className="flex justify-center py-10"><Loader className="h-6 w-6 animate-spin text-gray-400" /></div>;
+    }
+    if (items.length === 0) {
+      return <p className="py-10 text-center text-sm text-gray-500">No records found.</p>;
+    }
+    return (
+      <Table>
+        <TableHeader>
+          <TableRow>
+            {columns.map((c) => <TableHead key={c.key}>{c.label}</TableHead>)}
+            {isAdmin && <TableHead className="w-20" />}
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {items.map((row) => (
+            <TableRow key={row.id}>
+              {columns.map((c) => (
+                <TableCell key={c.key} className="whitespace-nowrap">{fmt(row[c.key], isDateCol(c.key))}</TableCell>
+              ))}
+              {isAdmin && (
+                <TableCell>
+                  <div className="flex gap-1">
+                    <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openForm(row)} aria-label="Edit record">
+                      <Pencil className="h-4 w-4" />
+                    </Button>
+                    <Button variant="ghost" size="icon" className="h-8 w-8 text-red-500" onClick={() => void remove(row)} aria-label="Delete record">
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </TableCell>
+              )}
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    );
+  };
+
   return (
     <div className="space-y-4">
       <Card>
@@ -232,41 +273,7 @@ export default function RegistryPanel(props: Readonly<RegistryPanelProps>) {
           <CardTitle className="text-base">{title} <span className="font-normal text-gray-500">({total})</span></CardTitle>
         </CardHeader>
         <CardContent className="overflow-x-auto p-0 sm:p-6 sm:pt-0">
-          {loading ? (
-            <div className="flex justify-center py-10"><Loader className="h-6 w-6 animate-spin text-gray-400" /></div>
-          ) : items.length === 0 ? (
-            <p className="py-10 text-center text-sm text-gray-500">No records found.</p>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  {columns.map((c) => <TableHead key={c.key}>{c.label}</TableHead>)}
-                  {isAdmin && <TableHead className="w-20" />}
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {items.map((row) => (
-                  <TableRow key={row.id}>
-                    {columns.map((c) => (
-                      <TableCell key={c.key} className="whitespace-nowrap">{fmt(row[c.key], isDateCol(c.key))}</TableCell>
-                    ))}
-                    {isAdmin && (
-                      <TableCell>
-                        <div className="flex gap-1">
-                          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openForm(row)} aria-label="Edit record">
-                            <Pencil className="h-4 w-4" />
-                          </Button>
-                          <Button variant="ghost" size="icon" className="h-8 w-8 text-red-500" onClick={() => void remove(row)} aria-label="Delete record">
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </TableCell>
-                    )}
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
+          {renderTableContent()}
         </CardContent>
       </Card>
 
@@ -290,24 +297,27 @@ export default function RegistryPanel(props: Readonly<RegistryPanelProps>) {
             <DialogDescription>Fields marked * are required.</DialogDescription>
           </DialogHeader>
           <form onSubmit={save} className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            {fields.map((f) => (
-              <div key={f.key} className={f.type === "textarea" ? "sm:col-span-2" : ""}>
-                <Label htmlFor={`reg-${f.key}`}>{f.label}{f.required ? " *" : ""}</Label>
-                {f.type === "textarea" ? (
-                  <Textarea id={`reg-${f.key}`} value={form[f.key] || ""} onChange={(e) => setForm({ ...form, [f.key]: e.target.value })} placeholder={f.placeholder} rows={2} />
-                ) : (
-                  <Input
-                    id={`reg-${f.key}`}
-                    type={f.type === "date" ? "date" : f.type === "number" ? "number" : "text"}
-                    min={f.type === "number" ? 0 : undefined}
-                    value={form[f.key] || ""}
-                    onChange={(e) => setForm({ ...form, [f.key]: e.target.value })}
-                    placeholder={f.placeholder}
-                    required={f.required}
-                  />
-                )}
-              </div>
-            ))}
+            {fields.map((f) => {
+              const inputType = f.type === "date" || f.type === "number" ? f.type : "text";
+              return (
+                <div key={f.key} className={f.type === "textarea" ? "sm:col-span-2" : ""}>
+                  <Label htmlFor={`reg-${f.key}`}>{f.label}{f.required ? " *" : ""}</Label>
+                  {f.type === "textarea" ? (
+                    <Textarea id={`reg-${f.key}`} value={form[f.key] || ""} onChange={(e) => setForm({ ...form, [f.key]: e.target.value })} placeholder={f.placeholder} rows={2} />
+                  ) : (
+                    <Input
+                      id={`reg-${f.key}`}
+                      type={inputType}
+                      min={f.type === "number" ? 0 : undefined}
+                      value={form[f.key] || ""}
+                      onChange={(e) => setForm({ ...form, [f.key]: e.target.value })}
+                      placeholder={f.placeholder}
+                      required={f.required}
+                    />
+                  )}
+                </div>
+              );
+            })}
             <div className="flex justify-end gap-2 sm:col-span-2">
               <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>Cancel</Button>
               <Button type="submit" disabled={saving}>{saving ? "Saving…" : "Save"}</Button>
@@ -331,7 +341,7 @@ export default function RegistryPanel(props: Readonly<RegistryPanelProps>) {
           <input ref={fileRef} type="file" accept=".csv,text/csv" onChange={(e) => void onFile(e)} className="text-sm" />
           {importErrors.length > 0 && (
             <div className="max-h-40 overflow-y-auto rounded border border-amber-200 bg-amber-50 p-2 text-xs text-amber-800">
-              {importErrors.slice(0, 20).map((er, i) => <p key={i}>Row {er.row}: {er.message}</p>)}
+              {importErrors.slice(0, 20).map((er) => <p key={`${er.row}-${er.message}`}>Row {er.row}: {er.message}</p>)}
               {importErrors.length > 20 && <p>…and {importErrors.length - 20} more</p>}
             </div>
           )}
