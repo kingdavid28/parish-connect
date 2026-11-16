@@ -144,6 +144,61 @@ function FieldNote({ id, error, hint }: Readonly<{ id?: string; error?: string; 
   return null;
 }
 
+// CSV import state + handlers for the sacramental records import dialog.
+function useRecordsImport(onImported: () => void) {
+  const [importOpen, setImportOpen] = useState(false);
+  const [importText, setImportText] = useState("");
+  const [importRows, setImportRows] = useState<ParsedCsvRow[]>([]);
+  const [importErrors, setImportErrors] = useState<{ row: number; message: string }[]>([]);
+  const [importing, setImporting] = useState(false);
+
+  const parseImportText = (text: string) => {
+    setImportText(text);
+    const { rows, errors } = parseRecordsCsv(text);
+    setImportRows(rows);
+    setImportErrors(errors);
+  };
+
+  const handleImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    parseImportText(await file.text());
+    e.target.value = "";
+  };
+
+  const submitImport = async () => {
+    setImporting(true);
+    try {
+      const res = await fetch(`${API}/sacraments/bulk`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${getToken()}` },
+        body: JSON.stringify({ records: importRows.map((r) => ({ ...r.data, row: r.row })) }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        toast.error(data.message || "Import failed");
+        if (data?.data?.errors?.length) setImportErrors(data.data.errors);
+        return;
+      }
+      toast.success(data.message);
+      if (data.data?.failed > 0) {
+        setImportErrors(data.data.errors || []);
+        toast.warning(`${data.data.failed} row${data.data.failed === 1 ? "" : "s"} skipped — see details`);
+      } else {
+        setImportOpen(false);
+        setImportText(""); setImportRows([]); setImportErrors([]);
+      }
+      onImported();
+    } catch {
+      toast.error("Import failed");
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  return { importOpen, setImportOpen, importText, importRows, importErrors, importing, parseImportText, handleImportFile, submitImport };
+}
+
 const EMPTY_FORM = {
   name: "", birthday: "", parents_name: "", baptized_by: "", canonical_book: "",
   baptismal_date: "", godparents_name: "", confirmed_by: "", confirmbook_no: "",
@@ -168,57 +223,11 @@ export default function ParishRecords() {
   const [form, setForm] = useState(EMPTY_FORM);
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
-  const [importOpen, setImportOpen] = useState(false);
-  const [importText, setImportText] = useState("");
-  const [importRows, setImportRows] = useState<ParsedCsvRow[]>([]);
-  const [importErrors, setImportErrors] = useState<{ row: number; message: string }[]>([]);
-  const [importing, setImporting] = useState(false);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
-
-  const parseImportText = (text: string) => {
-    setImportText(text);
-    const { rows, errors } = parseRecordsCsv(text);
-    setImportRows(rows);
-    setImportErrors(errors);
-  };
-
-  const handleImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    parseImportText(await file.text());
-    e.target.value = "";
-  };
-
-
-  const submitImport = async () => {
-    setImporting(true);
-    try {
-      const res = await fetch(`${API}/sacraments/bulk`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${getToken()}` },
-        body: JSON.stringify({ records: importRows.map((r) => ({ ...r.data, row: r.row })) }),
-      });
-      const data = await res.json();
-      if (!res.ok || !data.success) {
-        toast.error(data.message || "Import failed");
-        if (data?.data?.errors?.length) setImportErrors(data.data.errors);
-        return;
-      }
-      toast.success(data.message);
-      if (data.data?.failed > 0) {
-        setImportErrors(data.data.errors || []);
-        toast.warning(`${data.data.failed} row${data.data.failed === 1 ? "" : "s"} skipped — see details`);
-      } else {
-        setImportOpen(false);
-        setImportText(""); setImportRows([]); setImportErrors([]);
-      }
-      void fetchRecords(1);
-    } catch {
-      toast.error("Import failed");
-    } finally {
-      setImporting(false);
-    }
-  };
+  const {
+    importOpen, setImportOpen, importText, importRows, importErrors, importing,
+    parseImportText, handleImportFile, submitImport,
+  } = useRecordsImport(() => void fetchRecords(1));
 
   const openAddDialog = () => {
     setEditingRecord(null);
