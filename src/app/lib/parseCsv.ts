@@ -18,74 +18,80 @@ export interface CsvParseResult {
 }
 
 /** Split CSV text into a grid of string cells. */
-export function parseCsvGrid(text: string): { grid: string[][]; errors: { row: number; message: string }[] } {
-  const grid: string[][] = [];
-  const errors: { row: number; message: string }[] = [];
-  let row: string[] = [];
-  let field = "";
-  let inQuotes = false;
-  let lineNo = 1;
-  let fieldStartedInQuotes = false;
+interface CsvScanState {
+  grid: string[][];
+  errors: { row: number; message: string }[];
+  row: string[];
+  field: string;
+  inQuotes: boolean;
+  lineNo: number;
+}
 
-  const pushField = () => {
-    row.push(field);
-    field = "";
-    fieldStartedInQuotes = false;
-  };
-  const pushRow = () => {
-    pushField();
-    grid.push(row);
-    row = [];
-  };
+const pushCsvField = (s: CsvScanState) => {
+  s.row.push(s.field);
+  s.field = "";
+};
+
+const pushCsvRow = (s: CsvScanState) => {
+  pushCsvField(s);
+  s.grid.push(s.row);
+  s.row = [];
+  s.lineNo++;
+};
+
+// Inside a quoted field; returns chars consumed beyond the current one.
+function scanQuotedChar(s: CsvScanState, ch: string, next: string | undefined): number {
+  if (ch !== '"') {
+    s.field += ch;
+    return 0;
+  }
+  if (next === '"') {
+    s.field += '"';
+    return 1; // escaped quote — consume the pair
+  }
+  s.inQuotes = false;
+  return 0;
+}
+
+// Outside a quoted field; returns chars consumed beyond the current one.
+function scanPlainChar(s: CsvScanState, ch: string, next: string | undefined): number {
+  if (ch === '"') {
+    s.inQuotes = true;
+    if (s.field !== "") {
+      s.errors.push({ row: s.lineNo, message: `Unexpected quote in field ${s.row.length + 1}` });
+    }
+  } else if (ch === ",") {
+    pushCsvField(s);
+  } else if (ch === "\n") {
+    pushCsvRow(s);
+  } else if (ch === "\r") {
+    // swallow; \n follows in CRLF files, lone \r treated as newline
+    if (next !== "\n") pushCsvRow(s);
+  } else {
+    s.field += ch;
+  }
+  return 0;
+}
+
+export function parseCsvGrid(text: string): { grid: string[][]; errors: { row: number; message: string }[] } {
+  const s: CsvScanState = { grid: [], errors: [], row: [], field: "", inQuotes: false, lineNo: 1 };
 
   for (let i = 0; i < text.length; i++) {
-    const ch = text[i];
-    if (inQuotes) {
-      if (ch === '"') {
-        if (text[i + 1] === '"') {
-          field += '"';
-          i++;
-        } else {
-          inQuotes = false;
-        }
-      } else {
-        field += ch;
-      }
-      continue;
-    }
-    if (ch === '"') {
-      inQuotes = true;
-      fieldStartedInQuotes = field === "";
-      if (!fieldStartedInQuotes) {
-        errors.push({ row: lineNo, message: `Unexpected quote in field ${row.length + 1}` });
-      }
-    } else if (ch === ",") {
-      pushField();
-    } else if (ch === "\n") {
-      pushRow();
-      lineNo++;
-    } else if (ch === "\r") {
-      // swallow; \n follows in CRLF files, lone \r treated as newline
-      if (text[i + 1] !== "\n") {
-        pushRow();
-        lineNo++;
-      }
-    } else {
-      field += ch;
-    }
+    i += s.inQuotes ? scanQuotedChar(s, text[i], text[i + 1]) : scanPlainChar(s, text[i], text[i + 1]);
   }
-  if (inQuotes) {
-    errors.push({ row: lineNo, message: "Unterminated quoted field" });
+  if (s.inQuotes) {
+    s.errors.push({ row: s.lineNo, message: "Unterminated quoted field" });
   }
   // Trailing row (non-empty or file didn't end with newline)
-  if (field !== "" || row.length > 0) {
-    pushRow();
+  if (s.field !== "" || s.row.length > 0) {
+    pushCsvField(s);
+    s.grid.push(s.row);
   }
   // Drop fully-empty trailing lines
-  while (grid.length && grid[grid.length - 1].every((c) => c.trim() === "")) {
-    grid.pop();
+  while (s.grid.length && s.grid[s.grid.length - 1].every((c) => c.trim() === "")) {
+    s.grid.pop();
   }
-  return { grid, errors };
+  return { grid: s.grid, errors: s.errors };
 }
 
 /** Canonical sacramental-record fields (matches RECORD_FIELDS server-side). */

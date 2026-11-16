@@ -674,7 +674,7 @@ export default function ParishRecords() {
           </DialogHeader>
           <form
             className="space-y-5"
-            onSubmit={(e) => { e.preventDefault(); saveRecord(); }}
+            onSubmit={(e) => { e.preventDefault(); void saveRecord(); }}
           >
             <div>
               <h4 className="font-medium mb-2 flex items-center gap-2">
