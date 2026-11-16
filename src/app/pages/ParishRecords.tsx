@@ -53,6 +53,15 @@ const parseToDate = (s: string): Date | undefined => {
   return Number.isNaN(d2.getTime()) ? undefined : d2;
 };
 
+const downloadTemplate = () => {
+  const blob = new Blob([RECORDS_CSV_TEMPLATE], { type: "text/csv" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "sacramental-records-template.csv";
+  a.click();
+  URL.revokeObjectURL(a.href);
+};
+
 // Formats stored dates (ISO or legacy text) for display. Module-scope: pure.
 const safeDate = (d: string): string => {
   try {
@@ -180,14 +189,6 @@ export default function ParishRecords() {
     e.target.value = "";
   };
 
-  const downloadTemplate = () => {
-    const blob = new Blob([RECORDS_CSV_TEMPLATE], { type: "text/csv" });
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = "sacramental-records-template.csv";
-    a.click();
-    URL.revokeObjectURL(a.href);
-  };
 
   const submitImport = async () => {
     setImporting(true);
