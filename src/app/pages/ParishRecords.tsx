@@ -402,6 +402,7 @@ export default function ParishRecords() {
   const handleSearch = () => { void fetchRecords(1); };
 
   const importLabel = importRows.length + " record" + (importRows.length === 1 ? "" : "s");
+  const totalSuffix = total === 1 ? "" : "s";
 
 
   return (
@@ -495,7 +496,7 @@ export default function ParishRecords() {
                 </div>
                 <div className="mt-4 flex items-center gap-2 text-sm text-gray-600">
                   <Shield className="h-4 w-4" />
-                  <span>{total} record{total !== 1 ? 's' : ''} found</span>
+                  <span>{total} record{totalSuffix} found</span>
                 </div>
               </CardContent>
             </Card>
@@ -506,7 +507,7 @@ export default function ParishRecords() {
               <CardContent className="pt-6">
                 <div className="flex items-center gap-2 text-sm text-gray-600">
                   <Shield className="h-4 w-4" />
-                  <span>Showing your personal sacramental record{total !== 1 ? 's' : ''}</span>
+                  <span>Showing your personal sacramental record{totalSuffix}</span>
                 </div>
               </CardContent>
             </Card>
