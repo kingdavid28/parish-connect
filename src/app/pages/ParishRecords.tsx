@@ -3,7 +3,6 @@ import { useAuth } from "../context/AuthContext";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Input } from "../components/ui/input";
 import { Button } from "../components/ui/button";
-import { Badge } from "../components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
@@ -14,7 +13,7 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from "../components/ui/popover";
 import { Calendar as CalendarPicker } from "../components/ui/calendar";
 import {
-  Search, Download, Eye, Lock, BookOpen, Calendar, User, MapPin, Shield, Loader, CalendarIcon, X, Plus, Pencil, Trash2, Upload,
+  Search, Download, Eye, Lock, BookOpen, Calendar, User, Shield, Loader, CalendarIcon, X, Plus, Pencil, Trash2, Upload,
 } from "lucide-react";
 import { Label } from "../components/ui/label";
 import { Textarea } from "../components/ui/textarea";
@@ -49,9 +48,24 @@ const parseToDate = (s: string): Date | undefined => {
   const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s.trim());
   if (m) return new Date(+m[1], +m[2] - 1, +m[3]);
   const d = new Date(s);
-  if (!isNaN(d.getTime())) return d;
+  if (!Number.isNaN(d.getTime())) return d;
   const d2 = new Date(s.replace(/ /, "T")); // legacy "yyyy-MM-dd HH:mm:ss"
-  return isNaN(d2.getTime()) ? undefined : d2;
+  return Number.isNaN(d2.getTime()) ? undefined : d2;
+};
+
+// Formats stored dates (ISO or legacy text) for display. Module-scope: pure.
+const safeDate = (d: string): string => {
+  try {
+    let date = new Date(d);
+    // Safari is stricter — retry with ISO-style separator
+    if (Number.isNaN(date.getTime())) date = new Date(d.replace(/ /, "T"));
+    if (Number.isNaN(date.getTime())) {
+      const parsed = Date.parse(d);
+      if (!Number.isNaN(parsed)) date = new Date(parsed);
+    }
+    if (Number.isNaN(date.getTime())) return d || "N/A";
+    return format(date, "MMM d, yyyy");
+  } catch { return d || "N/A"; }
 };
 
 interface DateFieldProps {
@@ -64,10 +78,12 @@ interface DateFieldProps {
   onChange: (iso: string) => void;
 }
 
-function DateField({ label, required, hint, value, error, disabled, onChange }: DateFieldProps) {
+function DateField({ label, required, hint, value, error, disabled, onChange }: Readonly<DateFieldProps>) {
   const [open, setOpen] = useState(false);
   const selected = parseToDate(value);
   const errId = `rec-date-${label.replace(/\W+/g, "-").toLowerCase()}-err`;
+  let buttonLabel = "Pick a date";
+  if (value) buttonLabel = selected ? format(selected, "MMM d, yyyy") : value;
   return (
     <div className="space-y-1.5">
       <Label className="text-xs">
@@ -86,7 +102,7 @@ function DateField({ label, required, hint, value, error, disabled, onChange }: 
             className={`w-full justify-start text-left font-normal ${!value ? "text-muted-foreground" : ""}`}
           >
             <CalendarIcon className="mr-2 h-4 w-4" />
-            {value ? (selected ? format(selected, "MMM d, yyyy") : value) : "Pick a date"}
+            {buttonLabel}
           </Button>
         </PopoverTrigger>
         <PopoverContent className="w-auto p-0" align="start">
@@ -108,13 +124,15 @@ function DateField({ label, required, hint, value, error, disabled, onChange }: 
           )}
         </PopoverContent>
       </Popover>
-      {error ? (
-        <p id={errId} className="text-xs text-red-600">{error}</p>
-      ) : hint ? (
-        <p className="text-xs text-gray-500">{hint}</p>
-      ) : null}
+      <FieldNote id={errId} error={error} hint={hint} />
     </div>
   );
+}
+
+function FieldNote({ id, error, hint }: Readonly<{ id?: string; error?: string; hint?: string }>) {
+  if (error) return <p id={id} className="text-xs text-red-600">{error}</p>;
+  if (hint) return <p className="text-xs text-gray-500">{hint}</p>;
+  return null;
 }
 
 const EMPTY_FORM = {
@@ -124,7 +142,7 @@ const EMPTY_FORM = {
 };
 
 export default function ParishRecords() {
-  const { isAdmin, isSuperAdmin } = useAuth();
+  const { isAdmin } = useAuth();
   const { features } = useParishConfig();
   const recordsEnabled = features.records !== "off";
   const [records, setRecords] = useState<SacramentRecord[]>([]);
@@ -155,12 +173,10 @@ export default function ParishRecords() {
     setImportErrors(errors);
   };
 
-  const handleImportFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => parseImportText(String(reader.result || ""));
-    reader.readAsText(file);
+    parseImportText(await file.text());
     e.target.value = "";
   };
 
@@ -195,7 +211,7 @@ export default function ParishRecords() {
         setImportOpen(false);
         setImportText(""); setImportRows([]); setImportErrors([]);
       }
-      fetchRecords(1);
+      void fetchRecords(1);
     } catch {
       toast.error("Import failed");
     } finally {
@@ -272,7 +288,7 @@ export default function ParishRecords() {
       }
       toast.success(editingRecord ? "Record updated" : "Record added");
       setEditDialogOpen(false);
-      fetchRecords(page);
+      void fetchRecords(page);
     } catch {
       toast.error("Failed to save record");
     } finally {
@@ -293,7 +309,7 @@ export default function ParishRecords() {
         return;
       }
       toast.success("Record deleted");
-      fetchRecords(page);
+      void fetchRecords(page);
     } catch {
       toast.error("Failed to delete record");
     }
@@ -324,11 +340,7 @@ export default function ParishRecords() {
         }}
         disabled={saving}
       />
-      {formErrors[key] ? (
-        <p id={`rec-${key}-err`} className="text-xs text-red-600">{formErrors[key]}</p>
-      ) : opts.hint ? (
-        <p className="text-xs text-gray-500">{opts.hint}</p>
-      ) : null}
+      <FieldNote id={`rec-${key}-err`} error={formErrors[key]} hint={opts.hint} />
     </div>
   );
 
@@ -375,37 +387,12 @@ export default function ParishRecords() {
     }
   };
 
-  useEffect(() => { fetchRecords(); }, []);
+  useEffect(() => { void fetchRecords(); }, []);
 
-  const handleSearch = () => { fetchRecords(1); };
+  const handleSearch = () => { void fetchRecords(1); };
 
-  const safeDate = (d: string) => {
-    try {
-      // Handle various date formats including Safari's strict parsing
-      let date: Date;
-      
-      // Try standard parsing first
-      date = new Date(d);
-      
-      // If invalid, try ISO format parsing (Safari is stricter)
-      if (isNaN(date.getTime())) {
-        // Try parsing with timezone handling
-        const isoString = d.replace(/ /, 'T');
-        date = new Date(isoString);
-      }
-      
-      // If still invalid, try manual parsing
-      if (isNaN(date.getTime())) {
-        const parsed = Date.parse(d);
-        if (!isNaN(parsed)) {
-          date = new Date(parsed);
-        }
-      }
-      
-      if (isNaN(date.getTime())) return d || 'N/A';
-      return format(date, "MMM d, yyyy");
-    } catch { return d || 'N/A'; }
-  };
+  const importLabel = importRows.length + " record" + (importRows.length === 1 ? "" : "s");
+
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-6 pb-24 md:pb-6">
@@ -634,8 +621,8 @@ export default function ParishRecords() {
                   <div className="flex justify-between items-center mt-4 pt-4 border-t">
                     <p className="text-sm text-gray-600">Page {page} of {Math.ceil(total / 20)}</p>
                     <div className="flex gap-2">
-                      <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => fetchRecords(page - 1)}>Previous</Button>
-                      <Button variant="outline" size="sm" disabled={!hasMore} onClick={() => fetchRecords(page + 1)}>Next</Button>
+                      <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => void fetchRecords(page - 1)}>Previous</Button>
+                      <Button variant="outline" size="sm" disabled={!hasMore} onClick={() => void fetchRecords(page + 1)}>Next</Button>
                     </div>
                   </div>
                 )}
@@ -773,8 +760,8 @@ export default function ParishRecords() {
                 <p className="text-sm font-medium text-amber-900 mb-1">
                   {importErrors.length} issue{importErrors.length === 1 ? "" : "s"}
                 </p>
-                {importErrors.slice(0, 20).map((e, i) => (
-                  <p key={i} className="text-xs text-amber-800">Row {e.row}: {e.message}</p>
+                {importErrors.slice(0, 20).map((e) => (
+                  <p key={`${e.row}-${e.message}`} className="text-xs text-amber-800">Row {e.row}: {e.message}</p>
                 ))}
                 {importErrors.length > 20 && (
                   <p className="text-xs text-amber-700 mt-1">…and {importErrors.length - 20} more</p>
@@ -819,7 +806,7 @@ export default function ParishRecords() {
               <Button variant="outline" onClick={() => setImportOpen(false)} disabled={importing}>Cancel</Button>
               <Button onClick={submitImport} disabled={importing || importRows.length === 0}>
                 {importing && <Loader className="h-4 w-4 mr-2 animate-spin" />}
-                Import {importRows.length > 0 ? `${importRows.length} record${importRows.length === 1 ? "" : "s"}` : "records"}
+                Import {importRows.length > 0 ? importLabel : "records"}
               </Button>
             </div>
           </div>
