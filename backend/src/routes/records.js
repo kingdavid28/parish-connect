@@ -9,9 +9,9 @@ const router = express.Router();
 // GET /api/records/baptism?search=&year=&page=&limit=
 router.get("/baptism", authenticate, async (req, res) => {
   const search = String(req.query.search || "").trim();
-  const year = parseInt(req.query.year || 0, 10);
-  const page = Math.max(1, parseInt(req.query.page || 1, 10));
-  const limit = Math.min(50, Math.max(1, parseInt(req.query.limit || 20, 10)));
+  const year = Number.parseInt(req.query.year || 0, 10);
+  const page = Math.max(1, Number.parseInt(req.query.page || 1, 10));
+  const limit = Math.min(50, Math.max(1, Number.parseInt(req.query.limit || 20, 10)));
   const offset = (page - 1) * limit;
 
   try {
@@ -34,7 +34,7 @@ router.get("/baptism", authenticate, async (req, res) => {
       `SELECT COUNT(*) AS total FROM baptism_records ${whereSql}`,
       params
     );
-    const total = parseInt(countRows[0].total, 10);
+    const total = Number.parseInt(countRows[0].total, 10);
 
     params.push(limit, offset);
     const { rows: items } = await pool.query(
@@ -138,43 +138,49 @@ const TYPED_REGISTRIES = {
   },
 };
 
+function sanitizeField(f, raw) {
+  const v = raw[f.col];
+  if (v === undefined || v === null || String(v).trim() === "") {
+    return f.req ? { error: `Missing required field: ${f.col}` } : { value: null };
+  }
+  if (f.type === "date") {
+    const s = String(v).trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(s) || Number.isNaN(Date.parse(s))) {
+      return { error: `${f.col} must be a date (YYYY-MM-DD)` };
+    }
+    return { value: s };
+  }
+  if (f.type === "int") {
+    const n = Number.parseInt(v, 10);
+    if (!Number.isFinite(n) || n < 0 || n > 150) return { error: `${f.col} must be a valid age` };
+    return { value: n };
+  }
+  const s = String(v).trim();
+  if (f.max && s.length > f.max) return { error: `${f.col} is too long (max ${f.max})` };
+  return { value: s };
+}
+
 function sanitizeTypedRecord(cfg, raw) {
   const values = {};
   for (const f of cfg.fields) {
-    let v = raw[f.col];
-    if (v === undefined || v === null || String(v).trim() === "") {
-      if (f.req) return { error: `Missing required field: ${f.col}` };
-      values[f.col] = null;
-      continue;
-    }
-    if (f.type === "date") {
-      const s = String(v).trim();
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(s) || Number.isNaN(Date.parse(s))) {
-        return { error: `${f.col} must be a date (YYYY-MM-DD)` };
-      }
-      values[f.col] = s;
-    } else if (f.type === "int") {
-      const n = parseInt(v, 10);
-      if (!Number.isFinite(n) || n < 0 || n > 150) return { error: `${f.col} must be a valid age` };
-      values[f.col] = n;
-    } else {
-      const s = String(v).trim();
-      if (f.max && s.length > f.max) return { error: `${f.col} is too long (max ${f.max})` };
-      values[f.col] = s;
-    }
+    const { value, error } = sanitizeField(f, raw);
+    if (error) return { error };
+    values[f.col] = value;
   }
   return { values };
 }
 
 function registerTypedRoutes(key, cfg) {
   const cols = cfg.fields.map((f) => f.col);
+  const placeholders = cols.map((_, i) => `$${i + 1}`).join(", ");
+  const setClause = cols.map((c, i) => `${c} = $${i + 1}`).join(", ");
 
   // GET /api/records/:type?search=&year=&page=&limit=
   router.get(`/${key}`, authenticate, async (req, res) => {
     const search = String(req.query.search || "").trim();
-    const year = parseInt(req.query.year || 0, 10);
-    const page = Math.max(1, parseInt(req.query.page || 1, 10));
-    const limit = Math.min(50, Math.max(1, parseInt(req.query.limit || 20, 10)));
+    const year = Number.parseInt(req.query.year || 0, 10);
+    const page = Math.max(1, Number.parseInt(req.query.page || 1, 10));
+    const limit = Math.min(50, Math.max(1, Number.parseInt(req.query.limit || 20, 10)));
     const offset = (page - 1) * limit;
 
     try {
@@ -195,7 +201,7 @@ function registerTypedRoutes(key, cfg) {
       const whereSql = "WHERE " + where.join(" AND ");
       const { rows: countRows } = await pool.query(
         `SELECT COUNT(*) AS total FROM ${cfg.table} ${whereSql}`, params);
-      const total = parseInt(countRows[0].total, 10);
+      const total = Number.parseInt(countRows[0].total, 10);
       params.push(limit, offset);
       const { rows: items } = await pool.query(
         `SELECT * FROM ${cfg.table} ${whereSql} ORDER BY ${cfg.dateCol} DESC LIMIT $${params.length - 1} OFFSET $${params.length}`,
@@ -218,7 +224,7 @@ function registerTypedRoutes(key, cfg) {
       const id = uuid();
       await pool.query(
         `INSERT INTO ${cfg.table} (${cols.join(", ")}, id, parish_id, created_by)
-         VALUES (${cols.map((_, i) => `$${i + 1}`).join(", ")}, $${cols.length + 1}, $${cols.length + 2}, $${cols.length + 3})`,
+         VALUES (${placeholders}, $${cols.length + 1}, $${cols.length + 2}, $${cols.length + 3})`,
         [...cols.map((c) => values[c]), id, config.parish.id, req.user.id]);
       await auditLog(req.user.id, `create_${key}_record`, `${key}_record`, id, getClientIp(req));
       res.status(201).json({ success: true, message: "Record created", data: { id } });
@@ -238,7 +244,7 @@ function registerTypedRoutes(key, cfg) {
         [values.record_number, req.params.id]);
       if (dup.length) return res.status(409).json({ success: false, message: "Record number already exists" });
       const { rowCount } = await pool.query(
-        `UPDATE ${cfg.table} SET ${cols.map((c, i) => `${c} = $${i + 1}`).join(", ")}, updated_at = NOW()
+        `UPDATE ${cfg.table} SET ${setClause}, updated_at = NOW()
          WHERE id = $${cols.length + 1} AND parish_id = $${cols.length + 2}`,
         [...cols.map((c) => values[c]), req.params.id, config.parish.id]);
       if (!rowCount) return res.status(404).json({ success: false, message: "Record not found" });
@@ -270,23 +276,23 @@ function registerTypedRoutes(key, cfg) {
     if (!items.length) return res.status(400).json({ success: false, message: "No records provided" });
     if (items.length > 5000) return res.status(400).json({ success: false, message: "Too many records (max 5000)" });
 
-    const errors = [];
-    let imported = 0;
-    for (const [i, raw] of items.entries()) {
+    const results = await Promise.all(items.map(async (raw, i) => {
       const rowLabel = raw.row || i + 2;
       const { values, error } = sanitizeTypedRecord(cfg, raw);
-      if (error) { errors.push({ row: rowLabel, message: error }); continue; }
+      if (error) return { row: rowLabel, message: error };
       try {
         await pool.query(
           `INSERT INTO ${cfg.table} (${cols.join(", ")}, id, parish_id, created_by)
-           VALUES (${cols.map((_, j) => `$${j + 1}`).join(", ")}, $${cols.length + 1}, $${cols.length + 2}, $${cols.length + 3})
+           VALUES (${placeholders}, $${cols.length + 1}, $${cols.length + 2}, $${cols.length + 3})
            ON CONFLICT (record_number) DO NOTHING`,
           [...cols.map((c) => values[c]), uuid(), config.parish.id, req.user.id]);
-        imported += 1;
+        return null;
       } catch (err) {
-        errors.push({ row: rowLabel, message: err.message });
+        return { row: rowLabel, message: err.message };
       }
-    }
+    }));
+    const errors = results.filter(Boolean);
+    const imported = items.length - errors.length;
     if (imported > 0) {
       await auditLog(req.user.id, `import_${key}_records`, `${key}_record`, String(imported), getClientIp(req));
     }
