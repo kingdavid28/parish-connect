@@ -8,26 +8,26 @@ require_once __DIR__ . '/../middleware/auth.php';
  * Connect to the SVF parish sacraments database (separate from main DB).
  */
 function getSacramentsDB(): PDO {
-    static $pdo = null;
-    if ($pdo) return $pdo;
-
-    $pdo = new PDO(
-        sprintf('mysql:host=%s;port=3306;dbname=%s;charset=utf8mb4', SAC_DB_HOST, SAC_DB_NAME),
-        SAC_DB_USER,
-        SAC_DB_PASSWORD,
-        [
-            PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
-            PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-            PDO::ATTR_EMULATE_PREPARES   => false,
-        ]
-    );
+    static $pdo;
+    if ($pdo === null) {
+        $pdo = new PDO(
+            sprintf('mysql:host=%s;port=3306;dbname=%s;charset=utf8mb4', SAC_DB_HOST, SAC_DB_NAME),
+            SAC_DB_USER,
+            SAC_DB_PASSWORD,
+            [
+                PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
+                PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+                PDO::ATTR_EMULATE_PREPARES   => false,
+            ]
+        );
+    }
     return $pdo;
 }
 
-function handleSacraments(string $method, ?string $id, ?string $action): void {
+function handleSacraments(string $method, ?string $id): void {
     match (true) {
-        $method === 'GET' && !$id       => searchSacraments(),
-        $method === 'GET' && !!$id      => getSacrament($id),
+        $method === 'GET' && !$id    => searchSacraments(),
+        $method === 'GET' && (bool)$id => getSacrament($id),
         default => jsonResponse(['success' => false, 'message' => 'Not found'], 404),
     };
     exit;

@@ -230,7 +230,7 @@ if ($resource === 'records') {
 // Sacramental records from SVF parish database
 if ($resource === 'sacraments') {
     require_once __DIR__ . '/routes/sacraments.php';
-    handleSacraments($method, $id, $action);
+    handleSacraments($method, $id);
     exit;
 }
 
