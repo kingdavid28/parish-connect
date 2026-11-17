@@ -82,6 +82,13 @@ function searchSacraments(): void {
             }
         }
 
+        // confirmed=1 → only records with confirmation data filled in
+        if (($_GET['confirmed'] ?? '') === '1') {
+            $where .= " AND ((confirmed_by IS NOT NULL AND confirmed_by <> '')
+                        OR (confirmed_date IS NOT NULL AND confirmed_date <> '')
+                        OR (confirm_sponsor IS NOT NULL AND confirm_sponsor <> ''))";
+        }
+
         $countStmt = $db->prepare("SELECT COUNT(*) AS total FROM sacraments $where");
         $countStmt->execute($params);
         $total = (int)$countStmt->fetch()['total'];

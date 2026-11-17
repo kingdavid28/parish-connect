@@ -12,6 +12,7 @@ import {
 } from "./ui/dialog";
 import { Search, Plus, Pencil, Trash2, Upload, Download, Loader, Eye, BookOpen, Shield } from "lucide-react";
 import { toast } from "sonner";
+import { format } from "date-fns";
 import { API } from "../config";
 import { useAuth } from "../context/AuthContext";
 import {
@@ -36,16 +37,23 @@ export interface RegistryPanelProps {
   fields: Readonly<RegistryField[]>;
   /** Table columns: key = record column, label = header. */
   columns: Readonly<{ key: string; label: string }[]>;
-  csvTemplate: string;
-  csvFileName: string;
-  parseCsv: (text: string) => CsvParseResult;
+  csvTemplate?: string;
+  csvFileName?: string;
+  parseCsv?: (text: string) => CsvParseResult;
+  /** Extra fixed query params sent with every list request (e.g. confirmed=1). */
+  fixedParams?: Record<string, string>;
+  /** View-only mode: hides import/add/edit/delete (search, view, pagination stay). */
+  readOnly?: boolean;
+  /** Show the Year filter input (default true). */
+  showYearFilter?: boolean;
 }
 
 type RegistryRow = Record<string, string | number | null> & { id: string };
 
 export default function RegistryPanel(props: Readonly<RegistryPanelProps>) {
-  const { title, apiPath, fields, columns, csvTemplate, csvFileName, parseCsv } = props;
+  const { title, apiPath, fields, columns, fixedParams, readOnly = false, showYearFilter = true, csvTemplate, csvFileName, parseCsv } = props;
   const { isAdmin } = useAuth();
+  const canWrite = isAdmin && !readOnly;
 
   const [items, setItems] = useState<RegistryRow[]>([]);
   const [total, setTotal] = useState(0);
@@ -74,6 +82,7 @@ export default function RegistryPanel(props: Readonly<RegistryPanelProps>) {
       const params = new URLSearchParams({ page: String(p), limit: String(pageSize) });
       if (s.trim()) params.set("search", s.trim());
       if (y.trim()) params.set("year", y.trim());
+      for (const [k, v] of Object.entries(fixedParams ?? {})) params.set(k, v);
       const res = await fetch(`${API}${apiPath}?${params}`, {
         headers: { Authorization: `Bearer ${getToken()}` },
       });
@@ -87,7 +96,7 @@ export default function RegistryPanel(props: Readonly<RegistryPanelProps>) {
     } finally {
       setLoading(false);
     }
-  }, [page, search, year, apiPath, title]);
+  }, [page, search, year, apiPath, title, fixedParams]);
 
   useEffect(() => { void fetchItems(1, "", ""); }, [fetchItems]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -141,6 +150,7 @@ export default function RegistryPanel(props: Readonly<RegistryPanelProps>) {
   };
 
   const downloadTemplate = () => {
+    if (!csvTemplate || !csvFileName) return;
     const blob = new Blob([csvTemplate], { type: "text/csv" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
@@ -150,6 +160,7 @@ export default function RegistryPanel(props: Readonly<RegistryPanelProps>) {
   };
 
   const parseImportText = (text: string) => {
+    if (!parseCsv) return;
     setImportText(text);
     const result = parseCsv(text);
     setImportRows(result.rows.map((r) => ({ row: r.row, data: r.data })));
@@ -197,11 +208,72 @@ export default function RegistryPanel(props: Readonly<RegistryPanelProps>) {
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const fmt = (v: string | number | null | undefined, isDate: boolean) => {
     if (v == null || v === "") return "—";
-    return isDate ? String(v).slice(0, 10) : String(v);
+    const str = String(v);
+    if (!isDate) return str;
+    const iso = /^(\d{4})-(\d{2})-(\d{2})/.exec(str.trim());
+    const d = iso ? new Date(+iso[1], +iso[2] - 1, +iso[3]) : new Date(str.replace(/ /, "T"));
+    return Number.isNaN(d.getTime()) ? str : format(d, "MMM d, yyyy");
   };
   const isDateCol = (key: string) => fields.find((f) => f.key === key)?.type === "date";
 
   const importLabel = `${importRows.length} record${importRows.length === 1 ? "" : "s"}`;
+
+  const renderRecords = () => {
+    if (loading) {
+      return (
+        <div className="flex justify-center items-center py-12">
+          <Loader className="h-6 w-6 animate-spin" />
+        </div>
+      );
+    }
+    if (items.length === 0) {
+      return (
+        <div className="text-center py-12">
+          <BookOpen className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+          <p className="text-gray-600">No records found</p>
+          <p className="text-sm text-gray-500 mt-1">Try adjusting your search criteria</p>
+        </div>
+      );
+    }
+    return (
+      <div className="overflow-x-auto">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              {columns.map((c) => <TableHead key={c.key}>{c.label}</TableHead>)}
+              <TableHead className="text-right">Actions</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {items.map((row) => (
+              <TableRow key={row.id}>
+                {columns.map((c) => (
+                  <TableCell key={c.key} className="whitespace-nowrap">{fmt(row[c.key], isDateCol(c.key))}</TableCell>
+                ))}
+                <TableCell className="text-right">
+                  <div className="flex justify-end gap-1">
+                    {canWrite && (
+                      <>
+                        <Button variant="ghost" size="sm" onClick={() => openForm(row)}>
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        <Button variant="ghost" size="sm" onClick={() => void remove(row)}>
+                          <Trash2 className="h-4 w-4 text-red-500" />
+                        </Button>
+                      </>
+                    )}
+                    <Button variant="ghost" size="sm" onClick={() => setViewRow(row)}>
+                      <Eye className="h-4 w-4 mr-2" />View
+                    </Button>
+                  </div>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
+    );
+  };
 
   return (
     <div className="space-y-4">
@@ -220,6 +292,7 @@ export default function RegistryPanel(props: Readonly<RegistryPanelProps>) {
               />
             </div>
             <div className="flex items-center gap-2">
+              {showYearFilter && (
               <Input
                 placeholder="Year"
                 value={year}
@@ -227,11 +300,12 @@ export default function RegistryPanel(props: Readonly<RegistryPanelProps>) {
                 onKeyDown={(e) => { if (e.key === "Enter") { setPage(1); void fetchItems(1); } }}
                 className="w-full sm:w-24"
               />
+              )}
               <Button onClick={() => { setPage(1); void fetchItems(1); }}>
                 <Search className="mr-2 h-4 w-4" />Search
               </Button>
             </div>
-            {isAdmin && (
+            {canWrite && parseCsv && (
               <div className="flex items-center gap-2">
                 <Button variant="outline" onClick={() => setImportOpen(true)}>
                   <Upload className="mr-2 h-4 w-4" />Import CSV
@@ -252,54 +326,7 @@ export default function RegistryPanel(props: Readonly<RegistryPanelProps>) {
       <Card>
         <CardHeader><CardTitle>{title}</CardTitle></CardHeader>
         <CardContent>
-          {loading ? (
-            <div className="flex justify-center items-center py-12">
-              <Loader className="h-6 w-6 animate-spin" />
-            </div>
-          ) : items.length === 0 ? (
-            <div className="text-center py-12">
-              <BookOpen className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-              <p className="text-gray-600">No records found</p>
-              <p className="text-sm text-gray-500 mt-1">Try adjusting your search criteria</p>
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    {columns.map((c) => <TableHead key={c.key}>{c.label}</TableHead>)}
-                    <TableHead className="text-right">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {items.map((row) => (
-                    <TableRow key={row.id}>
-                      {columns.map((c) => (
-                        <TableCell key={c.key} className="whitespace-nowrap">{fmt(row[c.key], isDateCol(c.key))}</TableCell>
-                      ))}
-                      <TableCell className="text-right">
-                        <div className="flex justify-end gap-1">
-                          {isAdmin && (
-                            <>
-                              <Button variant="ghost" size="sm" onClick={() => openForm(row)}>
-                                <Pencil className="h-4 w-4" />
-                              </Button>
-                              <Button variant="ghost" size="sm" onClick={() => void remove(row)}>
-                                <Trash2 className="h-4 w-4 text-red-500" />
-                              </Button>
-                            </>
-                          )}
-                          <Button variant="ghost" size="sm" onClick={() => setViewRow(row)}>
-                            <Eye className="h-4 w-4 mr-2" />View
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          )}
+          {renderRecords()}
 
           {/* Pagination — same style as the baptism records tab */}
           {total > pageSize && (
@@ -526,4 +553,32 @@ export const DEATH_PANEL: RegistryPanelProps = {
   csvTemplate: DEATH_CSV_TEMPLATE,
   csvFileName: "death-records-template.csv",
   parseCsv: parseDeathCsv,
+};
+
+// Confirmation is not a separate registry — it is confirmation data stored on
+// each baptism/sacrament record. This panel is a read-only filtered view of
+// /sacraments?confirmed=1; edits happen through the Baptism tab.
+export const CONFIRMATION_PANEL: RegistryPanelProps = {
+  title: "Confirmation Records",
+  apiPath: "/sacraments",
+  fixedParams: { confirmed: "1" },
+  readOnly: true,
+  showYearFilter: false,
+  columns: [
+    { key: "name", label: "Name" },
+    { key: "confirmed_date", label: "Confirmed Date" },
+    { key: "confirmed_by", label: "Confirmed By" },
+    { key: "confirm_sponsor", label: "Sponsor" },
+    { key: "confirmbook_no", label: "Book No." },
+  ],
+  fields: [
+    { key: "name", label: "Full name" },
+    { key: "birthday", label: "Birthday" },
+    { key: "baptized_by", label: "Baptized by" },
+    { key: "baptismal_date", label: "Baptismal date", type: "date" },
+    { key: "confirmed_date", label: "Confirmed date", type: "date" },
+    { key: "confirmed_by", label: "Confirmed by" },
+    { key: "confirm_sponsor", label: "Sponsor" },
+    { key: "confirmbook_no", label: "Confirmation book no." },
+  ],
 };

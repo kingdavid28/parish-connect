@@ -13,12 +13,12 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from "../components/ui/popover";
 import { Calendar as CalendarPicker } from "../components/ui/calendar";
 import {
-  Search, Download, Eye, Lock, BookOpen, Calendar, User, Shield, Loader, CalendarIcon, X, Plus, Pencil, Trash2, Upload,
+  Search, Download, Eye, Lock, BookOpen, User, Shield, Loader, CalendarIcon, X, Plus, Pencil, Trash2, Upload,
 } from "lucide-react";
 import { Label } from "../components/ui/label";
 import { Textarea } from "../components/ui/textarea";
 import { parseRecordsCsv, RECORDS_CSV_TEMPLATE, type ParsedCsvRow } from "../lib/parseCsv";
-import RegistryPanel, { MARRIAGE_PANEL, DEATH_PANEL } from "../components/RegistryPanel";
+import RegistryPanel, { MARRIAGE_PANEL, DEATH_PANEL, CONFIRMATION_PANEL } from "../components/RegistryPanel";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import { useParishConfig } from "../context/ParishConfigContext";
@@ -651,13 +651,7 @@ export default function ParishRecords() {
         </TabsContent>
 
         <TabsContent value="confirmation" className="space-y-4">
-          <Card>
-            <CardContent className="py-12 text-center">
-              <Calendar className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-              <p className="text-gray-600">Confirmation records are included in the baptism record details</p>
-              <p className="text-sm text-gray-500 mt-1">Click "View" on any record to see confirmation details</p>
-            </CardContent>
-          </Card>
+          <RegistryPanel {...CONFIRMATION_PANEL} />
         </TabsContent>
 
         <TabsContent value="marriage">
