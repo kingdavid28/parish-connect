@@ -56,6 +56,12 @@ module.exports = {
     logoUrl: process.env.PARISH_LOGO_URL || "",
     backgroundUrl: process.env.PARISH_BACKGROUND_URL || "",
     hashtags: process.env.PARISH_HASHTAGS || "#ParishConnect",
+    address: process.env.PARISH_ADDRESS || "",
+    about: process.env.PARISH_ABOUT || "",
+    established: process.env.PARISH_ESTABLISHED || "",
+    contactEmail: process.env.PARISH_CONTACT_EMAIL || "",
+    contactPhone: process.env.PARISH_CONTACT_PHONE || "",
+    facebookUrl: process.env.PARISH_FACEBOOK_URL || "",
     languageNotes:
       process.env.PARISH_LANGUAGE_NOTES ||
       "Write in a mix of Cebuano (Bisaya) and English, the way locals actually speak.",

@@ -13,9 +13,12 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "./ui/alert-dialog";
 import {
+  Dialog, DialogContent, DialogHeader, DialogTitle,
+} from "./ui/dialog";
+import {
   Home, BookOpen, Users, Settings as SettingsIcon, LogOut, Shield, Crown,
   UserCircle, ChevronDown, MessageCircle, QrCode, Trophy, Wallet as WalletIcon,
-  PhilippinePeso,
+  PhilippinePeso, MapPin, Mail, Phone, Globe, CalendarDays,
 } from "lucide-react";
 import { toast } from "sonner";
 import NotificationBell from "./NotificationBell";
@@ -25,6 +28,7 @@ export default function Navbar() {
   const { parish } = useParishConfig();
   const location = useLocation();
   const [showLogoutDialog, setShowLogoutDialog] = useState(false);
+  const [parishInfoOpen, setParishInfoOpen] = useState(false);
   const [keyboardOpen, setKeyboardOpen] = useState(false);
 
   // Detect mobile keyboard open
@@ -91,7 +95,13 @@ export default function Navbar() {
         <div className="max-w-7xl mx-auto px-4">
           <div className="flex justify-between items-center h-14 md:h-16">
             {/* Logo */}
-            <Link to="/" className="flex items-center gap-2.5 min-w-0">
+            <button
+              type="button"
+              onClick={() => setParishInfoOpen(true)}
+              aria-haspopup="dialog"
+              aria-label={`About ${parish.name}`}
+              className="flex items-center gap-2.5 min-w-0 text-left rounded-md px-1 -mx-1 hover:bg-gray-50 transition-colors"
+            >
               <img src={parish.logoUrl} alt={parish.name} className="h-10 md:h-12 w-auto object-contain shrink-0" width={40} height={40} />
               <div className="leading-tight min-w-0">
                 <span className="block text-base sm:text-lg md:text-2xl font-bold text-gray-900 truncate max-w-[150px] sm:max-w-[320px] md:max-w-[480px] lg:max-w-[560px]">
@@ -100,7 +110,7 @@ export default function Navbar() {
                 </span>
                 <span className="block text-[10px] md:text-xs font-medium uppercase tracking-wider md:tracking-widest mt-0.5" style={{ color: parish.accentColor }}>Parish Connect</span>
               </div>
-            </Link>
+            </button>
 
             {/* User Menu */}
             <div className="flex items-center gap-2">
@@ -270,6 +280,63 @@ export default function Navbar() {
 
       {/* Bottom padding spacer for mobile - hidden when keyboard is open */}
       {!keyboardOpen && <div className="md:hidden h-16" />}
+
+      {/* Parish Info Dialog */}
+      <Dialog open={parishInfoOpen} onOpenChange={setParishInfoOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <div className="flex items-center gap-4">
+              <img src={parish.logoUrl} alt="" className="h-14 w-14 object-contain rounded-lg shrink-0" />
+              <div className="min-w-0">
+                <DialogTitle className="text-lg leading-snug">{parish.name}</DialogTitle>
+                {parish.tagline && (
+                  <p className="text-sm mt-0.5" style={{ color: parish.accentColor }}>{parish.tagline}</p>
+                )}
+              </div>
+            </div>
+          </DialogHeader>
+          <div className="space-y-3 text-sm">
+            {(parish.location || parish.address) && (
+              <div className="flex gap-3">
+                <MapPin className="h-4 w-4 mt-0.5 shrink-0 text-gray-400" />
+                <div>
+                  {parish.location && <p className="font-medium text-gray-900">{parish.location}</p>}
+                  {parish.address && <p className="text-gray-600">{parish.address}</p>}
+                </div>
+              </div>
+            )}
+            {parish.established && (
+              <div className="flex gap-3">
+                <CalendarDays className="h-4 w-4 mt-0.5 shrink-0 text-gray-400" />
+                <p className="text-gray-700">Established <span className="font-medium">{parish.established}</span></p>
+              </div>
+            )}
+            {parish.about && <p className="text-gray-600 leading-relaxed pt-1">{parish.about}</p>}
+            {(parish.contactEmail || parish.contactPhone || parish.facebookUrl) && (
+              <div className="border-t border-gray-100 pt-3 space-y-2">
+                {parish.contactEmail && (
+                  <a href={`mailto:${parish.contactEmail}`} className="flex items-center gap-3 text-gray-700 hover:text-gray-900 hover:underline">
+                    <Mail className="h-4 w-4 shrink-0 text-gray-400" />
+                    <span className="truncate">{parish.contactEmail}</span>
+                  </a>
+                )}
+                {parish.contactPhone && (
+                  <a href={`tel:${parish.contactPhone}`} className="flex items-center gap-3 text-gray-700 hover:text-gray-900 hover:underline">
+                    <Phone className="h-4 w-4 shrink-0 text-gray-400" />
+                    <span>{parish.contactPhone}</span>
+                  </a>
+                )}
+                {parish.facebookUrl && (
+                  <a href={parish.facebookUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 text-gray-700 hover:text-gray-900 hover:underline">
+                    <Globe className="h-4 w-4 shrink-0 text-gray-400" />
+                    <span>Facebook Page</span>
+                  </a>
+                )}
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Logout Dialog */}
       <AlertDialog open={showLogoutDialog} onOpenChange={setShowLogoutDialog}>

@@ -89,13 +89,14 @@ PROMPT;
     $userPrompt = "Write a parish community post about: {$topic}";
 
     $payload = json_encode([
-        'model'       => 'llama-3.1-8b-instant',
+        'model'            => 'openai/gpt-oss-20b',
         'messages'    => [
             ['role' => 'system', 'content' => $systemPrompt],
             ['role' => 'user',   'content' => $userPrompt],
         ],
-        'temperature' => 0.85,
-        'max_tokens'  => 300,
+        'temperature'      => 0.85,
+        'max_tokens'       => 500,
+        'reasoning_effort' => 'low',
     ]);
 
     $ch = curl_init('https://api.groq.com/openai/v1/chat/completions');

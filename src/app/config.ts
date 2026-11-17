@@ -68,6 +68,13 @@ export interface ParishBranding {
   accentColor: string;
   logoUrl: string;
   backgroundUrl: string;
+  /** Optional "About" details shown in the parish info dialog. */
+  address?: string;
+  about?: string;
+  established?: string;
+  contactEmail?: string;
+  contactPhone?: string;
+  facebookUrl?: string;
 }
 
 export interface FeatureFlags {
@@ -87,6 +94,12 @@ export const DEFAULT_PARISH: ParishBranding = {
   accentColor: env.VITE_ACCENT_COLOR || "#2563eb",
   logoUrl: resolveAssetUrl(env.VITE_LOGO_URL || "parish-connect-logo.png"),
   backgroundUrl: resolveAssetUrl(env.VITE_BACKGROUND_URL || "background-viewport.png"),
+  address: env.VITE_PARISH_ADDRESS || "",
+  about: env.VITE_PARISH_ABOUT || "",
+  established: env.VITE_PARISH_ESTABLISHED || "",
+  contactEmail: env.VITE_PARISH_CONTACT_EMAIL || "",
+  contactPhone: env.VITE_PARISH_CONTACT_PHONE || "",
+  facebookUrl: env.VITE_PARISH_FACEBOOK_URL || "",
 };
 
 export const DEFAULT_FEATURES: FeatureFlags = {
