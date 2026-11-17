@@ -408,7 +408,7 @@ export default function ParishRecords() {
   return (
     <div className="max-w-7xl mx-auto px-4 py-6 pb-24 md:pb-6">
       <div className="mb-6">
-        <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center mb-2">
           <div className="flex items-center gap-3">
             <div className="bg-blue-600 p-2 rounded-lg">
               <BookOpen className="h-6 w-6 text-white" />
@@ -418,16 +418,6 @@ export default function ParishRecords() {
               <p className="text-white">Browse and search sacramental records</p>
             </div>
           </div>
-          {isAdmin && recordsEnabled && (
-            <div className="flex gap-2">
-              <Button variant="outline" onClick={() => setImportOpen(true)}>
-                <Upload className="h-4 w-4 mr-2" />Import CSV
-              </Button>
-              <Button onClick={openAddDialog} className="bg-blue-600 hover:bg-blue-700">
-                <Plus className="h-4 w-4 mr-2" />Add Record
-              </Button>
-            </div>
-          )}
         </div>
       </div>
 
@@ -492,6 +482,12 @@ export default function ParishRecords() {
                   </div>
                   <Button onClick={handleSearch}>
                     <Search className="h-4 w-4 mr-2" />Search
+                  </Button>
+                  <Button variant="outline" onClick={() => setImportOpen(true)}>
+                    <Upload className="h-4 w-4 mr-2" />Import CSV
+                  </Button>
+                  <Button onClick={openAddDialog} className="bg-blue-600 hover:bg-blue-700">
+                    <Plus className="h-4 w-4 mr-2" />Add Record
                   </Button>
                 </div>
                 <div className="mt-4 flex items-center gap-2 text-sm text-gray-600">

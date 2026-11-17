@@ -10,7 +10,7 @@ import {
 import {
   Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle,
 } from "./ui/dialog";
-import { Search, Plus, Pencil, Trash2, Upload, Download, Loader, ChevronLeft, ChevronRight } from "lucide-react";
+import { Search, Plus, Pencil, Trash2, Upload, Download, Loader, Eye, BookOpen, Shield } from "lucide-react";
 import { toast } from "sonner";
 import { API } from "../config";
 import { useAuth } from "../context/AuthContext";
@@ -61,9 +61,11 @@ export default function RegistryPanel(props: Readonly<RegistryPanelProps>) {
   const [saving, setSaving] = useState(false);
 
   const [importOpen, setImportOpen] = useState(false);
+  const [importText, setImportText] = useState("");
   const [importRows, setImportRows] = useState<{ row: number; data: Record<string, string> }[]>([]);
   const [importErrors, setImportErrors] = useState<{ row: number; message: string }[]>([]);
   const [importing, setImporting] = useState(false);
+  const [viewRow, setViewRow] = useState<RegistryRow | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const fetchItems = useCallback(async (p = page, s = search, y = year) => {
@@ -147,12 +149,17 @@ export default function RegistryPanel(props: Readonly<RegistryPanelProps>) {
     URL.revokeObjectURL(a.href);
   };
 
+  const parseImportText = (text: string) => {
+    setImportText(text);
+    const result = parseCsv(text);
+    setImportRows(result.rows.map((r) => ({ row: r.row, data: r.data })));
+    setImportErrors(result.errors);
+  };
+
   const onFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const result = parseCsv(await file.text());
-    setImportRows(result.rows.map((r) => ({ row: r.row, data: r.data })));
-    setImportErrors(result.errors);
+    parseImportText(await file.text());
     if (fileRef.current) fileRef.current.value = "";
   };
 
@@ -177,6 +184,7 @@ export default function RegistryPanel(props: Readonly<RegistryPanelProps>) {
       setImportOpen(false);
       setImportRows([]);
       setImportErrors([]);
+      setImportText("");
       void fetchItems(1);
       setPage(1);
     } catch {
@@ -193,101 +201,118 @@ export default function RegistryPanel(props: Readonly<RegistryPanelProps>) {
   };
   const isDateCol = (key: string) => fields.find((f) => f.key === key)?.type === "date";
 
-  const renderTableContent = () => {
-    if (loading) {
-      return <div className="flex justify-center py-10"><Loader className="h-6 w-6 animate-spin text-gray-400" /></div>;
-    }
-    if (items.length === 0) {
-      return <p className="py-10 text-center text-sm text-gray-500">No records found.</p>;
-    }
-    return (
-      <Table>
-        <TableHeader>
-          <TableRow>
-            {columns.map((c) => <TableHead key={c.key}>{c.label}</TableHead>)}
-            {isAdmin && <TableHead className="w-20" />}
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {items.map((row) => (
-            <TableRow key={row.id}>
-              {columns.map((c) => (
-                <TableCell key={c.key} className="whitespace-nowrap">{fmt(row[c.key], isDateCol(c.key))}</TableCell>
-              ))}
-              {isAdmin && (
-                <TableCell>
-                  <div className="flex gap-1">
-                    <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openForm(row)} aria-label="Edit record">
-                      <Pencil className="h-4 w-4" />
-                    </Button>
-                    <Button variant="ghost" size="icon" className="h-8 w-8 text-red-500" onClick={() => void remove(row)} aria-label="Delete record">
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </TableCell>
-              )}
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
-    );
-  };
+  const importLabel = `${importRows.length} record${importRows.length === 1 ? "" : "s"}`;
 
   return (
     <div className="space-y-4">
+      {/* Search toolbar — same chrome as the baptism records tab */}
       <Card>
-        <CardContent className="flex flex-col gap-3 pt-6 sm:flex-row sm:items-center">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-            <Input
-              placeholder={`Search ${title.toLowerCase()}...`}
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Enter") { setPage(1); void fetchItems(1); } }}
-              className="pl-10"
-            />
+        <CardContent className="pt-6">
+          <div className="flex flex-col md:flex-row gap-4">
+            <div className="flex-1 relative">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+              <Input
+                placeholder={`Search ${title.toLowerCase()}...`}
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") { setPage(1); void fetchItems(1); } }}
+                className="pl-10"
+              />
+            </div>
+            <div className="flex items-center gap-2">
+              <Input
+                placeholder="Year"
+                value={year}
+                onChange={(e) => setYear(e.target.value.replace(/\D/g, "").slice(0, 4))}
+                onKeyDown={(e) => { if (e.key === "Enter") { setPage(1); void fetchItems(1); } }}
+                className="w-full sm:w-24"
+              />
+              <Button onClick={() => { setPage(1); void fetchItems(1); }}>
+                <Search className="mr-2 h-4 w-4" />Search
+              </Button>
+            </div>
+            {isAdmin && (
+              <div className="flex items-center gap-2">
+                <Button variant="outline" onClick={() => setImportOpen(true)}>
+                  <Upload className="mr-2 h-4 w-4" />Import CSV
+                </Button>
+                <Button onClick={() => openForm(null)} className="bg-blue-600 hover:bg-blue-700">
+                  <Plus className="mr-2 h-4 w-4" />Add Record
+                </Button>
+              </div>
+            )}
           </div>
-          <Input
-            placeholder="Year"
-            value={year}
-            onChange={(e) => setYear(e.target.value.replace(/\D/g, "").slice(0, 4))}
-            onKeyDown={(e) => { if (e.key === "Enter") { setPage(1); void fetchItems(1); } }}
-            className="w-full sm:w-24"
-          />
-          <Button variant="outline" onClick={() => { setPage(1); void fetchItems(1); }}>Search</Button>
-          {isAdmin && (
-            <>
-              <Button variant="outline" onClick={() => setImportOpen(true)}>
-                <Upload className="mr-1 h-4 w-4" /> Import
-              </Button>
-              <Button onClick={() => openForm(null)}>
-                <Plus className="mr-1 h-4 w-4" /> Add
-              </Button>
-            </>
+          <div className="mt-4 flex items-center gap-2 text-sm text-gray-600">
+            <Shield className="h-4 w-4" />
+            <span>{total} record{total === 1 ? "" : "s"} found</span>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader><CardTitle>{title}</CardTitle></CardHeader>
+        <CardContent>
+          {loading ? (
+            <div className="flex justify-center items-center py-12">
+              <Loader className="h-6 w-6 animate-spin" />
+            </div>
+          ) : items.length === 0 ? (
+            <div className="text-center py-12">
+              <BookOpen className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+              <p className="text-gray-600">No records found</p>
+              <p className="text-sm text-gray-500 mt-1">Try adjusting your search criteria</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    {columns.map((c) => <TableHead key={c.key}>{c.label}</TableHead>)}
+                    <TableHead className="text-right">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {items.map((row) => (
+                    <TableRow key={row.id}>
+                      {columns.map((c) => (
+                        <TableCell key={c.key} className="whitespace-nowrap">{fmt(row[c.key], isDateCol(c.key))}</TableCell>
+                      ))}
+                      <TableCell className="text-right">
+                        <div className="flex justify-end gap-1">
+                          {isAdmin && (
+                            <>
+                              <Button variant="ghost" size="sm" onClick={() => openForm(row)}>
+                                <Pencil className="h-4 w-4" />
+                              </Button>
+                              <Button variant="ghost" size="sm" onClick={() => void remove(row)}>
+                                <Trash2 className="h-4 w-4 text-red-500" />
+                              </Button>
+                            </>
+                          )}
+                          <Button variant="ghost" size="sm" onClick={() => setViewRow(row)}>
+                            <Eye className="h-4 w-4 mr-2" />View
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+
+          {/* Pagination — same style as the baptism records tab */}
+          {total > pageSize && (
+            <div className="flex justify-between items-center mt-4 pt-4 border-t">
+              <p className="text-sm text-gray-600">Page {page} of {totalPages}</p>
+              <div className="flex gap-2">
+                <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => { setPage(page - 1); void fetchItems(page - 1); }}>Previous</Button>
+                <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => { setPage(page + 1); void fetchItems(page + 1); }}>Next</Button>
+              </div>
+            </div>
           )}
         </CardContent>
       </Card>
-
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-base">{title} <span className="font-normal text-gray-500">({total})</span></CardTitle>
-        </CardHeader>
-        <CardContent className="overflow-x-auto p-0 sm:p-6 sm:pt-0">
-          {renderTableContent()}
-        </CardContent>
-      </Card>
-
-      {total > pageSize && (
-        <div className="flex items-center justify-center gap-3">
-          <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => { setPage(page - 1); void fetchItems(page - 1); }}>
-            <ChevronLeft className="h-4 w-4" />
-          </Button>
-          <span className="text-sm text-gray-600">Page {page} of {totalPages}</span>
-          <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => { setPage(page + 1); void fetchItems(page + 1); }}>
-            <ChevronRight className="h-4 w-4" />
-          </Button>
-        </div>
-      )}
 
       {/* Add / edit dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
@@ -326,31 +351,113 @@ export default function RegistryPanel(props: Readonly<RegistryPanelProps>) {
         </DialogContent>
       </Dialog>
 
-      {/* CSV import dialog */}
+      {/* Record detail dialog — same "View" pattern as the baptism tab */}
+      <Dialog open={viewRow !== null} onOpenChange={(open) => { if (!open) setViewRow(null); }}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{title.replace(/s$/, "")} Record</DialogTitle>
+            <DialogDescription>Registry record details</DialogDescription>
+          </DialogHeader>
+          {viewRow && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
+              {fields.map((f) => (
+                <div key={f.key} className={f.type === "textarea" ? "sm:col-span-2" : ""}>
+                  <span className="text-gray-600">{f.label}:</span>
+                  <p className="font-medium whitespace-pre-wrap">{fmt(viewRow[f.key], f.type === "date")}</p>
+                </div>
+              ))}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* CSV import dialog — same UX as the baptism records import */}
       <Dialog open={importOpen} onOpenChange={setImportOpen}>
-        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl">
           <DialogHeader>
             <DialogTitle>Import {title}</DialogTitle>
             <DialogDescription>
-              Upload a CSV with a header row.{" "}
+              Upload a CSV file or paste its contents. The first row must be a header row.{" "}
               <button type="button" className="text-green-700 underline" onClick={downloadTemplate}>
                 <Download className="mr-1 inline h-3 w-3" />Download template
               </button>
             </DialogDescription>
           </DialogHeader>
-          <input ref={fileRef} type="file" accept=".csv,text/csv" onChange={(e) => void onFile(e)} className="text-sm" />
-          {importErrors.length > 0 && (
-            <div className="max-h-40 overflow-y-auto rounded border border-amber-200 bg-amber-50 p-2 text-xs text-amber-800">
-              {importErrors.slice(0, 20).map((er) => <p key={`${er.row}-${er.message}`}>Row {er.row}: {er.message}</p>)}
-              {importErrors.length > 20 && <p>…and {importErrors.length - 20} more</p>}
+          <div className="space-y-4">
+            <div className="flex items-center gap-2">
+              <input
+                ref={fileRef}
+                type="file"
+                accept=".csv,text/csv"
+                className="hidden"
+                onChange={(e) => void onFile(e)}
+              />
+              <Button variant="outline" onClick={() => fileRef.current?.click()}>
+                <Upload className="mr-2 h-4 w-4" />Choose CSV file
+              </Button>
             </div>
-          )}
-          {importRows.length > 0 && <p className="text-sm text-gray-600">{importRows.length} rows ready to import.</p>}
-          <div className="flex justify-end gap-2">
-            <Button variant="outline" onClick={() => setImportOpen(false)}>Close</Button>
-            <Button disabled={importing || importRows.length === 0} onClick={() => void runImport()}>
-              {importing ? "Importing…" : `Import ${importRows.length || ""}`}
-            </Button>
+            <div className="space-y-1.5">
+              <Label htmlFor="reg-csv-paste" className="text-xs">Or paste CSV</Label>
+              <Textarea
+                id="reg-csv-paste"
+                value={importText}
+                onChange={(e) => parseImportText(e.target.value)}
+                placeholder="Paste CSV rows here…"
+                rows={5}
+                className="font-mono text-xs"
+              />
+            </div>
+
+            {importErrors.length > 0 && (
+              <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg max-h-32 overflow-y-auto">
+                <p className="text-sm font-medium text-amber-900 mb-1">
+                  {importErrors.length} issue{importErrors.length === 1 ? "" : "s"}
+                </p>
+                {importErrors.slice(0, 20).map((er) => (
+                  <p key={`${er.row}-${er.message}`} className="text-xs text-amber-800">Row {er.row}: {er.message}</p>
+                ))}
+                {importErrors.length > 20 && (
+                  <p className="text-xs text-amber-700 mt-1">…and {importErrors.length - 20} more</p>
+                )}
+              </div>
+            )}
+
+            {importRows.length > 0 && (
+              <div>
+                <p className="text-sm font-medium mb-2">
+                  Preview — {importRows.length} valid row{importRows.length === 1 ? "" : "s"}
+                  {importRows.length > 10 && " (showing first 10)"}
+                </p>
+                <div className="border rounded-lg overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="w-12">#</TableHead>
+                        {columns.map((c) => <TableHead key={c.key}>{c.label}</TableHead>)}
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {importRows.slice(0, 10).map((r) => (
+                        <TableRow key={r.row}>
+                          <TableCell className="text-xs text-gray-500">{r.row}</TableCell>
+                          {columns.map((c) => (
+                            <TableCell key={c.key}>{r.data[c.key] || "—"}</TableCell>
+                          ))}
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              </div>
+            )}
+
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="outline" onClick={() => setImportOpen(false)} disabled={importing}>Cancel</Button>
+              <Button onClick={() => void runImport()} disabled={importing || importRows.length === 0}>
+                {importing && <Loader className="mr-2 h-4 w-4 animate-spin" />}
+                Import {importRows.length > 0 ? importLabel : "records"}
+              </Button>
+            </div>
           </div>
         </DialogContent>
       </Dialog>
