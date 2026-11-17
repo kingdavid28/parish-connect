@@ -12,10 +12,16 @@ const RECORD_FIELDS = [
   "confirmed_date", "confirm_sponsor",
 ];
 
+// $1..$N placeholders for the record fields, plus id and created_by.
+const PARAMS_PER_ROW = RECORD_FIELDS.length + 2;
+const FIELD_PLACEHOLDERS = RECORD_FIELDS.map((_, i) => `$${i + 1}`).join(", ");
+const ID_PLACEHOLDER = `$${RECORD_FIELDS.length + 1}`;
+const CREATOR_PLACEHOLDER = `$${RECORD_FIELDS.length + 2}`;
+
 /** Expand a yyyy-MM-dd birthday into the text formats used in legacy records. */
 function birthdayVariants(birthday) {
   const d = new Date(birthday);
-  if (isNaN(d.getTime())) return null;
+  if (Number.isNaN(d.getTime())) return null;
   const months = ["January","February","March","April","May","June","July","August","September","October","November","December"];
   const iso = d.toISOString().slice(0, 10);
   const withComma = `${months[d.getUTCMonth()]} ${d.getUTCDate()}, ${d.getUTCFullYear()}`;
@@ -38,8 +44,8 @@ router.get("/", authenticate, async (req, res) => {
 
   const search = String(req.query.search || "").trim();
   const birthday = String(req.query.birthday || "").trim();
-  const page = Math.max(1, parseInt(req.query.page || 1, 10));
-  const limit = Math.min(50, Math.max(1, parseInt(req.query.limit || 20, 10)));
+  const page = Math.max(1, Number.parseInt(req.query.page || 1, 10));
+  const limit = Math.min(50, Math.max(1, Number.parseInt(req.query.limit || 20, 10)));
   const offset = (page - 1) * limit;
 
   const canSeeAll = ["admin", "superadmin"].includes(req.user.role);
@@ -78,7 +84,7 @@ router.get("/", authenticate, async (req, res) => {
       `SELECT COUNT(*) AS total FROM sacramental_records ${whereSql}`,
       params
     );
-    const total = parseInt(countRows[0].total, 10);
+    const total = Number.parseInt(countRows[0].total, 10);
 
     params.push(limit, offset);
     const { rows: items } = await pool.query(
@@ -135,7 +141,7 @@ router.post("/", authenticate, requireRole("admin", "superadmin"), async (req, r
     const values = RECORD_FIELDS.map((f) => (body[f] != null && String(body[f]).trim() !== "" ? String(body[f]).trim() : null));
     await pool.query(
       `INSERT INTO sacramental_records (${RECORD_FIELDS.join(", ")}, id, created_by)
-       VALUES (${RECORD_FIELDS.map((_, i) => `$${i + 1}`).join(", ")}, $${RECORD_FIELDS.length + 1}, $${RECORD_FIELDS.length + 2})`,
+       VALUES (${FIELD_PLACEHOLDERS}, ${ID_PLACEHOLDER}, ${CREATOR_PLACEHOLDER})`,
       [...values, id, req.user.id]
     );
     await auditLog(req.user.id, "create_sacrament_record", "sacramental_record", id, getClientIp(req));
@@ -202,14 +208,21 @@ router.post("/bulk", authenticate, requireRole("admin", "superadmin"), async (re
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
+    // Single multi-row INSERT — one round trip, still inside the transaction.
+    const tuples = valid.map((_, r) => {
+      const base = r * PARAMS_PER_ROW;
+      const ph = RECORD_FIELDS.map((_, i) => `$${base + i + 1}`);
+      ph.push(`$${base + PARAMS_PER_ROW - 1}`, `$${base + PARAMS_PER_ROW}`);
+      return `(${ph.join(", ")})`;
+    });
+    const params = [];
     for (const { values } of valid) {
-      const id = uuid();
-      await client.query(
-        `INSERT INTO sacramental_records (${RECORD_FIELDS.join(", ")}, id, created_by)
-         VALUES (${RECORD_FIELDS.map((_, j) => `$${j + 1}`).join(", ")}, $${RECORD_FIELDS.length + 1}, $${RECORD_FIELDS.length + 2})`,
-        [...values, id, req.user.id]
-      );
+      params.push(...values, uuid(), req.user.id);
     }
+    await client.query(
+      `INSERT INTO sacramental_records (${RECORD_FIELDS.join(", ")}, id, created_by) VALUES ${tuples.join(", ")}`,
+      params
+    );
     await client.query("COMMIT");
     await auditLog(req.user.id, "import_sacrament_records", "sacramental_record", String(valid.length), getClientIp(req));
     res.status(201).json({
