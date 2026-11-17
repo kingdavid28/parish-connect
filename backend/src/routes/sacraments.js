@@ -65,6 +65,13 @@ router.get("/", authenticate, async (req, res) => {
       }
     }
 
+    // confirmed=1 → only records with confirmation data filled in
+    if (String(req.query.confirmed || "") === "1") {
+      where.push(
+        `((confirmed_by IS NOT NULL AND confirmed_by <> '') OR (confirmed_date IS NOT NULL AND confirmed_date <> '') OR (confirm_sponsor IS NOT NULL AND confirm_sponsor <> ''))`
+      );
+    }
+
     const whereSql = where.length ? "WHERE " + where.join(" AND ") : "";
 
     const { rows: countRows } = await pool.query(
