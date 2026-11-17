@@ -172,7 +172,7 @@ function sendGroupMessage(string $groupId): void {
         $groupRow = $groupNameStmt->fetch();
         $preview = $content ? mb_strimwidth($content, 0, 80, '…') : '📷 Image';
         foreach ($membersStmt->fetchAll() as $member) {
-            sendPushToUser($member['user_id'], [
+            notifyUser($member['user_id'], [
                 'title' => ($sender['name'] ?? 'Someone') . ' in ' . ($groupRow['name'] ?? 'group'),
                 'body'  => $preview,
                 'tag'   => 'group-' . $groupId,

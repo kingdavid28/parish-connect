@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router";
 import { useAuth } from "../context/AuthContext";
-import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
+import { Card, CardContent } from "../components/ui/card";
 import { Avatar, AvatarImage, AvatarFallback } from "../components/ui/avatar";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -36,21 +36,21 @@ const safeFormatDate = (dateString: string) => {
     date = new Date(dateString);
     
     // If invalid, try ISO format parsing (Safari is stricter)
-    if (isNaN(date.getTime())) {
+    if (Number.isNaN(date.getTime())) {
       // Try parsing with timezone handling
       const isoString = dateString.replace(/ /, 'T');
       date = new Date(isoString);
     }
     
     // If still invalid, try manual parsing
-    if (isNaN(date.getTime())) {
+    if (Number.isNaN(date.getTime())) {
       const parsed = Date.parse(dateString);
-      if (!isNaN(parsed)) {
+      if (!Number.isNaN(parsed)) {
         date = new Date(parsed);
       }
     }
     
-    if (isNaN(date.getTime())) return 'Invalid date';
+    if (Number.isNaN(date.getTime())) return 'Invalid date';
     return format(date, "MMM yyyy");
   } catch (error) {
     console.error('Date parsing error:', error, dateString);
@@ -106,7 +106,7 @@ const RELATIONSHIP_LABELS: Record<string, string> = {
 
 export default function Membership() {
   const navigate = useNavigate();
-  const { user, isAdmin, isSuperAdmin } = useAuth();
+  const { isAdmin, isSuperAdmin } = useAuth();
 
   // ── Directory ──────────────────────────────────────────────────────────────
   const [members, setMembers] = useState<Member[]>([]);
@@ -141,7 +141,7 @@ export default function Membership() {
   const API_BASE_URL = API;
 
   useEffect(() => {
-    fetchMembers();
+    void fetchMembers();
   }, []);
 
   const fetchMembers = async () => {
@@ -224,7 +224,7 @@ export default function Membership() {
       setShowFamilyDialog(false);
       setEditingFamily(null);
       setFamilyForm({ name: '', description: '' });
-      fetchFamilies();
+      void fetchFamilies();
     } catch (err) { toast.error(err instanceof Error ? err.message : 'Failed to save'); }
     finally { setIsSubmitting(false); }
   };
@@ -240,7 +240,7 @@ export default function Membership() {
       if (!data.success) throw new Error(data.message);
       toast.success('Family group deleted');
       setDeletingFamily(null);
-      fetchFamilies();
+      void fetchFamilies();
     } catch (err) { toast.error(err instanceof Error ? err.message : 'Failed to delete'); }
     finally { setIsSubmitting(false); }
   };
@@ -259,7 +259,7 @@ export default function Membership() {
       toast.success('Member added');
       setShowAddMember(false);
       setAddMemberForm({ user_id: '', relationship: 'other' });
-      openFamilyDetail(selectedFamily);
+      void openFamilyDetail(selectedFamily);
     } catch (err) { toast.error(err instanceof Error ? err.message : 'Failed to add member'); }
     finally { setIsSubmitting(false); }
   };
@@ -274,7 +274,7 @@ export default function Membership() {
       const data = await res.json();
       if (!data.success) throw new Error(data.message);
       toast.success('Member removed');
-      if (selectedFamily) openFamilyDetail(selectedFamily);
+      if (selectedFamily) void openFamilyDetail(selectedFamily);
     } catch (err) { toast.error(err instanceof Error ? err.message : 'Failed to remove member'); }
   };
 
@@ -305,7 +305,7 @@ export default function Membership() {
       setShowMinistryDialog(false);
       setEditingMinistry(null);
       setMinistryForm({ name: '', description: '', schedule: '', contact_name: '', contact_email: '' });
-      fetchMinistries();
+      void fetchMinistries();
     } catch (err) { toast.error(err instanceof Error ? err.message : 'Failed to save'); }
     finally { setIsSubmitting(false); }
   };
@@ -321,7 +321,7 @@ export default function Membership() {
       if (!data.success) throw new Error(data.message);
       toast.success('Ministry deleted');
       setDeletingMinistry(null);
-      fetchMinistries();
+      void fetchMinistries();
     } catch (err) { toast.error(err instanceof Error ? err.message : 'Failed to delete'); }
     finally { setIsSubmitting(false); }
   };
@@ -337,9 +337,14 @@ export default function Membership() {
       const data = await res.json();
       if (!data.success) throw new Error(data.message);
       toast.success(ministry.is_member ? 'Left ministry' : 'Joined ministry!');
-      fetchMinistries();
+      void fetchMinistries();
     } catch (err) { toast.error(err instanceof Error ? err.message : 'Failed'); }
     finally { setJoiningMinistry(null); }
+  };
+
+  const ministryJoinContent = (ministry: Ministry) => {
+    if (ministry.is_member) return <><UserCheck className="h-4 w-4 mr-2" />Leave Ministry</>;
+    return <><Plus className="h-4 w-4 mr-2" />Join Ministry</>;
   };
 
   const filteredMembers = members.filter((member) => {
@@ -429,8 +434,8 @@ export default function Membership() {
       </div>
 
       <Tabs defaultValue="directory" className="space-y-6" onValueChange={(v) => {
-        if (v === 'families' && families.length === 0) fetchFamilies();
-        if (v === 'ministries' && ministries.length === 0) fetchMinistries();
+        if (v === 'families' && families.length === 0) void fetchFamilies();
+        if (v === 'ministries' && ministries.length === 0) void fetchMinistries();
       }}>
         <TabsList className="grid w-full grid-cols-3 sm:w-fit">
           <TabsTrigger value="directory" className="h-auto min-h-8 whitespace-normal px-1 text-center text-xs leading-tight sm:px-3 sm:text-sm">Member Directory</TabsTrigger>
@@ -571,11 +576,11 @@ export default function Membership() {
                       </div>
                     </div>
                     {isAdmin && (
-                      <div className="flex gap-1" onClick={(e) => e.stopPropagation()}>
-                        <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => { setEditingFamily(family); setFamilyForm({ name: family.name, description: family.description || '' }); setShowFamilyDialog(true); }}>
+                      <div className="flex gap-1">
+                        <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={(e) => { e.stopPropagation(); setEditingFamily(family); setFamilyForm({ name: family.name, description: family.description || '' }); setShowFamilyDialog(true); }}>
                           <Pencil className="h-3.5 w-3.5" />
                         </Button>
-                        <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-red-500 hover:text-red-600" onClick={() => setDeletingFamily(family)}>
+                        <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-red-500 hover:text-red-600" onClick={(e) => { e.stopPropagation(); setDeletingFamily(family); }}>
                           <Trash2 className="h-3.5 w-3.5" />
                         </Button>
                       </div>
@@ -662,9 +667,7 @@ export default function Membership() {
                     disabled={joiningMinistry === ministry.id} onClick={() => handleToggleMinistry(ministry)}>
                     {joiningMinistry === ministry.id
                       ? <Loader className="h-4 w-4 animate-spin mr-2" />
-                      : ministry.is_member
-                        ? <><UserCheck className="h-4 w-4 mr-2" />Leave Ministry</>
-                        : <><Plus className="h-4 w-4 mr-2" />Join Ministry</>}
+                      : ministryJoinContent(ministry)}
                   </Button>
                 </CardContent>
               </Card>
@@ -794,7 +797,7 @@ export default function Membership() {
                   <Select value={addMemberForm.user_id} onValueChange={(v) => setAddMemberForm({ ...addMemberForm, user_id: v })}>
                     <SelectTrigger><SelectValue placeholder="Select member..." /></SelectTrigger>
                     <SelectContent>
-                      {members.filter((m) => !(selectedFamily?.members || []).find((sm) => sm.id === m.id))
+                      {members.filter((m) => !(selectedFamily?.members || []).some((sm) => sm.id === m.id))
                         .map((m) => <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>)}
                     </SelectContent>
                   </Select>

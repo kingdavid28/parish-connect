@@ -145,19 +145,35 @@ function createPost(): void {
              VALUES (?, ?, ?, ?, ?)'
         )->execute([$id, $user['id'], $content, $type, $imageUrl]);
 
-        // Notify followers of the post author
+        // Notify audience: admins broadcast to all parishioners, others to followers
         $db = getDB();
-        $followers = $db->prepare(
-            'SELECT follower_id FROM follows WHERE following_id = ?'
-        );
-        $followers->execute([$user['id']]);
-        $preview = mb_strimwidth($content, 0, 80, '…');
-        foreach ($followers->fetchAll() as $row) {
-            sendPushToUser($row['follower_id'], [
-                'title' => $user['name'] . ' posted',
-                'body'  => $preview,
-                'tag'   => 'new-post-' . $id,
-                'url'   => '/parish-connect/',
+        $isAdminPost = in_array($user['role'] ?? '', ['admin', 'superadmin'], true);
+        if ($isAdminPost) {
+            $recipients = $db->prepare(
+                "SELECT id AS recipient_id FROM users
+                 WHERE role = 'parishioner' AND is_active = 1 AND id <> ?"
+            );
+            $recipients->execute([$user['id']]);
+        } else {
+            $recipients = $db->prepare(
+                'SELECT f.follower_id AS recipient_id
+                 FROM follows f
+                 JOIN users u ON u.id = f.follower_id
+                 WHERE f.following_id = ? AND u.is_active = 1'
+            );
+            $recipients->execute([$user['id']]);
+        }
+        $preview = $content !== ''
+            ? mb_strimwidth($content, 0, 120, '…')
+            : 'Shared a photo';
+        $notifyTitle = $isAdminPost ? 'New parish post' : $user['name'] . ' posted';
+        foreach ($recipients->fetchAll() as $row) {
+            notifyUser($row['recipient_id'], [
+                'category' => 'posts',
+                'title'    => $notifyTitle,
+                'body'     => $preview,
+                'tag'      => 'new-post-' . $id,
+                'url'      => '/parish-connect/',
             ]);
         }
 
@@ -308,7 +324,7 @@ function addComment(string $postId): void {
         $post = $postAuthor->fetch();
         if ($post && $post['user_id'] !== $user['id']) {
             $preview = mb_strimwidth($content, 0, 80, '…');
-            sendPushToUser($post['user_id'], [
+            notifyUser($post['user_id'], [
                 'title' => $user['name'] . ' commented',
                 'body'  => $preview,
                 'tag'   => 'comment-' . $id,

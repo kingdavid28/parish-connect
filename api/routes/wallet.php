@@ -223,7 +223,7 @@ function submitTopup(): void {
         );
         $admins->execute();
         foreach ($admins->fetchAll() as $admin) {
-            sendPushToUser($admin['id'], [
+            notifyUser($admin['id'], [
                 'title' => '💰 New Top-up Request',
                 'body'  => $user['name'] . ' submitted ₱' . number_format($amountPhp, 2) . ' top-up' . ($receiptUrl ? ' with receipt' : ''),
                 'tag'   => 'topup-' . $id,
@@ -293,7 +293,7 @@ function submitCashout(): void {
         );
         $admins->execute();
         foreach ($admins->fetchAll() as $admin) {
-            sendPushToUser($admin['id'], [
+            notifyUser($admin['id'], [
                 'title' => '💸 Cash-out Request',
                 'body'  => $user['name'] . ' wants to cash out ₱' . number_format($amountPhp, 2),
                 'tag'   => 'cashout-' . $id,
@@ -352,7 +352,7 @@ function sendGift(): void {
         )->execute([$giftId, $sender['id'], $receiverId, $gblessAmount, $message ?: null]);
 
         // Notify receiver
-        sendPushToUser($receiverId, [
+        notifyUser($receiverId, [
             'title' => '🎁 GBless Gift from ' . $sender['name'],
             'body'  => $sender['name'] . ' sent you ' . number_format($gblessAmount) . ' GBless!' . ($message ? ' "' . $message . '"' : ''),
             'tag'   => 'gift-' . $giftId,
@@ -491,7 +491,7 @@ function adminReviewTopup(): void {
             creditPoints($topup['user_id'], (int)$topup['gbless_amount'], 'topup_approved', $requestId);
             checkAndAwardBadges($topup['user_id']);
 
-            sendPushToUser($topup['user_id'], [
+            notifyUser($topup['user_id'], [
                 'title' => '✅ Top-up Approved!',
                 'body'  => number_format((int)$topup['gbless_amount']) . ' GBless has been added to your wallet.',
                 'tag'   => 'topup-approved-' . $requestId,
@@ -516,7 +516,7 @@ function adminReviewTopup(): void {
                 );
             }
         } else {
-            sendPushToUser($topup['user_id'], [
+            notifyUser($topup['user_id'], [
                 'title' => '❌ Top-up Rejected',
                 'body'  => 'Your top-up request was rejected.' . ($note ? ' Reason: ' . $note : ''),
                 'tag'   => 'topup-rejected-' . $requestId,
@@ -597,7 +597,7 @@ function adminReviewCashout(): void {
             // Refund the reserved GBless back to user
             creditPoints($cashout['user_id'], (int)$cashout['gbless_amount'], 'cashout_refunded', $requestId);
 
-            sendPushToUser($cashout['user_id'], [
+            notifyUser($cashout['user_id'], [
                 'title' => '❌ Cash-out Rejected',
                 'body'  => 'Your cash-out was rejected. GBless has been refunded.' . ($note ? ' Reason: ' . $note : ''),
                 'tag'   => 'cashout-rejected-' . $requestId,
@@ -605,7 +605,7 @@ function adminReviewCashout(): void {
             ]);
         } else {
             // Approved — GBless was already deducted at request time, just notify
-            sendPushToUser($cashout['user_id'], [
+            notifyUser($cashout['user_id'], [
                 'title' => '✅ Cash-out Approved!',
                 'body'  => '₱' . number_format((float)$cashout['amount_php'], 2) . ' will be sent to your GCash ' . $cashout['gcash_number'] . ' shortly.',
                 'tag'   => 'cashout-approved-' . $requestId,

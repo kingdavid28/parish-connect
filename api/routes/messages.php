@@ -137,7 +137,7 @@ function sendMessage(string $receiverId): void {
 
         // Push notification to receiver
         $preview = $content ? mb_strimwidth($content, 0, 80, '…') : '📷 Image';
-        sendPushToUser($receiverId, [
+        notifyUser($receiverId, [
             'title' => 'New message from ' . $user['name'],
             'body'  => $preview,
             'tag'   => 'message-' . $user['id'],

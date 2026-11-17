@@ -77,21 +77,21 @@ const safeFormatDate = (dateString: string) => {
         date = new Date(dateString);
         
         // If invalid, try ISO format parsing (Safari is stricter)
-        if (isNaN(date.getTime())) {
+        if (Number.isNaN(date.getTime())) {
             // Try parsing with timezone handling
             const isoString = dateString.replace(/ /, 'T');
             date = new Date(isoString);
         }
         
         // If still invalid, try manual parsing
-        if (isNaN(date.getTime())) {
+        if (Number.isNaN(date.getTime())) {
             const parsed = Date.parse(dateString);
-            if (!isNaN(parsed)) {
+            if (!Number.isNaN(parsed)) {
                 date = new Date(parsed);
             }
         }
         
-        if (isNaN(date.getTime())) return 'Invalid date';
+        if (Number.isNaN(date.getTime())) return 'Invalid date';
         return formatDistanceToNow(date, { addSuffix: true });
     } catch (error) {
         console.error('Date parsing error:', error, dateString);
@@ -108,21 +108,21 @@ const safeParseDate = (dateString: string): Date | null => {
         date = new Date(dateString);
         
         // If invalid, try ISO format parsing (Safari is stricter)
-        if (isNaN(date.getTime())) {
+        if (Number.isNaN(date.getTime())) {
             // Try parsing with timezone handling
             const isoString = dateString.replace(/ /, 'T');
             date = new Date(isoString);
         }
         
         // If still invalid, try manual parsing
-        if (isNaN(date.getTime())) {
+        if (Number.isNaN(date.getTime())) {
             const parsed = Date.parse(dateString);
-            if (!isNaN(parsed)) {
+            if (!Number.isNaN(parsed)) {
                 date = new Date(parsed);
             }
         }
         
-        if (isNaN(date.getTime())) return null;
+        if (Number.isNaN(date.getTime())) return null;
         return date;
     } catch (error) {
         console.error('Date parsing error:', error, dateString);
@@ -281,7 +281,7 @@ export default function AdminManagement() {
   };
 
   useEffect(() => {
-    fetchUsers();
+    void fetchUsers();
   }, []);
 
   const filteredUsers = users.filter((user) => {
@@ -360,17 +360,6 @@ export default function AdminManagement() {
     }
   };
 
-  const getRoleIcon = (role: string) => {
-    switch (role) {
-      case "superadmin":
-        return <Crown className="h-4 w-4" />;
-      case "admin":
-        return <ShieldCheck className="h-4 w-4" />;
-      default:
-        return <User className="h-4 w-4" />;
-    }
-  };
-
   const getRoleBadge = (role: string) => {
     switch (role) {
       case "superadmin":
@@ -409,7 +398,7 @@ export default function AdminManagement() {
           </div>
         </div>
 
-        <Tabs defaultValue="users" onValueChange={(v) => { if (v === 'audit' && auditLogs.length === 0) fetchAuditLogs(1); }}>
+        <Tabs defaultValue="users" onValueChange={(v) => { if (v === 'audit' && auditLogs.length === 0) void fetchAuditLogs(1); }}>
           <TabsList className={`mb-6 grid h-auto w-full grid-cols-2 sm:w-fit ${canViewAudit ? "sm:grid-cols-4" : "sm:grid-cols-3"}`}>
             <TabsTrigger value="users" className="min-h-9 whitespace-normal px-1 text-xs sm:px-3 sm:text-sm"><Shield className="h-4 w-4 mr-1.5" />Users</TabsTrigger>
             <TabsTrigger value="wallet" className="min-h-9 whitespace-normal px-1 text-xs sm:px-3 sm:text-sm"><WalletIcon className="h-4 w-4 mr-1.5" />GBless Wallet</TabsTrigger>
@@ -519,21 +508,23 @@ export default function AdminManagement() {
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                {isLoadingUsers ? (
+                {isLoadingUsers && (
                   <div className="flex justify-center items-center py-12">
                     <Loader className="h-6 w-6 animate-spin" />
                   </div>
-                ) : filteredUsers.length === 0 ? (
+                )}
+                {!isLoadingUsers && filteredUsers.length === 0 && (
                   <div className="text-center py-12">
                     <User className="h-12 w-12 text-gray-400 mx-auto mb-4" />
                     <p className="text-gray-600">No users found</p>
-                    {searchQuery || roleFilter !== "all" && (
+                    {(searchQuery || roleFilter !== "all") && (
                       <p className="text-sm text-gray-500 mt-1">
                         Try adjusting your search criteria
                       </p>
                     )}
                   </div>
-                ) : (
+                )}
+                {!isLoadingUsers && filteredUsers.length > 0 && (
                   <div className="overflow-x-auto">
                     <Table>
                       <TableHeader>
@@ -828,7 +819,7 @@ export default function AdminManagement() {
                 <CardContent className="pt-5 pb-4">
                   <div className="flex flex-wrap gap-3 items-end">
                     <div className="space-y-1">
-                      <label className="text-xs font-medium text-gray-500">Action</label>
+                      <span className="text-xs font-medium text-gray-500 block">Action</span>
                       <Select value={auditFilterAction || "all"} onValueChange={(v) => setAuditFilterAction(v === 'all' ? '' : v)}>
                         <SelectTrigger className="w-48 h-9"><SelectValue placeholder="All actions" /></SelectTrigger>
                         <SelectContent>
@@ -838,17 +829,17 @@ export default function AdminManagement() {
                       </Select>
                     </div>
                     <div className="space-y-1">
-                      <label className="text-xs font-medium text-gray-500">From</label>
-                      <Input type="date" className="h-9 w-40" value={auditFilterFrom} onChange={(e) => setAuditFilterFrom(e.target.value)} />
+                      <Label htmlFor="audit-filter-from" className="text-xs font-medium text-gray-500">From</Label>
+                      <Input id="audit-filter-from" type="date" className="h-9 w-40" value={auditFilterFrom} onChange={(e) => setAuditFilterFrom(e.target.value)} />
                     </div>
                     <div className="space-y-1">
-                      <label className="text-xs font-medium text-gray-500">To</label>
-                      <Input type="date" className="h-9 w-40" value={auditFilterTo} onChange={(e) => setAuditFilterTo(e.target.value)} />
+                      <Label htmlFor="audit-filter-to" className="text-xs font-medium text-gray-500">To</Label>
+                      <Input id="audit-filter-to" type="date" className="h-9 w-40" value={auditFilterTo} onChange={(e) => setAuditFilterTo(e.target.value)} />
                     </div>
-                    <Button size="sm" onClick={() => fetchAuditLogs(1)} disabled={auditLoading}>
+                    <Button size="sm" onClick={() => void fetchAuditLogs(1)} disabled={auditLoading}>
                       <Filter className="h-4 w-4 mr-2" />Apply
                     </Button>
-                    <Button size="sm" variant="outline" onClick={() => { setAuditFilterAction(''); setAuditFilterFrom(''); setAuditFilterTo(''); setTimeout(() => fetchAuditLogs(1), 0); }}>
+                    <Button size="sm" variant="outline" onClick={() => { setAuditFilterAction(''); setAuditFilterFrom(''); setAuditFilterTo(''); setTimeout(() => void fetchAuditLogs(1), 0); }}>
                       Clear
                     </Button>
                   </div>
@@ -859,14 +850,16 @@ export default function AdminManagement() {
               {/* Table */}
               <Card>
                 <CardContent className="p-0">
-                  {auditLoading ? (
+                  {auditLoading && (
                     <div className="flex justify-center py-12"><Loader className="h-6 w-6 animate-spin" /></div>
-                  ) : auditLogs.length === 0 ? (
+                  )}
+                  {!auditLoading && auditLogs.length === 0 && (
                     <div className="text-center py-12">
                       <ClipboardList className="h-12 w-12 text-gray-300 mx-auto mb-3" />
                       <p className="text-gray-500">No audit log entries found</p>
                     </div>
-                  ) : (
+                  )}
+                  {!auditLoading && auditLogs.length > 0 && (
                     <div className="overflow-x-auto">
                       <table className="w-full text-sm">
                         <thead className="border-b bg-gray-50">
@@ -920,10 +913,10 @@ export default function AdminManagement() {
                 <div className="flex items-center justify-between">
                   <p className="text-sm text-gray-500">Page {auditPage} of {Math.ceil(auditTotal / 50)}</p>
                   <div className="flex gap-2">
-                    <Button variant="outline" size="sm" disabled={auditPage <= 1 || auditLoading} onClick={() => fetchAuditLogs(auditPage - 1)}>
+                    <Button variant="outline" size="sm" disabled={auditPage <= 1 || auditLoading} onClick={() => void fetchAuditLogs(auditPage - 1)}>
                       <ChevronLeft className="h-4 w-4" />Previous
                     </Button>
-                    <Button variant="outline" size="sm" disabled={!auditHasMore || auditLoading} onClick={() => fetchAuditLogs(auditPage + 1)}>
+                    <Button variant="outline" size="sm" disabled={!auditHasMore || auditLoading} onClick={() => void fetchAuditLogs(auditPage + 1)}>
                       Next<ChevronRight className="h-4 w-4" />
                     </Button>
                   </div>

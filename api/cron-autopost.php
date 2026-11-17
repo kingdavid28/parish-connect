@@ -30,7 +30,11 @@ require_once __DIR__ . '/db.php';
 
 function generatePostWithGroq(): ?array
 {
-    $apiKey = defined('GROQ_API_KEY') ? GROQ_API_KEY : (getenv('GROQ_API_KEY') ?: null);
+    $apiKey = defined('GROQ_API_KEY') ? GROQ_API_KEY : '';
+    if ($apiKey === '') {
+        $envKey = getenv('GROQ_API_KEY');
+        $apiKey = $envKey === false ? null : $envKey;
+    }
 
     if (!$apiKey) {
         echo "[AutoPost] No GROQ_API_KEY set, using fallback templates.\n";
@@ -116,25 +120,22 @@ PROMPT;
     $curlError = curl_error($ch);
     curl_close($ch);
 
+    $post = null;
     if ($curlError) {
         echo "[AutoPost] cURL error: {$curlError}\n";
-        return null;
-    }
-
-    if ($httpCode !== 200) {
+    } elseif ($httpCode !== 200) {
         echo "[AutoPost] Groq API returned HTTP {$httpCode}: {$response}\n";
-        return null;
+    } else {
+        $data    = json_decode($response, true);
+        $content = trim($data['choices'][0]['message']['content'] ?? '');
+        if ($content === '') {
+            echo "[AutoPost] Groq returned empty content.\n";
+        } else {
+            $post = ['type' => $type, 'content' => $content];
+        }
     }
 
-    $data    = json_decode($response, true);
-    $content = trim($data['choices'][0]['message']['content'] ?? '');
-
-    if (empty($content)) {
-        echo "[AutoPost] Groq returned empty content.\n";
-        return null;
-    }
-
-    return ['type' => $type, 'content' => $content];
+    return $post;
 }
 
 // ─── Fallback Template Pool (Cebuano + English) ───────────────────────────────

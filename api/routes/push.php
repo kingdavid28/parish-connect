@@ -67,6 +67,33 @@ function unsubscribePush(): void {
 }
 
 /**
+ * Create an in-app notification (bell dropdown) AND send web push.
+ * Parity with the Node backend's sendPushToUser.
+ */
+function notifyUser(string $userId, array $payload): void {
+    $title = trim((string)($payload['title'] ?? ''));
+    if ($userId === '' || $title === '') return;
+
+    try {
+        getDB()->prepare(
+            'INSERT INTO app_notifications (id, user_id, category, title, body, url)
+             VALUES (?, ?, ?, ?, ?, ?)'
+        )->execute([
+            generateUuid(),
+            $userId,
+            substr(trim((string)($payload['category'] ?? 'activity')) ?: 'activity', 0, 50),
+            substr($title, 0, 180),
+            substr(trim((string)($payload['body'] ?? '')), 0, 500),
+            substr((string)($payload['url'] ?? '/'), 0, 500) ?: '/',
+        ]);
+    } catch (PDOException $e) {
+        error_log('createInAppNotification error: ' . $e->getMessage());
+    }
+
+    sendPushToUser($userId, $payload);
+}
+
+/**
  * Send a push notification to a specific user.
  * Call this from other routes (posts, messages, etc.)
  */

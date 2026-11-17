@@ -23,10 +23,10 @@ import { toast } from "sonner";
 import { Trash2, AlertTriangle, LogOut, Archive } from "lucide-react";
 
 export default function AlertDialogDemo() {
-  const [deletedItems, setDeletedItems] = useState<string[]>([]);
+  const [deletedItems, setDeletedItems] = useState<{ id: string; label: string }[]>([]);
 
   const handleDelete = (itemName: string) => {
-    setDeletedItems([...deletedItems, itemName]);
+    setDeletedItems([...deletedItems, { id: crypto.randomUUID(), label: itemName }]);
     toast.success(`${itemName} deleted successfully`);
   };
 
@@ -284,10 +284,10 @@ export default function AlertDialogDemo() {
           </CardHeader>
           <CardContent>
             <ul className="space-y-2">
-              {deletedItems.map((item, index) => (
-                <li key={index} className="flex items-center gap-2 text-sm text-gray-600">
+              {deletedItems.map((item) => (
+                <li key={item.id} className="flex items-center gap-2 text-sm text-gray-600">
                   <Trash2 className="h-4 w-4 text-red-500" />
-                  {item}
+                  {item.label}
                 </li>
               ))}
             </ul>

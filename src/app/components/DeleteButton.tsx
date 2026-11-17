@@ -31,7 +31,7 @@ export function DeleteButton({
   variant = "destructive",
   size = "default",
   children,
-}: DeleteButtonProps) {
+}: Readonly<DeleteButtonProps>) {
   const defaultDescription = `This action cannot be undone. This will permanently delete ${itemName}.`;
 
   return (

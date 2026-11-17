@@ -123,7 +123,7 @@ function checkAndAwardBadges(string $userId): void {
             )->execute([generateUuid(), $userId, $badge['slug']]);
 
             // Push notification for new badge
-            sendPushToUser($userId, [
+            notifyUser($userId, [
                 'title' => 'New Badge Earned! ' . $badge['icon'],
                 'body'  => 'You earned the "' . $badge['name'] . '" badge.',
                 'tag'   => 'badge-' . $badge['slug'],
@@ -304,7 +304,7 @@ function givePraise(string $receiverId): void {
         checkAndAwardBadges($receiverId);
 
         // Notify receiver
-        sendPushToUser($receiverId, [
+        notifyUser($receiverId, [
             'title' => '💛 Praise from ' . $giver['name'],
             'body'  => $giver['name'] . ' praised you with ' . $praiseCost . ' GBless!',
             'tag'   => 'praise-' . $giver['id'],

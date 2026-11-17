@@ -416,9 +416,9 @@ export default function Feed() {
                       e.currentTarget.nextElementSibling?.classList.remove("hidden");
                     }}
                   />
-                  <p role="status" className="hidden p-4 text-sm text-gray-600">
+                  <output className="hidden p-4 text-sm text-gray-600">
                     This image couldn&apos;t be loaded. Please try uploading it again.
-                  </p>
+                  </output>
                 </div>
               )}
 
