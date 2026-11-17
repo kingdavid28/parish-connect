@@ -1,0 +1,30 @@
+name: Saint Raphael Auto-Post Cron
+
+# Hits the Render API's /api/cron/autopost endpoint twice daily (PHT).
+# The endpoint itself enforces the shared secret via x-cron-secret.
+on:
+  schedule:
+    - cron: "0 22 * * *" # 6:00 AM PHT (UTC+8)
+    - cron: "0 10 * * *" # 6:00 PM PHT (UTC+8)
+  workflow_dispatch:
+
+jobs:
+  autopost:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger auto-post
+        env:
+          CRON_SECRET: ${{ secrets.KAWAYAN_CRON_SECRET }}
+        run: |
+          for attempt in 1 2 3; do
+            code=$(curl -s -o /tmp/autopost-resp.txt -w "%{http_code}" -m 120 \
+              -H "x-cron-secret: ${CRON_SECRET}" \
+              "https://parish-connectkawayanbiliranapi.onrender.com/api/cron/autopost")
+            echo "Attempt ${attempt}: HTTP ${code}"
+            cat /tmp/autopost-resp.txt; echo
+            if [ "${code}" = "200" ]; then exit 0; fi
+            # Render free tier cold starts can take ~50s; retry after a pause.
+            sleep 45
+          done
+          echo "Auto-post failed after 3 attempts"
+          exit 1
