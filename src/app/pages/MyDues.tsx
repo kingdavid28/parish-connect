@@ -165,6 +165,35 @@ export default function MyDues() {
   const becPart = ledger?.donor?.bec_name ? " · " + ledger.donor.bec_name : "";
   const donorLabel = ledger?.donor ? ledger.donor.name + becPart : "Your donations";
 
+  const renderGcashInfo = () => {
+    if (loadingGcashInfo) {
+      return (
+        <div className="flex items-center gap-2 text-sm text-gray-500">
+          <Loader2 className="h-4 w-4 animate-spin" /> Loading parish GCash details…
+        </div>
+      );
+    }
+    if (gcashInfoError) {
+      return (
+        <div className="space-y-2 text-sm text-red-600">
+          <p>{gcashInfoError}</p>
+          <Button type="button" size="sm" variant="outline" onClick={() => { void fetchGcashInfo(); }}>
+            Try again
+          </Button>
+        </div>
+      );
+    }
+    if (!gcashInfo) return null;
+    return (
+      <GcashPaymentDetails
+        number={gcashInfo.gcash_number}
+        name={gcashInfo.gcash_name}
+        qrUrl={gcashInfo.gcash_qr_url}
+        onShowQr={() => setLightboxUrl(gcashInfo.gcash_qr_url)}
+      />
+    );
+  };
+
   const renderContent = () => {
     if (loading) {
       return (
@@ -339,25 +368,7 @@ export default function MyDues() {
               </p>
             </CardHeader>
             <CardContent>
-              {loadingGcashInfo ? (
-                <div className="flex items-center gap-2 text-sm text-gray-500">
-                  <Loader2 className="h-4 w-4 animate-spin" /> Loading parish GCash details…
-                </div>
-              ) : gcashInfoError ? (
-                <div className="space-y-2 text-sm text-red-600">
-                  <p>{gcashInfoError}</p>
-                  <Button type="button" size="sm" variant="outline" onClick={() => { void fetchGcashInfo(); }}>
-                    Try again
-                  </Button>
-                </div>
-              ) : gcashInfo ? (
-                <GcashPaymentDetails
-                  number={gcashInfo.gcash_number}
-                  name={gcashInfo.gcash_name}
-                  qrUrl={gcashInfo.gcash_qr_url}
-                  onShowQr={() => setLightboxUrl(gcashInfo.gcash_qr_url)}
-                />
-              ) : null}
+              {renderGcashInfo()}
             </CardContent>
           </Card>
           <div className="space-y-1 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
