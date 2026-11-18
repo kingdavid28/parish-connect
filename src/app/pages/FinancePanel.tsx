@@ -16,7 +16,7 @@ import {
 } from "../components/ui/table";
 import {
   Plus, Pencil, Trash2, Search, Loader2, Users, PiggyBank,
-  ChevronLeft, ChevronRight, PhilippinePeso, Upload, Download, FileDown,
+  ChevronLeft, ChevronRight, PhilippinePeso, Upload, Download, FileDown, X,
 } from "lucide-react";
 import { toast } from "sonner";
 import { API } from "../config";
@@ -499,6 +499,7 @@ export default function FinancePanel() {
   const [dForm, setDForm] = useState({ name: "", address: "", becId: "", gcash: "", expected: "", userId: "", notes: "" });
   const [userSearch, setUserSearch] = useState("");
   const [userResults, setUserResults] = useState<UserOption[]>([]);
+  const [searchingUsers, setSearchingUsers] = useState(false);
   const [savingDonor, setSavingDonor] = useState(false);
 
   // Ledger + month detail
@@ -630,16 +631,21 @@ export default function FinancePanel() {
   useEffect(() => { void fetchDonors(); }, [fetchDonors]);
 
   useEffect(() => {
-    if (!userSearch.trim()) { setUserResults([]); return; }
+    // Skip searching while a linked account is already chosen — otherwise the
+    // results dropdown re-opens right after a selection.
+    if (dForm.userId || !userSearch.trim()) { setUserResults([]); return; }
     const t = setTimeout(async () => {
+      setSearchingUsers(true);
       try {
-        const res = await fetch(`${API}/users/search?q=${encodeURIComponent(userSearch.trim())}`, { headers: authHeaders() });
+        const res = await fetch(`${API}/users/search?include_self=1&q=${encodeURIComponent(userSearch.trim())}`, { headers: authHeaders() });
         const data = await res.json();
         if (data.success) setUserResults((data.data || []).slice(0, 8));
-      } catch { /* ignore */ }
+      } catch { /* ignore */ } finally {
+        setSearchingUsers(false);
+      }
     }, 300);
     return () => clearTimeout(t);
-  }, [userSearch, authHeaders]);
+  }, [userSearch, dForm.userId, authHeaders]);
 
   // ── BEC actions ───────────────────────────────────────────
   const openBecDialog = (bec: Bec | null) => {
@@ -1205,17 +1211,37 @@ export default function FinancePanel() {
               </div>
               <div className="space-y-2">
                 <Label htmlFor="d-user">Linked Account</Label>
-                <Input id="d-user" value={userSearch} placeholder="Search user…"
-                  onChange={(e) => { setUserSearch(e.target.value); setDForm({ ...dForm, userId: "" }); }} />
-                {userResults.length > 0 && (
-                  <div className="border rounded-md max-h-32 overflow-y-auto">
-                    {userResults.map((u) => (
-                      <button key={u.id} type="button" className="w-full text-left px-3 py-1.5 text-sm hover:bg-gray-100"
-                        onClick={() => { setDForm({ ...dForm, userId: u.id }); setUserSearch(u.name); setUserResults([]); }}>
-                        {u.name}
-                      </button>
-                    ))}
+                {dForm.userId ? (
+                  <div className="flex items-center justify-between rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm">
+                    <span className="truncate">{userSearch || "Linked account"}</span>
+                    <button
+                      type="button"
+                      aria-label="Unlink account"
+                      className="text-gray-400 hover:text-red-500 ml-2"
+                      onClick={() => { setDForm({ ...dForm, userId: "" }); setUserSearch(""); setUserResults([]); }}
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
                   </div>
+                ) : (
+                  <>
+                    <Input id="d-user" value={userSearch} placeholder="Search user…"
+                      onChange={(e) => setUserSearch(e.target.value)} />
+                    {searchingUsers && <p className="text-xs text-gray-400">Searching…</p>}
+                    {!searchingUsers && userSearch.trim().length >= 2 && userResults.length === 0 && (
+                      <p className="text-xs text-gray-400">No users found.</p>
+                    )}
+                    {userResults.length > 0 && (
+                      <div className="border rounded-md max-h-32 overflow-y-auto">
+                        {userResults.map((u) => (
+                          <button key={u.id} type="button" className="w-full text-left px-3 py-1.5 text-sm hover:bg-gray-100"
+                            onClick={() => { setDForm({ ...dForm, userId: u.id }); setUserSearch(u.name); setUserResults([]); }}>
+                            {u.name}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
             </div>

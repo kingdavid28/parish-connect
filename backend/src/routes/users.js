@@ -23,19 +23,22 @@ async function isParentSuperAdmin(user) {
 router.get("/search", authenticate, async (req, res) => {
   const q = String(req.query.search || req.query.q || "").trim();
   const all = req.query.all === "1";
+  // ?include_self=1 — contexts like donor linking where the searcher's own
+  // account is a valid result (default excludes self, e.g. messaging).
+  const selfClause = req.query.include_self === "1" ? "" : "AND id != $1";
   try {
     let rows;
     if (all || q.length === 0) {
       ({ rows } = await pool.query(
         `SELECT id, name, avatar, role, email, created_at, member_since
-         FROM users WHERE is_active = 1 AND id != $1 ORDER BY name ASC LIMIT 200`,
+         FROM users WHERE is_active = 1 ${selfClause} ORDER BY name ASC LIMIT 200`,
         [req.user.id]
       ));
     } else {
       if (q.length < 2) return res.json({ success: true, data: [] });
       ({ rows } = await pool.query(
         `SELECT id, name, avatar, role FROM users
-         WHERE is_active = 1 AND id != $1 AND name ILIKE $2
+         WHERE is_active = 1 ${selfClause} AND name ILIKE $2
          ORDER BY name ASC LIMIT 10`,
         [req.user.id, `%${q}%`]
       ));
