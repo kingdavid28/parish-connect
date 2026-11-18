@@ -1230,20 +1230,27 @@ router.get("/export", ...adminOnly, async (req, res) => {
   }
 });
 
-// GET /api/finance/report?year= — consolidated financial report for PDF/export (admin)
+// GET /api/finance/report?year=&month= — consolidated financial report (admin).
+// With `month` (1-12) the report is scoped to that month and additionally
+// returns per-donor contributions and the month's transaction ledger.
 router.get("/report", ...adminOnly, async (req, res) => {
   if (!financeEnabled(res)) return;
   const year = Number.parseInt(req.query.year || new Date().getFullYear(), 10);
+  const month = Number.parseInt(req.query.month || "0", 10);
   if (!validYear(year)) return badRequest(res, "year must be 1900-2200");
+  if (month && !validMonth(month)) return badRequest(res, "month must be 1-12");
+  const scoped = month > 0;
+  const params = scoped ? [year, month] : [year];
+  const pScope = scoped ? "AND p.month = $2" : "";
   try {
     const [statusRes, monthlyRes, becRes, topRes, expectedRes, donorsRes] = await Promise.all([
-      // Status totals for the year
+      // Status totals for the period
       pool.query(
         `SELECT status, COUNT(*)::int AS count, COALESCE(SUM(amount),0)::float AS total
-         FROM contribution_payments WHERE year = $1 GROUP BY status`,
-        [year]
+         FROM contribution_payments p WHERE p.year = $1 ${pScope} GROUP BY status`,
+        params
       ),
-      // Confirmed collections per month
+      // Confirmed collections per month (always full year for context)
       pool.query(
         `SELECT month::int,
                 COALESCE(SUM(amount),0)::float AS total,
@@ -1263,9 +1270,9 @@ router.get("/report", ...adminOnly, async (req, res) => {
          FROM contribution_payments p
          LEFT JOIN donors d ON d.id = p.donor_id
          LEFT JOIN becs b ON b.id = d.bec_id
-         WHERE p.year = $1 AND p.status = 'confirmed'
+         WHERE p.year = $1 AND p.status = 'confirmed' ${pScope}
          GROUP BY b.name ORDER BY total DESC`,
-        [year]
+        params
       ),
       // Top 10 contributors (confirmed only)
       pool.query(
@@ -1275,10 +1282,10 @@ router.get("/report", ...adminOnly, async (req, res) => {
          FROM contribution_payments p
          JOIN donors d ON d.id = p.donor_id
          LEFT JOIN becs b ON b.id = d.bec_id
-         WHERE p.year = $1 AND p.status = 'confirmed'
+         WHERE p.year = $1 AND p.status = 'confirmed' ${pScope}
          GROUP BY d.id, d.name, b.name
          ORDER BY total DESC, d.name LIMIT 10`,
-        [year]
+        params
       ),
       // Monthly expected dues across active donors (for collection-rate display)
       pool.query(
@@ -1288,37 +1295,81 @@ router.get("/report", ...adminOnly, async (req, res) => {
          WHERE d.is_active = 1`,
         []
       ),
-      // Distinct donors who paid at least once this year
+      // Distinct donors who paid at least once this period
       pool.query(
         `SELECT COUNT(DISTINCT donor_id)::int AS paying
-         FROM contribution_payments WHERE year = $1 AND status = 'confirmed' AND donor_id IS NOT NULL`,
-        [year]
+         FROM contribution_payments p WHERE p.year = $1 AND p.status = 'confirmed' AND p.donor_id IS NOT NULL ${pScope}`,
+        params
       ),
     ]);
 
     const byStatus = Object.fromEntries(
       statusRes.rows.map((r) => [r.status, { count: r.count, total: r.total }])
     );
-
-    res.json({
-      success: true,
-      data: {
-        year,
-        totals: {
-          confirmed_total: byStatus.confirmed?.total ?? 0,
-          confirmed_count: byStatus.confirmed?.count ?? 0,
-          pending_count: byStatus.pending?.count ?? 0,
-          rejected_count: byStatus.rejected?.count ?? 0,
-          voided_count: byStatus.voided?.count ?? 0,
-          donors_paying: donorsRes.rows[0]?.paying ?? 0,
-          active_donors: expectedRes.rows[0]?.active_donors ?? 0,
-          expected_monthly: expectedRes.rows[0]?.expected_monthly ?? 0,
-        },
-        monthly: monthlyRes.rows,
-        becs: becRes.rows,
-        top_donors: topRes.rows,
+    const data = {
+      year,
+      month: scoped ? month : null,
+      totals: {
+        confirmed_total: byStatus.confirmed?.total ?? 0,
+        confirmed_count: byStatus.confirmed?.count ?? 0,
+        pending_count: byStatus.pending?.count ?? 0,
+        rejected_count: byStatus.rejected?.count ?? 0,
+        voided_count: byStatus.voided?.count ?? 0,
+        donors_paying: donorsRes.rows[0]?.paying ?? 0,
+        active_donors: expectedRes.rows[0]?.active_donors ?? 0,
+        expected_monthly: expectedRes.rows[0]?.expected_monthly ?? 0,
       },
-    });
+      monthly: monthlyRes.rows,
+      becs: becRes.rows,
+      top_donors: topRes.rows,
+    };
+
+    if (scoped) {
+      const [contribRes, paymentsRes, dailyRes] = await Promise.all([
+        // Per-donor contributions for the month (all donors, confirmed)
+        pool.query(
+          `SELECT d.name, COALESCE(b.name, '(No BEC)') AS bec_name,
+                  COALESCE(SUM(p.amount),0)::float AS total,
+                  COUNT(*)::int AS count
+           FROM contribution_payments p
+           JOIN donors d ON d.id = p.donor_id
+           LEFT JOIN becs b ON b.id = d.bec_id
+           WHERE p.year = $1 AND p.month = $2 AND p.status = 'confirmed'
+           GROUP BY d.id, d.name, b.name
+           ORDER BY total DESC, d.name`,
+          params
+        ),
+        // Transaction ledger for the month (all statuses)
+        pool.query(
+          `SELECT p.id, COALESCE(d.name, '(Unknown)') AS donor_name,
+                  COALESCE(b.name, '(No BEC)') AS bec_name,
+                  p.amount::float, p.method, p.reference, p.receipt_no, p.status,
+                  p.created_at, u.name AS recorded_by_name
+           FROM contribution_payments p
+           LEFT JOIN donors d ON d.id = p.donor_id
+           LEFT JOIN becs b ON b.id = d.bec_id
+           LEFT JOIN users u ON u.id = p.recorded_by
+           WHERE p.year = $1 AND p.month = $2
+           ORDER BY p.created_at DESC`,
+          params
+        ),
+        // Confirmed collections per day
+        pool.query(
+          `SELECT TO_CHAR(DATE(p.created_at), 'YYYY-MM-DD') AS day,
+                  COALESCE(SUM(p.amount),0)::float AS total,
+                  COUNT(*)::int AS count
+           FROM contribution_payments p
+           WHERE p.year = $1 AND p.month = $2 AND p.status = 'confirmed'
+           GROUP BY DATE(p.created_at) ORDER BY day`,
+          params
+        ),
+      ]);
+      data.contributions = contribRes.rows;
+      data.payments = paymentsRes.rows;
+      data.daily = dailyRes.rows;
+    }
+
+    res.json({ success: true, data });
   } catch (err) {
     serverError(res, "Finance report error", err);
   }

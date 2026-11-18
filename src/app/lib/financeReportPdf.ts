@@ -11,6 +11,7 @@ const peso = (n: number) =>
 
 export interface AdminReportData {
   year: number;
+  month?: number | null;
   totals: {
     confirmed_total: number;
     confirmed_count: number;
@@ -24,6 +25,20 @@ export interface AdminReportData {
   monthly: { month: number; total: number; count: number; donors: number }[];
   becs: { bec_name: string; donors: number; count: number; total: number }[];
   top_donors: { name: string; bec_name: string; total: number; count: number }[];
+  contributions?: { name: string; bec_name: string; total: number; count: number }[];
+  payments?: {
+    id: string;
+    donor_name: string;
+    bec_name: string;
+    amount: number;
+    method: string;
+    reference: string | null;
+    receipt_no: string | null;
+    status: string;
+    created_at: string;
+    recorded_by_name: string | null;
+  }[];
+  daily?: { day: string; total: number; count: number }[];
 }
 
 function header(doc: jsPDF, parishName: string, title: string, subtitle: string) {
@@ -129,6 +144,97 @@ export function buildAdminReportPdf(report: AdminReportData, parishName: string)
 
   footer(doc);
   doc.save(`balik-pasalamat-report-${report.year}.pdf`);
+}
+
+/** Admin: monthly Balik Pasalamat financial report PDF. */
+export function buildAdminMonthlyReportPdf(report: AdminReportData, parishName: string) {
+  const doc = new jsPDF();
+  const { totals } = report;
+  const month = report.month ?? 1;
+  const monthName = MONTHS_FULL[month - 1];
+  const rate = totals.expected_monthly > 0 ? (totals.confirmed_total / totals.expected_monthly) * 100 : 0;
+
+  header(doc, parishName,
+    `Balik Pasalamat sa Diyos — Monthly Report ${monthName} ${report.year}`,
+    `Generated ${new Date().toLocaleString("en-PH")}`);
+
+  autoTable(doc, {
+    startY: 38,
+    head: [["Summary", "Amount / Count"]],
+    body: [
+      ["Total collected (confirmed)", peso(totals.confirmed_total)],
+      ["Confirmed payments", String(totals.confirmed_count)],
+      ["Donors who paid", `${totals.donors_paying} of ${totals.active_donors}`],
+      ["Expected monthly dues", peso(totals.expected_monthly)],
+      ["Collection rate", `${rate.toFixed(1)}%`],
+      ["Pending / Rejected / Voided",
+        `${totals.pending_count} / ${totals.rejected_count} / ${totals.voided_count}`],
+    ],
+    theme: "grid",
+    styles: { fontSize: 9 },
+    headStyles: { fillColor: [37, 99, 235] },
+    columnStyles: { 1: { halign: "right" } },
+  });
+
+  if (report.daily?.length) {
+    autoTable(doc, {
+      startY: (doc as jsPDF & { lastAutoTable?: { finalY: number } }).lastAutoTable?.finalY ?? 60,
+      head: [["Date", "Collected", "Payments"]],
+      body: report.daily.map((d) => [
+        new Date(`${d.day}T00:00:00`).toLocaleDateString("en-PH", { month: "short", day: "numeric", year: "numeric" }),
+        peso(d.total),
+        String(d.count),
+      ]),
+      theme: "striped",
+      styles: { fontSize: 8.5 },
+      headStyles: { fillColor: [37, 99, 235] },
+      columnStyles: { 1: { halign: "right" }, 2: { halign: "right" } },
+      foot: [["Total", peso(totals.confirmed_total), String(totals.confirmed_count)]],
+      footStyles: { fontStyle: "bold", fillColor: [239, 246, 255], textColor: [31, 41, 55] },
+    });
+  }
+
+  let y = (doc as jsPDF & { lastAutoTable?: { finalY: number } }).lastAutoTable?.finalY ?? 120;
+  if (report.contributions?.length) {
+    doc.setFontSize(11);
+    doc.setTextColor(31, 41, 55);
+    doc.text("Contributions by Donor", 14, y + 10);
+    autoTable(doc, {
+      startY: y + 14,
+      head: [["Donor", "BEC", "Payments", "Total"]],
+      body: report.contributions.map((d) => [d.name, d.bec_name, String(d.count), peso(d.total)]),
+      theme: "striped",
+      styles: { fontSize: 8.5 },
+      headStyles: { fillColor: [37, 99, 235] },
+      columnStyles: { 2: { halign: "right" }, 3: { halign: "right" } },
+    });
+    y = (doc as jsPDF & { lastAutoTable?: { finalY: number } }).lastAutoTable?.finalY ?? y + 20;
+  }
+
+  if (report.payments?.length) {
+    doc.setFontSize(11);
+    doc.setTextColor(31, 41, 55);
+    doc.text("Transaction Ledger", 14, y + 10);
+    autoTable(doc, {
+      startY: y + 14,
+      head: [["Date", "Donor", "Method", "Receipt / Ref", "Status", "Amount"]],
+      body: report.payments.map((p) => [
+        new Date(p.created_at).toLocaleDateString("en-PH"),
+        p.donor_name,
+        p.method,
+        p.receipt_no ?? p.reference ?? "—",
+        p.status,
+        peso(p.amount),
+      ]),
+      theme: "striped",
+      styles: { fontSize: 8 },
+      headStyles: { fillColor: [37, 99, 235] },
+      columnStyles: { 5: { halign: "right" } },
+    });
+  }
+
+  footer(doc);
+  doc.save(`balik-pasalamat-report-${report.year}-${String(month).padStart(2, "0")}.pdf`);
 }
 
 export interface UserLedgerData {

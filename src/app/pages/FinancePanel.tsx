@@ -23,7 +23,7 @@ import { API } from "../config";
 import ImageLightbox from "../components/ImageLightbox";
 import { proxyImageUrl } from "../lib/imageProxy";
 import { parseDonorsCsv, DONORS_CSV_TEMPLATE } from "../lib/parseCsv";
-import { buildAdminReportPdf, type AdminReportData } from "../lib/financeReportPdf";
+import { buildAdminMonthlyReportPdf, buildAdminReportPdf, type AdminReportData } from "../lib/financeReportPdf";
 import { useParishConfig } from "../context/ParishConfigContext";
 
 const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
@@ -550,6 +550,7 @@ export default function FinancePanel() {
   // Financial report
   const [reportOpen, setReportOpen] = useState(false);
   const [reportYear, setReportYear] = useState(now.getFullYear());
+  const [reportMonth, setReportMonth] = useState(0);
   const [report, setReport] = useState<AdminReportData | null>(null);
   const [loadingReport, setLoadingReport] = useState(false);
 
@@ -557,10 +558,11 @@ export default function FinancePanel() {
     Authorization: `Bearer ${getToken()}`,
   }), []);
 
-  const fetchReport = useCallback(async (year: number) => {
+  const fetchReport = useCallback(async (year: number, month: number) => {
     setLoadingReport(true);
     try {
-      const res = await fetch(`${API}/finance/report?year=${year}`, { headers: authHeaders() });
+      const monthQ = month > 0 ? `&month=${month}` : "";
+      const res = await fetch(`${API}/finance/report?year=${year}${monthQ}`, { headers: authHeaders() });
       const data = await res.json();
       if (!res.ok || !data.success) throw new Error(data.message || "Unable to load report");
       setReport(data.data);
@@ -573,8 +575,8 @@ export default function FinancePanel() {
   }, [authHeaders]);
 
   useEffect(() => {
-    if (reportOpen) void fetchReport(reportYear);
-  }, [reportOpen, reportYear, fetchReport]);
+    if (reportOpen) void fetchReport(reportYear, reportMonth);
+  }, [reportOpen, reportYear, reportMonth, fetchReport]);
 
   // ── Fetchers ──────────────────────────────────────────────
   const fetchBecs = useCallback(async () => {
@@ -1622,16 +1624,30 @@ export default function FinancePanel() {
         <DialogContent className="sm:max-w-2xl max-h-[85dvh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Financial Report — Balik Pasalamat sa Diyos</DialogTitle>
-            <DialogDescription>Annual collections summary, breakdowns, and PDF export.</DialogDescription>
+            <DialogDescription>Annual or monthly collections summary, breakdowns, and PDF export.</DialogDescription>
           </DialogHeader>
-          <div className="flex items-center gap-2">
-            <Label htmlFor="report-year" className="text-xs text-gray-500">Year</Label>
-            <Select value={String(reportYear)} onValueChange={(v) => setReportYear(Number(v))}>
-              <SelectTrigger id="report-year" className="w-[100px] h-9"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                {years.map((y) => <SelectItem key={y} value={String(y)}>{y}</SelectItem>)}
-              </SelectContent>
-            </Select>
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="flex items-center gap-2">
+              <Label htmlFor="report-year" className="text-xs text-gray-500">Year</Label>
+              <Select value={String(reportYear)} onValueChange={(v) => setReportYear(Number(v))}>
+                <SelectTrigger id="report-year" className="w-[100px] h-9"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {years.map((y) => <SelectItem key={y} value={String(y)}>{y}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex items-center gap-2">
+              <Label htmlFor="report-month" className="text-xs text-gray-500">Month</Label>
+              <Select value={String(reportMonth)} onValueChange={(v) => setReportMonth(Number(v))}>
+                <SelectTrigger id="report-month" className="w-[140px] h-9"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="0">Whole year</SelectItem>
+                  {MONTHS_FULL.map((name, i) => (
+                    <SelectItem key={name} value={String(i + 1)}>{name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
 
           {loadingReport && (
@@ -1646,8 +1662,8 @@ export default function FinancePanel() {
             <div className="space-y-5 text-sm">
               {/* Totals */}
               {(() => {
-                const expectedAnnual = report.totals.expected_monthly * 12;
-                const rate = expectedAnnual > 0 ? (report.totals.confirmed_total / expectedAnnual) * 100 : 0;
+                const expected = report.totals.expected_monthly * (report.month ? 1 : 12);
+                const rate = expected > 0 ? (report.totals.confirmed_total / expected) * 100 : 0;
                 return (
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                     <div className="rounded-lg border p-3">
@@ -1662,7 +1678,7 @@ export default function FinancePanel() {
                     <div className="rounded-lg border p-3">
                       <p className="text-xs text-gray-500">Collection rate</p>
                       <p className="text-lg font-semibold text-blue-700">{rate.toFixed(1)}%</p>
-                      <p className="text-[11px] text-gray-400">of {peso(expectedAnnual)} expected</p>
+                      <p className="text-[11px] text-gray-400">of {peso(expected)} expected</p>
                     </div>
                     <div className="rounded-lg border p-3 col-span-2 sm:col-span-3 text-xs text-gray-500">
                       Pending: {report.totals.pending_count} · Rejected: {report.totals.rejected_count} · Voided: {report.totals.voided_count}
@@ -1671,7 +1687,8 @@ export default function FinancePanel() {
                 );
               })()}
 
-              {/* Monthly */}
+              {/* Monthly breakdown — whole-year view only */}
+              {!report.month && (
               <div>
                 <h3 className="font-semibold mb-2">Monthly collections</h3>
                 <div className="rounded-lg border overflow-hidden">
@@ -1700,6 +1717,76 @@ export default function FinancePanel() {
                   </table>
                 </div>
               </div>
+              )}
+
+              {/* Month-scoped detail */}
+              {report.month && (
+                <>
+                  <div>
+                    <h3 className="font-semibold mb-2">Contributions by donor — {MONTHS_FULL[report.month - 1]} {report.year}</h3>
+                    {!report.contributions?.length ? (
+                      <p className="text-xs text-gray-400">No confirmed contributions this month.</p>
+                    ) : (
+                      <div className="rounded-lg border overflow-hidden">
+                        <table className="w-full text-xs">
+                          <thead className="bg-gray-50">
+                            <tr>
+                              <th className="text-left px-3 py-2 font-medium text-gray-600">Donor</th>
+                              <th className="text-left px-3 py-2 font-medium text-gray-600">BEC</th>
+                              <th className="text-right px-3 py-2 font-medium text-gray-600">Payments</th>
+                              <th className="text-right px-3 py-2 font-medium text-gray-600">Total</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y">
+                            {report.contributions.map((d) => (
+                              <tr key={d.name}>
+                                <td className="px-3 py-1.5">{d.name}</td>
+                                <td className="px-3 py-1.5 text-gray-500">{d.bec_name}</td>
+                                <td className="px-3 py-1.5 text-right">{d.count}</td>
+                                <td className="px-3 py-1.5 text-right font-medium">{peso(d.total)}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+
+                  <div>
+                    <h3 className="font-semibold mb-2">Transaction ledger</h3>
+                    {!report.payments?.length ? (
+                      <p className="text-xs text-gray-400">No transactions this month.</p>
+                    ) : (
+                      <div className="rounded-lg border overflow-hidden">
+                        <table className="w-full text-xs">
+                          <thead className="bg-gray-50">
+                            <tr>
+                              <th className="text-left px-3 py-2 font-medium text-gray-600">Date</th>
+                              <th className="text-left px-3 py-2 font-medium text-gray-600">Donor</th>
+                              <th className="text-left px-3 py-2 font-medium text-gray-600">Method</th>
+                              <th className="text-left px-3 py-2 font-medium text-gray-600">Receipt / Ref</th>
+                              <th className="text-left px-3 py-2 font-medium text-gray-600">Status</th>
+                              <th className="text-right px-3 py-2 font-medium text-gray-600">Amount</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y">
+                            {report.payments.map((p) => (
+                              <tr key={p.id} className={p.status === "confirmed" ? "" : "text-gray-400"}>
+                                <td className="px-3 py-1.5 whitespace-nowrap">{new Date(p.created_at).toLocaleDateString("en-PH")}</td>
+                                <td className="px-3 py-1.5">{p.donor_name}</td>
+                                <td className="px-3 py-1.5 capitalize">{p.method}</td>
+                                <td className="px-3 py-1.5">{p.receipt_no || p.reference || "—"}</td>
+                                <td className="px-3 py-1.5 capitalize">{p.status}</td>
+                                <td className="px-3 py-1.5 text-right font-medium">{peso(p.amount)}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
 
               {/* BEC breakdown */}
               <div>
@@ -1754,7 +1841,11 @@ export default function FinancePanel() {
             <Button variant="outline" onClick={() => setReportOpen(false)}>Close</Button>
             <Button
               disabled={!report || loadingReport}
-              onClick={() => { if (report) buildAdminReportPdf(report, parish.name); }}
+              onClick={() => {
+                if (!report) return;
+                if (report.month) buildAdminMonthlyReportPdf(report, parish.name);
+                else buildAdminReportPdf(report, parish.name);
+              }}
             >
               <FileDown className="h-4 w-4 mr-1" /> Export PDF
             </Button>
