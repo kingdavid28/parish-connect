@@ -35,7 +35,8 @@ async function autopost(req, res) {
     );
     const recentContents = recent.map((r) => r.content);
 
-    let post = await generatePostWithGroq();
+    const slot = req.query.slot === "morning" || req.query.slot === "evening" ? req.query.slot : null;
+    let post = await generatePostWithGroq(slot);
     let source = "Groq AI";
     if (!post) {
       post = getFallbackTemplate(recentContents);
@@ -140,10 +141,21 @@ router.post("/contribution-reminder", contributionReminder);
 
 // ─── Groq AI generator — all parish specifics come from env config ────────────
 
-async function generatePostWithGroq() {
+// Current hour (0-23) in the parish's timezone — Render runs UTC, so
+// server-local time would pick morning/evening topics at the wrong time.
+function parishHour() {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: config.parish.timezone,
+    hour: "numeric",
+    hourCycle: "h23",
+  }).formatToParts(new Date());
+  return Number(parts.find((p) => p.type === "hour")?.value ?? 0);
+}
+
+async function generatePostWithGroq(slot = null) {
   if (!config.groqApiKey) return null;
 
-  const isMorning = new Date().getHours() < 12;
+  const isMorning = slot ? slot === "morning" : parishHour() < 12;
   const p = config.parish;
   const loc = p.location || "the Philippines";
 

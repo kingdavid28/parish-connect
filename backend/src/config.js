@@ -51,6 +51,7 @@ module.exports = {
     name: process.env.PARISH_NAME || "Parish Connect",
     shortName: process.env.PARISH_SHORT_NAME || "Parish",
     location: process.env.PARISH_LOCATION || "",
+    timezone: process.env.PARISH_TIMEZONE || "Asia/Manila",
     tagline: process.env.PARISH_TAGLINE || "Your parish community app",
     accentColor: process.env.PARISH_ACCENT_COLOR || "#2563eb",
     logoUrl: process.env.PARISH_LOGO_URL || "",
