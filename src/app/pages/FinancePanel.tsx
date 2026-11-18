@@ -205,13 +205,13 @@ function LedgerMonthGrid({ ledger, onSelectMonth }: Readonly<LedgerMonthGridProp
   if (!ledger) return null;
 
   return (
-    <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
       {ledger.months.map((month) => (
         <button
           key={month.month}
           type="button"
           onClick={() => onSelectMonth(month)}
-          className={`rounded-lg border p-3 text-left transition-colors ${cellClassFor(month.status)}`}
+          className={`rounded-lg border p-2 sm:p-3 text-left transition-colors min-w-0 ${cellClassFor(month.status)}`}
           aria-label={`${MONTHS_FULL[month.month - 1]}: ${peso(month.paid_total)} paid, ${monthActionLabel(month.status)}`}
         >
           <span className="block text-sm font-medium">{MONTHS[month.month - 1]}</span>
@@ -1266,9 +1266,9 @@ export default function FinancePanel() {
 
       {/* Ledger dialog */}
       <Dialog open={!!ledger} onOpenChange={(o) => !o && setLedger(null)}>
-        <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
+        <DialogContent className="w-[calc(100vw-1.5rem)] max-w-lg max-h-[85dvh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>{ledger?.donor.name} — Ledger</DialogTitle>
+            <DialogTitle className="truncate">{ledger?.donor.name} — Ledger</DialogTitle>
             <DialogDescription>
               {ledger?.donor.bec_name || "No BEC"} · {formatSuggestedLine(ledger)} · click a month
             </DialogDescription>
@@ -1302,60 +1302,69 @@ export default function FinancePanel() {
                 <h3 className="text-sm font-semibold text-gray-700">Annual {ledgerYear}</h3>
                 <p className="text-xs text-gray-500">Confirmed payments only; voided/rejected payments stay visible above but never count toward totals.</p>
               </div>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                <div className="rounded-lg border p-3">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
+                <div className="rounded-lg border p-2 sm:p-3 min-w-0">
                   <p className="text-xs text-gray-500">Expected (annual)</p>
-                  <p className="text-lg font-semibold">{peso(ledger.annual_expected)}</p>
+                  <p className="text-base sm:text-lg font-semibold truncate">{peso(ledger.annual_expected)}</p>
                 </div>
-                <div className="rounded-lg border p-3">
+                <div className="rounded-lg border p-2 sm:p-3 min-w-0">
                   <p className="text-xs text-gray-500">Paid (confirmed)</p>
-                  <p className="text-lg font-semibold text-green-700">{peso(ledger.annual_paid)}</p>
+                  <p className="text-base sm:text-lg font-semibold text-green-700 truncate">{peso(ledger.annual_paid)}</p>
                 </div>
-                <div className="rounded-lg border p-3">
+                <div className="rounded-lg border p-2 sm:p-3 min-w-0">
                   <p className="text-xs text-gray-500">Pending approval</p>
-                  <p className="text-lg font-semibold text-amber-600">{peso(ledger.total_pending)}</p>
+                  <p className="text-base sm:text-lg font-semibold text-amber-600 truncate">{peso(ledger.total_pending)}</p>
                 </div>
-                <div className="rounded-lg border p-3">
+                <div className="rounded-lg border p-2 sm:p-3 min-w-0">
                   <p className="text-xs text-gray-500">Net balance</p>
-                  <p className={`text-lg font-semibold ${ledger.net_balance > 0 ? "text-amber-600" : "text-green-700"}`}>{peso(ledger.net_balance)}</p>
+                  <p className={`text-base sm:text-lg font-semibold truncate ${ledger.net_balance > 0 ? "text-amber-600" : "text-green-700"}`}>{peso(ledger.net_balance)}</p>
                 </div>
               </div>
               <div className="border rounded-lg overflow-hidden">
                 <div className="border-b px-3 py-2 text-xs font-semibold text-gray-500 uppercase bg-gray-50">
                   Transaction History · {ledgerHistory.length} payment(s)
                 </div>
-                <div className="py-3 max-h-60 overflow-y-auto">
-                  {ledgerHistory.length === 0 ? (
-                    <p className="text-xs text-gray-500 px-3 py-2 text-center">No payments this year.</p>
-                  ) : (
-                    <div className="space-y-0.5">
-                      {ledgerHistory.map((p) => (
-                        <div key={p.id} className="px-3 py-2 text-sm border-b border-b-gray-100 last:border-0 flex flex-wrap items-center gap-2">
-                          <span className="w-20 text-gray-600">{new Date(p.created_at).toISOString().slice(0, 10)}</span>
-                          <span className="w-16 text-gray-600 capitalize">{MONTHS[p.month - 1]}</span>
-                          <span className={`w-20 text-right font-semibold ${isStruckThrough(p.status) ? "line-through text-gray-400" : ""}`}>{peso(p.amount)}</span>
-                          <span className="w-16 text-gray-600 capitalize">{p.method}</span>
-                          <span className="w-24 text-gray-600 truncate">{p.reference || "—"}</span>
-                          <span className="w-20 text-gray-600 text-[11px]">{p.receipt_no || "—"}</span>
-                          <span className="flex items-center gap-1">
-                            <Badge variant={paymentBadgeVariant(p.status)} className="text-[10px]">
-                              {p.status}
-                            </Badge>
-                            {p.status === "voided" && (
-                              <span className="text-[10px] text-gray-400">void</span>
-                            )}
-                          </span>
-                          {p.status === "voided" && p.void_reason && (
-                            <span className="ml-2 text-[10px] text-gray-500 italic">void: {p.void_reason}</span>
-                          )}
-                          {p.status === "voided" && p.reversal_of && (
-                            <span className="ml-2 text-[10px] text-gray-400">replaced</span>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
+                {ledgerHistory.length === 0 ? (
+                  <p className="text-xs text-gray-500 px-3 py-4 text-center">No payments this year.</p>
+                ) : (
+                  <div className="max-h-60 overflow-auto">
+                    <table className="w-full text-xs min-w-[540px]">
+                      <thead className="bg-gray-50 sticky top-0">
+                        <tr>
+                          <th className="text-left px-3 py-2 font-medium text-gray-600">Date</th>
+                          <th className="text-left px-3 py-2 font-medium text-gray-600">For</th>
+                          <th className="text-right px-3 py-2 font-medium text-gray-600">Amount</th>
+                          <th className="text-left px-3 py-2 font-medium text-gray-600">Method</th>
+                          <th className="text-left px-3 py-2 font-medium text-gray-600">Ref / Receipt</th>
+                          <th className="text-left px-3 py-2 font-medium text-gray-600">Status</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y">
+                        {ledgerHistory.map((p) => (
+                          <tr key={p.id} className={isStruckThrough(p.status) ? "text-gray-400" : ""}>
+                            <td className="px-3 py-2 whitespace-nowrap">{new Date(p.created_at).toISOString().slice(0, 10)}</td>
+                            <td className="px-3 py-2 capitalize">{MONTHS[p.month - 1]}</td>
+                            <td className={`px-3 py-2 text-right font-semibold whitespace-nowrap ${isStruckThrough(p.status) ? "line-through" : ""}`}>{peso(p.amount)}</td>
+                            <td className="px-3 py-2 capitalize">{p.method}</td>
+                            <td className="px-3 py-2">
+                              <div className="max-w-[140px] truncate">{p.reference || "—"}</div>
+                              {p.receipt_no && <div className="text-[10px] text-gray-400">{p.receipt_no}</div>}
+                            </td>
+                            <td className="px-3 py-2">
+                              <Badge variant={paymentBadgeVariant(p.status)} className="text-[10px]">{p.status}</Badge>
+                              {p.status === "voided" && p.void_reason && (
+                                <div className="text-[10px] text-gray-400 italic mt-0.5 max-w-[120px] truncate" title={p.void_reason}>void: {p.void_reason}</div>
+                              )}
+                              {p.status === "voided" && p.reversal_of && (
+                                <div className="text-[10px] text-gray-400">replaced</div>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
               </div>
             </div>
           )}
