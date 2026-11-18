@@ -42,6 +42,7 @@ export default function NotificationBell() {
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [desktopOpen, setDesktopOpen] = useState(false);
 
   const fetchNotifications = useCallback(async (showLoading = false) => {
     if (showLoading) setLoading(true);
@@ -80,6 +81,7 @@ export default function NotificationBell() {
   const markRead = async (notification: AppNotification) => {
     const go = () => {
       setMobileOpen(false);
+      setDesktopOpen(false);
       void navigate(notification.url || "/");
     };
     if (notification.read_at) {
@@ -266,7 +268,13 @@ export default function NotificationBell() {
 
   // Desktop: anchored popover dropdown.
   return (
-    <Popover onOpenChange={(open) => { if (open) void fetchNotifications(true); }}>
+    <Popover
+      open={desktopOpen}
+      onOpenChange={(open) => {
+        setDesktopOpen(open);
+        if (open) void fetchNotifications(true);
+      }}
+    >
       <PopoverTrigger asChild>
         {renderTrigger()}
       </PopoverTrigger>
