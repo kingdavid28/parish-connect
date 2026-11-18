@@ -1,5 +1,5 @@
 const express = require("express");
-const crypto = require("crypto");
+const crypto = require("node:crypto");
 const pool = require("../db/pool");
 const config = require("../config");
 const { uuid } = require("../lib/helpers");
