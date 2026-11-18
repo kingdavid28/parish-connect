@@ -20,6 +20,27 @@ if (sentryDsn) {
   });
 }
 
+// Auto-recover from stale-chunk errors after a deploy: a user with the app
+// open can request a hashed chunk that no longer exists. Reload once to pick
+// up the new index.html; the sessionStorage guard prevents reload loops.
+const reloadOnceForStaleChunk = () => {
+  if (sessionStorage.getItem("chunk-reload")) return;
+  sessionStorage.setItem("chunk-reload", "1");
+  window.location.reload();
+};
+window.addEventListener("vite:preloadError", (event) => {
+  event.preventDefault();
+  reloadOnceForStaleChunk();
+});
+const CHUNK_ERROR = /dynamically imported module|Importing a module script failed|error loading dynamically imported module/i;
+window.addEventListener("unhandledrejection", (event) => {
+  if (CHUNK_ERROR.test(String(event.reason))) reloadOnceForStaleChunk();
+});
+window.addEventListener("error", (event) => {
+  if (event.message && CHUNK_ERROR.test(event.message)) reloadOnceForStaleChunk();
+});
+window.addEventListener("load", () => sessionStorage.removeItem("chunk-reload"));
+
 // Register service worker for push notifications (path follows the deploy base)
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
