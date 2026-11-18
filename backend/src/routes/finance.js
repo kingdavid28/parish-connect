@@ -648,7 +648,11 @@ router.get("/contributions/pending", ...adminOnly, async (req, res) => {
   try {
     const { rows } = await pool.query(
       `SELECT c.id, c.year, c.month, c.amount, c.method, c.reference, c.gcash_sender, c.receipt_url, c.created_at,
-              d.id AS donor_id, d.name AS donor_name, b.name AS bec_name, u.name AS submitted_by_name
+              d.id AS donor_id, d.name AS donor_name, b.name AS bec_name, u.name AS submitted_by_name,
+              (SELECT sd.id FROM donors sd WHERE sd.user_id = c.submitted_by AND sd.is_active = 1
+               ORDER BY sd.created_at LIMIT 1) AS suggested_donor_id,
+              (SELECT sd.name FROM donors sd WHERE sd.user_id = c.submitted_by AND sd.is_active = 1
+               ORDER BY sd.created_at LIMIT 1) AS suggested_donor_name
        FROM contribution_payments c
        LEFT JOIN donors d ON d.id = c.donor_id
        LEFT JOIN becs b ON b.id = d.bec_id
@@ -668,10 +672,18 @@ router.get("/contributions/pending", ...adminOnly, async (req, res) => {
 router.post("/payments/:id/approve", ...adminOnly, async (req, res) => {
   if (!financeEnabled(res)) return;
   try {
-    const { outcome, payment, donorId } = await withTransaction((client) =>
+    const { outcome, warnings, payment, donorId } = await withTransaction((client) =>
       approvePaymentTx(client, req)
     );
 
+    if (outcome === "confirm_required") {
+      return res.status(409).json({
+        success: false,
+        code: "MATCH_CONFIRMATION_REQUIRED",
+        warnings,
+        message: "Review this donor match before approving.",
+      });
+    }
     if (outcome === "not_found") {
       return res.status(404).json({ success: false, message: "Pending payment not found" });
     }
@@ -699,6 +711,42 @@ router.post("/payments/:id/approve", ...adminOnly, async (req, res) => {
     serverError(res, "Payment approve error", err);
   }
 });
+
+// Suspicious-match checks for approving a member-reported payment.
+// Returns a list of human-readable warnings (empty = safe to approve).
+async function donorMatchWarnings(client, donorId, payment) {
+  const { rows } = await client.query(
+    `SELECT d.name, d.user_id, u.name AS linked_user_name
+     FROM donors d LEFT JOIN users u ON u.id = d.user_id WHERE d.id = $1`,
+    [donorId]
+  );
+  const donor = rows[0];
+  if (!donor) return ["The selected donor record no longer exists."];
+
+  const warnings = [];
+  let submitterName = "the member who reported this";
+  if (payment.submitted_by) {
+    const { rows: submitter } = await client.query("SELECT name FROM users WHERE id = $1", [payment.submitted_by]);
+    if (submitter[0]?.name) submitterName = `"${submitter[0].name}"`;
+  }
+  if (donor.user_id && payment.submitted_by && donor.user_id !== payment.submitted_by) {
+    warnings.push(
+      `Donor "${donor.name}" is linked to a different account${donor.linked_user_name ? ` (${donor.linked_user_name})` : ""} — not ${submitterName}.`
+    );
+  }
+  if (payment.donor_id && payment.donor_id !== donorId) {
+    warnings.push("This report was already linked to another donor record — approving will switch it.");
+  }
+  const { rows: dup } = await client.query(
+    `SELECT COUNT(*)::int AS n FROM contribution_payments
+     WHERE donor_id = $1 AND year = $2 AND month = $3 AND status = 'confirmed'`,
+    [donorId, payment.year, payment.month]
+  );
+  if (dup[0]?.n > 0) {
+    warnings.push(`"${donor.name}" already has ${dup[0].n} confirmed payment(s) for this month — check for duplicates.`);
+  }
+  return warnings;
+}
 
 // Shared title/body/url for approval notifications (in-app + push).
 function approvalContent(payment) {
@@ -739,6 +787,13 @@ async function approvePaymentTx(client, req) {
     await auditLog(req.user.id, "create_donor", "donor", donorId, getClientIp(req), client, {
       name: newDonorName, user_id: payment.submitted_by, created_by: req.user.id,
     });
+  }
+
+  // Guard against incorrect donor matches — suspicious matches must be
+  // explicitly confirmed by the admin (confirm_match: true).
+  if (req.body?.confirm_match !== true) {
+    const warnings = await donorMatchWarnings(client, donorId, payment);
+    if (warnings.length) return { outcome: "confirm_required", warnings, payment, donorId };
   }
 
   await client.query(

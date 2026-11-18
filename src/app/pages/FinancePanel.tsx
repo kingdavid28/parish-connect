@@ -67,6 +67,7 @@ interface PendingReport {
   reference: string | null; gcash_sender: string | null; receipt_url: string | null; created_at: string;
   donor_id: string | null; donor_name: string | null; bec_name: string | null;
   submitted_by_name: string | null;
+  suggested_donor_id?: string | null; suggested_donor_name?: string | null;
 }
 interface SummaryRow {
   bec_id: string | null; bec_name: string; donors: number; expected_due: number;
@@ -528,6 +529,12 @@ export default function FinancePanel() {
   const [matchDonorId, setMatchDonorId] = useState("");
   const [matchDonors, setMatchDonors] = useState<Donor[]>([]);
   const [matchNewName, setMatchNewName] = useState("");
+  const [matchWarnings, setMatchWarnings] = useState<{
+    id: string;
+    body: { donor_id?: string; new_donor_name?: string; gcash_verified?: boolean };
+    donorName: string;
+    warnings: string[];
+  } | null>(null);
   const [verificationReport, setVerificationReport] = useState<PendingReport | null>(null);
   const [verificationBody, setVerificationBody] = useState<{ donor_id?: string; new_donor_name?: string }>({});
   const [verificationDonorName, setVerificationDonorName] = useState("");
@@ -752,7 +759,7 @@ export default function FinancePanel() {
   const actOnPending = async (
     id: string,
     action: "approve" | "reject",
-    body: { donor_id?: string; new_donor_name?: string; gcash_verified?: boolean } = {},
+    body: { donor_id?: string; new_donor_name?: string; gcash_verified?: boolean; confirm_match?: boolean } = {},
     matchedDonorName?: string,
   ) => {
     setActingPending(id);
@@ -763,7 +770,13 @@ export default function FinancePanel() {
         body: JSON.stringify(body),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.message || "Failed");
+      if (!res.ok) {
+        if (data.code === "MATCH_CONFIRMATION_REQUIRED") {
+          setMatchWarnings({ id, body, donorName: matchedDonorName || "", warnings: data.warnings || [] });
+          return;
+        }
+        throw new Error(data.message || "Failed");
+      }
       toast.success(action === "approve" ? "Contribution approved" : "Contribution rejected");
       setMatchReport(null);
       setVerificationReport(null);
@@ -812,7 +825,7 @@ export default function FinancePanel() {
       return;
     }
     setMatchReport(r);
-    setMatchDonorId("");
+    setMatchDonorId(r.suggested_donor_id || "");
     setMatchNewName(r.submitted_by_name || r.donor_name || "");
     try {
       const res = await fetch(`${API}/finance/donors?limit=50`, { headers: authHeaders() });
@@ -1574,9 +1587,20 @@ export default function FinancePanel() {
                 <SelectTrigger id="match-donor"><SelectValue placeholder="Select donor" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="none">— Create new instead —</SelectItem>
-                  {matchDonors.map((d) => <SelectItem key={d.id} value={d.id}>{d.name}{d.bec_name ? ` (${d.bec_name})` : ""}</SelectItem>)}
+                  {matchDonors.map((d) => (
+                    <SelectItem key={d.id} value={d.id}>
+                      {d.name}{d.bec_name ? ` (${d.bec_name})` : ""}
+                      {d.id === matchReport?.suggested_donor_id ? " — suggested" : ""}
+                      {d.linked_user_name ? ` · linked: ${d.linked_user_name}` : ""}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
+              {matchReport?.suggested_donor_name && (
+                <p className="text-xs text-blue-600">
+                  Suggested: {matchReport.suggested_donor_name} — this member&apos;s linked donor record.
+                </p>
+              )}
             </div>
             {!matchDonorId && (
               <div className="space-y-2">
@@ -1591,6 +1615,37 @@ export default function FinancePanel() {
             <Button onClick={confirmApprove} disabled={actingPending === matchReport?.id}>
               {actingPending === matchReport?.id && <Loader2 className="h-4 w-4 mr-1 animate-spin" />}
               Approve &amp; {matchDonorId ? "Match" : "Create Donor"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Suspicious donor-match confirmation */}
+      <Dialog open={!!matchWarnings} onOpenChange={(o) => !o && setMatchWarnings(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Review this donor match</DialogTitle>
+            <DialogDescription>
+              Approving <span className="font-medium">{matchWarnings?.donorName}</span> raised the following checks:
+            </DialogDescription>
+          </DialogHeader>
+          <ul className="list-disc pl-5 space-y-1 text-sm text-amber-700">
+            {matchWarnings?.warnings.map((w) => <li key={w}>{w}</li>)}
+          </ul>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setMatchWarnings(null)}>Cancel</Button>
+            <Button
+              variant="destructive"
+              disabled={actingPending === matchWarnings?.id}
+              onClick={() => {
+                if (!matchWarnings) return;
+                const { id, body, donorName } = matchWarnings;
+                setMatchWarnings(null);
+                void actOnPending(id, "approve", { ...body, confirm_match: true }, donorName);
+              }}
+            >
+              {actingPending === matchWarnings?.id && <Loader2 className="h-4 w-4 mr-1 animate-spin" />}
+              Approve anyway
             </Button>
           </DialogFooter>
         </DialogContent>
