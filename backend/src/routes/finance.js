@@ -1230,6 +1230,100 @@ router.get("/export", ...adminOnly, async (req, res) => {
   }
 });
 
+// GET /api/finance/report?year= — consolidated financial report for PDF/export (admin)
+router.get("/report", ...adminOnly, async (req, res) => {
+  if (!financeEnabled(res)) return;
+  const year = Number.parseInt(req.query.year || new Date().getFullYear(), 10);
+  if (!validYear(year)) return badRequest(res, "year must be 1900-2200");
+  try {
+    const [statusRes, monthlyRes, becRes, topRes, expectedRes, donorsRes] = await Promise.all([
+      // Status totals for the year
+      pool.query(
+        `SELECT status, COUNT(*)::int AS count, COALESCE(SUM(amount),0)::float AS total
+         FROM contribution_payments WHERE year = $1 GROUP BY status`,
+        [year]
+      ),
+      // Confirmed collections per month
+      pool.query(
+        `SELECT month::int,
+                COALESCE(SUM(amount),0)::float AS total,
+                COUNT(*)::int AS count,
+                COUNT(DISTINCT donor_id)::int AS donors
+         FROM contribution_payments
+         WHERE year = $1 AND status = 'confirmed'
+         GROUP BY month ORDER BY month`,
+        [year]
+      ),
+      // Confirmed collections per BEC
+      pool.query(
+        `SELECT COALESCE(b.name, '(No BEC)') AS bec_name,
+                COUNT(DISTINCT p.donor_id)::int AS donors,
+                COUNT(*)::int AS count,
+                COALESCE(SUM(p.amount),0)::float AS total
+         FROM contribution_payments p
+         LEFT JOIN donors d ON d.id = p.donor_id
+         LEFT JOIN becs b ON b.id = d.bec_id
+         WHERE p.year = $1 AND p.status = 'confirmed'
+         GROUP BY b.name ORDER BY total DESC`,
+        [year]
+      ),
+      // Top 10 contributors (confirmed only)
+      pool.query(
+        `SELECT d.id AS donor_id, d.name, COALESCE(b.name, '(No BEC)') AS bec_name,
+                COALESCE(SUM(p.amount),0)::float AS total,
+                COUNT(*)::int AS count
+         FROM contribution_payments p
+         JOIN donors d ON d.id = p.donor_id
+         LEFT JOIN becs b ON b.id = d.bec_id
+         WHERE p.year = $1 AND p.status = 'confirmed'
+         GROUP BY d.id, d.name, b.name
+         ORDER BY total DESC, d.name LIMIT 10`,
+        [year]
+      ),
+      // Monthly expected dues across active donors (for collection-rate display)
+      pool.query(
+        `SELECT COALESCE(SUM(COALESCE(d.expected_amount, b.expected_amount, 0)),0)::float AS expected_monthly,
+                COUNT(d.id)::int AS active_donors
+         FROM donors d LEFT JOIN becs b ON b.id = d.bec_id
+         WHERE d.is_active = 1`,
+        []
+      ),
+      // Distinct donors who paid at least once this year
+      pool.query(
+        `SELECT COUNT(DISTINCT donor_id)::int AS paying
+         FROM contribution_payments WHERE year = $1 AND status = 'confirmed' AND donor_id IS NOT NULL`,
+        [year]
+      ),
+    ]);
+
+    const byStatus = Object.fromEntries(
+      statusRes.rows.map((r) => [r.status, { count: r.count, total: r.total }])
+    );
+
+    res.json({
+      success: true,
+      data: {
+        year,
+        totals: {
+          confirmed_total: byStatus.confirmed?.total ?? 0,
+          confirmed_count: byStatus.confirmed?.count ?? 0,
+          pending_count: byStatus.pending?.count ?? 0,
+          rejected_count: byStatus.rejected?.count ?? 0,
+          voided_count: byStatus.voided?.count ?? 0,
+          donors_paying: donorsRes.rows[0]?.paying ?? 0,
+          active_donors: expectedRes.rows[0]?.active_donors ?? 0,
+          expected_monthly: expectedRes.rows[0]?.expected_monthly ?? 0,
+        },
+        monthly: monthlyRes.rows,
+        becs: becRes.rows,
+        top_donors: topRes.rows,
+      },
+    });
+  } catch (err) {
+    serverError(res, "Finance report error", err);
+  }
+});
+
 // GET /api/finance/my/ledger?year= — authenticated donor's own ledger
 router.get("/my/ledger", authenticate, async (req, res) => {
   if (!financeEnabled(res)) return;

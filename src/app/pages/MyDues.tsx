@@ -10,11 +10,13 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "../components/ui/select";
-import { Loader2, PhilippinePeso, Plus } from "lucide-react";
+import { Loader2, PhilippinePeso, Plus, FileDown } from "lucide-react";
 import { toast } from "sonner";
 import { API } from "../config";
 import ImageLightbox from "../components/ImageLightbox";
 import GcashPaymentDetails from "../components/GcashPaymentDetails";
+import { buildMemberStatementPdf } from "../lib/financeReportPdf";
+import { useParishConfig } from "../context/ParishConfigContext";
 
 const MONTHS_FULL = ["January","February","March","April","May","June",
   "July","August","September","October","November","December"];
@@ -57,6 +59,7 @@ const STATUS_LABEL: Record<string, string> = {
 
 export default function MyDues() {
   const now = new Date();
+  const { parish } = useParishConfig();
   const [year, setYear] = useState(now.getFullYear());
   const [ledger, setLedger] = useState<MyLedger | null>(null);
   const [loading, setLoading] = useState(true);
@@ -297,6 +300,15 @@ export default function MyDues() {
             <div className="flex flex-wrap items-center gap-2">
               <Button size="sm" onClick={() => setReportOpen(true)}>
                 <Plus className="h-4 w-4 mr-1" /> Donate
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={!ledger?.donor}
+                aria-label="Download contribution statement PDF"
+                onClick={() => { if (ledger) buildMemberStatementPdf(ledger, parish.name); }}
+              >
+                <FileDown className="h-4 w-4 mr-1" /> Statement
               </Button>
               <Select value={String(year)} onValueChange={(v) => setYear(Number(v))}>
                 <SelectTrigger className="w-[95px] h-9" aria-label="Year"><SelectValue /></SelectTrigger>

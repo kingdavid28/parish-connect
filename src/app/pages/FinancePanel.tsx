@@ -16,13 +16,15 @@ import {
 } from "../components/ui/table";
 import {
   Plus, Pencil, Trash2, Search, Loader2, Users, PiggyBank,
-  ChevronLeft, ChevronRight, PhilippinePeso, Upload, Download,
+  ChevronLeft, ChevronRight, PhilippinePeso, Upload, Download, FileDown,
 } from "lucide-react";
 import { toast } from "sonner";
 import { API } from "../config";
 import ImageLightbox from "../components/ImageLightbox";
 import { proxyImageUrl } from "../lib/imageProxy";
 import { parseDonorsCsv, DONORS_CSV_TEMPLATE } from "../lib/parseCsv";
+import { buildAdminReportPdf, type AdminReportData } from "../lib/financeReportPdf";
+import { useParishConfig } from "../context/ParishConfigContext";
 
 const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 const MONTHS_FULL = ["January","February","March","April","May","June",
@@ -476,6 +478,7 @@ function PaymentFormDialog({
 
 export default function FinancePanel() {
   const now = new Date();
+  const { parish } = useParishConfig();
 
   const [becs, setBecs] = useState<Bec[]>([]);
   const [becDialogOpen, setBecDialogOpen] = useState(false);
@@ -544,9 +547,34 @@ export default function FinancePanel() {
   const fileRef = useRef<HTMLInputElement>(null);
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
 
+  // Financial report
+  const [reportOpen, setReportOpen] = useState(false);
+  const [reportYear, setReportYear] = useState(now.getFullYear());
+  const [report, setReport] = useState<AdminReportData | null>(null);
+  const [loadingReport, setLoadingReport] = useState(false);
+
   const authHeaders = useCallback(() => ({
     Authorization: `Bearer ${getToken()}`,
   }), []);
+
+  const fetchReport = useCallback(async (year: number) => {
+    setLoadingReport(true);
+    try {
+      const res = await fetch(`${API}/finance/report?year=${year}`, { headers: authHeaders() });
+      const data = await res.json();
+      if (!res.ok || !data.success) throw new Error(data.message || "Unable to load report");
+      setReport(data.data);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Unable to load report");
+      setReport(null);
+    } finally {
+      setLoadingReport(false);
+    }
+  }, [authHeaders]);
+
+  useEffect(() => {
+    if (reportOpen) void fetchReport(reportYear);
+  }, [reportOpen, reportYear, fetchReport]);
 
   // ── Fetchers ──────────────────────────────────────────────
   const fetchBecs = useCallback(async () => {
@@ -978,6 +1006,9 @@ export default function FinancePanel() {
               </Select>
               <Button variant="outline" size="sm" onClick={() => { void exportCsv(); }} aria-label="Export CSV">
                 <Download className="h-4 w-4" />
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => setReportOpen(true)} aria-label="Financial report">
+                <FileDown className="h-4 w-4 mr-1" /> Report
               </Button>
             </div>
           </div>
@@ -1581,6 +1612,151 @@ export default function FinancePanel() {
             <Button onClick={confirmApprove} disabled={actingPending === matchReport?.id}>
               {actingPending === matchReport?.id && <Loader2 className="h-4 w-4 mr-1 animate-spin" />}
               Approve &amp; {matchDonorId ? "Match" : "Create Donor"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Financial report dialog */}
+      <Dialog open={reportOpen} onOpenChange={setReportOpen}>
+        <DialogContent className="sm:max-w-2xl max-h-[85dvh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Financial Report — Balik Pasalamat sa Diyos</DialogTitle>
+            <DialogDescription>Annual collections summary, breakdowns, and PDF export.</DialogDescription>
+          </DialogHeader>
+          <div className="flex items-center gap-2">
+            <Label htmlFor="report-year" className="text-xs text-gray-500">Year</Label>
+            <Select value={String(reportYear)} onValueChange={(v) => setReportYear(Number(v))}>
+              <SelectTrigger id="report-year" className="w-[100px] h-9"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {years.map((y) => <SelectItem key={y} value={String(y)}>{y}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {loadingReport && (
+            <div className="flex items-center justify-center gap-2 py-10 text-sm text-gray-500">
+              <Loader2 className="h-4 w-4 animate-spin" /> Generating report…
+            </div>
+          )}
+          {!loadingReport && !report && (
+            <p className="py-10 text-center text-sm text-gray-500">Report unavailable.</p>
+          )}
+          {!loadingReport && report && (
+            <div className="space-y-5 text-sm">
+              {/* Totals */}
+              {(() => {
+                const expectedAnnual = report.totals.expected_monthly * 12;
+                const rate = expectedAnnual > 0 ? (report.totals.confirmed_total / expectedAnnual) * 100 : 0;
+                return (
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                    <div className="rounded-lg border p-3">
+                      <p className="text-xs text-gray-500">Total collected</p>
+                      <p className="text-lg font-semibold text-green-700">{peso(report.totals.confirmed_total)}</p>
+                      <p className="text-[11px] text-gray-400">{report.totals.confirmed_count} payments</p>
+                    </div>
+                    <div className="rounded-lg border p-3">
+                      <p className="text-xs text-gray-500">Donors who paid</p>
+                      <p className="text-lg font-semibold">{report.totals.donors_paying} <span className="text-sm font-normal text-gray-400">of {report.totals.active_donors}</span></p>
+                    </div>
+                    <div className="rounded-lg border p-3">
+                      <p className="text-xs text-gray-500">Collection rate</p>
+                      <p className="text-lg font-semibold text-blue-700">{rate.toFixed(1)}%</p>
+                      <p className="text-[11px] text-gray-400">of {peso(expectedAnnual)} expected</p>
+                    </div>
+                    <div className="rounded-lg border p-3 col-span-2 sm:col-span-3 text-xs text-gray-500">
+                      Pending: {report.totals.pending_count} · Rejected: {report.totals.rejected_count} · Voided: {report.totals.voided_count}
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* Monthly */}
+              <div>
+                <h3 className="font-semibold mb-2">Monthly collections</h3>
+                <div className="rounded-lg border overflow-hidden">
+                  <table className="w-full text-xs">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="text-left px-3 py-2 font-medium text-gray-600">Month</th>
+                        <th className="text-right px-3 py-2 font-medium text-gray-600">Collected</th>
+                        <th className="text-right px-3 py-2 font-medium text-gray-600">Payments</th>
+                        <th className="text-right px-3 py-2 font-medium text-gray-600">Donors</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y">
+                      {MONTHS_FULL.map((name, i) => {
+                        const row = report.monthly.find((m) => m.month === i + 1);
+                        return (
+                          <tr key={name} className={row ? "" : "text-gray-300"}>
+                            <td className="px-3 py-1.5">{name}</td>
+                            <td className="px-3 py-1.5 text-right">{row ? peso(row.total) : "—"}</td>
+                            <td className="px-3 py-1.5 text-right">{row ? row.count : "—"}</td>
+                            <td className="px-3 py-1.5 text-right">{row ? row.donors : "—"}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* BEC breakdown */}
+              <div>
+                <h3 className="font-semibold mb-2">Collections by BEC</h3>
+                {report.becs.length === 0 ? (
+                  <p className="text-xs text-gray-400">No confirmed collections this year.</p>
+                ) : (
+                  <div className="rounded-lg border overflow-hidden">
+                    <table className="w-full text-xs">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="text-left px-3 py-2 font-medium text-gray-600">BEC</th>
+                          <th className="text-right px-3 py-2 font-medium text-gray-600">Donors</th>
+                          <th className="text-right px-3 py-2 font-medium text-gray-600">Payments</th>
+                          <th className="text-right px-3 py-2 font-medium text-gray-600">Collected</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y">
+                        {report.becs.map((b) => (
+                          <tr key={b.bec_name}>
+                            <td className="px-3 py-1.5">{b.bec_name}</td>
+                            <td className="px-3 py-1.5 text-right">{b.donors}</td>
+                            <td className="px-3 py-1.5 text-right">{b.count}</td>
+                            <td className="px-3 py-1.5 text-right font-medium">{peso(b.total)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+
+              {/* Top donors */}
+              {report.top_donors.length > 0 && (
+                <div>
+                  <h3 className="font-semibold mb-2">Top contributors</h3>
+                  <ol className="divide-y rounded-lg border">
+                    {report.top_donors.map((d, i) => (
+                      <li key={d.name} className="flex items-center justify-between px-3 py-1.5 text-xs">
+                        <span><span className="text-gray-400 mr-2">{i + 1}.</span>{d.name}
+                          <span className="text-gray-400"> · {d.bec_name}</span></span>
+                        <span className="font-medium">{peso(d.total)}</span>
+                      </li>
+                    ))}
+                  </ol>
+                </div>
+              )}
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setReportOpen(false)}>Close</Button>
+            <Button
+              disabled={!report || loadingReport}
+              onClick={() => { if (report) buildAdminReportPdf(report, parish.name); }}
+            >
+              <FileDown className="h-4 w-4 mr-1" /> Export PDF
             </Button>
           </DialogFooter>
         </DialogContent>
