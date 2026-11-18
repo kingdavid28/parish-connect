@@ -227,9 +227,9 @@ router.post("/donors", ...adminOnly, async (req, res) => {
   if (!v.name || v.name.length > 200) {
     return badRequest(res, "name is required (max 200 chars)");
   }
+  const id = uuid();
   try {
     await withTransaction(async (client) => {
-      const id = uuid();
       await client.query(
         `INSERT INTO donors (id, name, address, bec_id, gcash_number, user_id, expected_amount, notes, is_active, created_by)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
@@ -902,9 +902,9 @@ router.post("/payments", ...adminOnly, upload.single("receipt"), async (req, res
     receiptUrl = uploaded.url;
   }
 
+  const id = uuid();
   try {
     await withTransaction(async (client) => {
-      const id = uuid();
       await client.query(
         `INSERT INTO contribution_payments (id, donor_id, year, month, amount, method, reference, receipt_url, recorded_by)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
