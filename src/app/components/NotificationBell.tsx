@@ -80,7 +80,7 @@ export default function NotificationBell() {
   const markRead = async (notification: AppNotification) => {
     const go = () => {
       setMobileOpen(false);
-      navigate(notification.url || "/");
+      void navigate(notification.url || "/");
     };
     if (notification.read_at) {
       go();
@@ -156,6 +156,62 @@ export default function NotificationBell() {
     </Button>
   );
 
+  const renderList = () => {
+    if (loading) {
+      return (
+        <div className="flex items-center justify-center gap-2 p-8 text-sm text-muted-foreground">
+          <Loader2 className="h-4 w-4 animate-spin" /> Loading notifications…
+        </div>
+      );
+    }
+    if (error) {
+      return (
+        <div className="space-y-3 p-4 text-sm text-red-600">
+          <p>{error}</p>
+          <Button type="button" variant="outline" size="sm" onClick={() => { void fetchNotifications(true); }}>
+            Try again
+          </Button>
+        </div>
+      );
+    }
+    if (data.items.length === 0) {
+      return <p className="p-8 text-center text-sm text-muted-foreground">No notifications yet.</p>;
+    }
+    return (
+      <ul>
+        {data.items.map((notification) => (
+          <li key={notification.id} className="border-b last:border-b-0">
+            <button
+              type="button"
+              className={`w-full px-4 py-3 text-left transition-colors hover:bg-muted/60 ${
+                notification.read_at ? "" : "bg-blue-50/70"
+              }`}
+              disabled={busyId === notification.id}
+              onClick={() => { void markRead(notification); }}
+            >
+              <span className="flex items-start gap-2">
+                {!notification.read_at && (
+                  <span aria-label="Unread" className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-blue-600" />
+                )}
+                <span className="min-w-0 flex-1">
+                  <span className="block text-sm font-medium">{notification.title}</span>
+                  {notification.body && (
+                    <span className="mt-0.5 block whitespace-pre-wrap break-words text-xs text-muted-foreground">
+                      {notification.body}
+                    </span>
+                  )}
+                  <span className="mt-1 block text-[11px] text-muted-foreground">
+                    {relativeTime(notification.created_at)}
+                  </span>
+                </span>
+              </span>
+            </button>
+          </li>
+        ))}
+      </ul>
+    );
+  };
+
   const panelContent = (
     <>
       <div className="flex items-center justify-between border-b px-4 py-3 pr-12">
@@ -179,52 +235,7 @@ export default function NotificationBell() {
         </Button>
       </div>
       <div className="max-h-[min(70vh,28rem)] overflow-y-auto">
-        {loading ? (
-          <div className="flex items-center justify-center gap-2 p-8 text-sm text-muted-foreground">
-            <Loader2 className="h-4 w-4 animate-spin" /> Loading notifications…
-          </div>
-        ) : error ? (
-          <div className="space-y-3 p-4 text-sm text-red-600">
-            <p>{error}</p>
-            <Button type="button" variant="outline" size="sm" onClick={() => { void fetchNotifications(true); }}>
-              Try again
-            </Button>
-          </div>
-        ) : data.items.length === 0 ? (
-          <p className="p-8 text-center text-sm text-muted-foreground">No notifications yet.</p>
-        ) : (
-          <ul>
-            {data.items.map((notification) => (
-              <li key={notification.id} className="border-b last:border-b-0">
-                <button
-                  type="button"
-                  className={`w-full px-4 py-3 text-left transition-colors hover:bg-muted/60 ${
-                    notification.read_at ? "" : "bg-blue-50/70"
-                  }`}
-                  disabled={busyId === notification.id}
-                  onClick={() => { void markRead(notification); }}
-                >
-                  <span className="flex items-start gap-2">
-                    {!notification.read_at && (
-                      <span aria-label="Unread" className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-blue-600" />
-                    )}
-                    <span className="min-w-0 flex-1">
-                      <span className="block text-sm font-medium">{notification.title}</span>
-                      {notification.body && (
-                        <span className="mt-0.5 block whitespace-pre-wrap break-words text-xs text-muted-foreground">
-                          {notification.body}
-                        </span>
-                      )}
-                      <span className="mt-1 block text-[11px] text-muted-foreground">
-                        {relativeTime(notification.created_at)}
-                      </span>
-                    </span>
-                  </span>
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
+        {renderList()}
       </div>
     </>
   );
