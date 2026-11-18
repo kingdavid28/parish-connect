@@ -60,6 +60,8 @@ import {
   ClipboardList,
   ChevronLeft,
   ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
   Filter,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -130,6 +132,35 @@ const safeParseDate = (dateString: string): Date | null => {
     }
 };
 
+const AUDIT_ACTION_STYLES: ReadonlyArray<readonly [RegExp, string]> = [
+  [/delete|remove|reject|revoke|ban|deactivat/i, "bg-red-100 text-red-700 hover:bg-red-100"],
+  [/create|add|approve|verify|award|register|login|post/i, "bg-green-100 text-green-700 hover:bg-green-100"],
+  [/update|edit|change|reset|payment|donor/i, "bg-amber-100 text-amber-700 hover:bg-amber-100"],
+];
+
+const auditActionBadgeClass = (action: string) => {
+  const match = AUDIT_ACTION_STYLES.find(([pattern]) => pattern.test(action));
+  return match ? match[1] : "";
+};
+
+type AuditPageItem = { kind: "page"; n: number } | { kind: "gap"; after: number };
+
+const getAuditPageItems = (current: number, total: number): AuditPageItem[] => {
+  if (total <= 7) {
+    return Array.from({ length: total }, (_, i) => ({ kind: "page" as const, n: i + 1 }));
+  }
+  const wanted = new Set<number>([1, total, current - 1, current, current + 1]);
+  const pages = [...wanted].filter((p) => p >= 1 && p <= total).sort((a, b) => a - b);
+  const items: AuditPageItem[] = [];
+  let prev = 0;
+  for (const p of pages) {
+    if (p - prev > 1) items.push({ kind: "gap", after: prev });
+    items.push({ kind: "page", n: p });
+    prev = p;
+  }
+  return items;
+};
+
 interface AuditLog {
   id: string;
   action: string;
@@ -193,15 +224,16 @@ export default function AdminManagement() {
   const [auditTotal, setAuditTotal] = useState(0);
   const [auditPage, setAuditPage] = useState(1);
   const [auditHasMore, setAuditHasMore] = useState(false);
+  const [auditLimit, setAuditLimit] = useState(50);
   const [auditActions, setAuditActions] = useState<string[]>([]);
   const [auditFilterAction, setAuditFilterAction] = useState("");
   const [auditFilterFrom, setAuditFilterFrom] = useState("");
   const [auditFilterTo, setAuditFilterTo] = useState("");
 
-  const fetchAuditLogs = async (page = 1) => {
+  const fetchAuditLogs = async (page = 1, limit = auditLimit) => {
     setAuditLoading(true);
     try {
-      const params = new URLSearchParams({ page: String(page), limit: '50' });
+      const params = new URLSearchParams({ page: String(page), limit: String(limit) });
       if (auditFilterAction) params.set('action', auditFilterAction);
       if (auditFilterFrom) params.set('from', auditFilterFrom);
       if (auditFilterTo) params.set('to', auditFilterTo);
@@ -877,8 +909,8 @@ export default function AdminManagement() {
                               <td className="px-4 py-3 whitespace-nowrap">
                                 {safeParseDate(log.created_at) ? (
                                   <>
-                                    <p className="text-xs text-gray-500">{format(safeParseDate(log.created_at)!, 'MMM d, yyyy HH:mm')}</p>
-                                    <p className="text-xs text-gray-400">{safeFormatDate(log.created_at)}</p>
+                                    <p className="text-sm font-medium text-gray-700">{safeFormatDate(log.created_at)}</p>
+                                    <p className="text-xs text-gray-400">{format(safeParseDate(log.created_at)!, 'MMM d, yyyy HH:mm')}</p>
                                   </>
                                 ) : (
                                   <p className="text-xs text-gray-400">Invalid date</p>
@@ -889,7 +921,7 @@ export default function AdminManagement() {
                                 {log.user_email && <p className="text-xs text-gray-400">{log.user_email}</p>}
                               </td>
                               <td className="px-4 py-3">
-                                <Badge variant="secondary" className="font-mono text-xs">
+                                <Badge variant="secondary" className={`font-mono text-xs ${auditActionBadgeClass(log.action)}`}>
                                   {log.action.replace(/_/g, ' ')}
                                 </Badge>
                               </td>
@@ -909,18 +941,69 @@ export default function AdminManagement() {
               </Card>
 
               {/* Pagination */}
-              {auditTotal > 50 && (
-                <div className="flex items-center justify-between">
-                  <p className="text-sm text-gray-500">Page {auditPage} of {Math.ceil(auditTotal / 50)}</p>
-                  <div className="flex gap-2">
-                    <Button variant="outline" size="sm" disabled={auditPage <= 1 || auditLoading} onClick={() => void fetchAuditLogs(auditPage - 1)}>
-                      <ChevronLeft className="h-4 w-4" />Previous
-                    </Button>
-                    <Button variant="outline" size="sm" disabled={!auditHasMore || auditLoading} onClick={() => void fetchAuditLogs(auditPage + 1)}>
-                      Next<ChevronRight className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
+              {auditTotal > 0 && (
+                (() => {
+                  const totalPages = Math.ceil(auditTotal / auditLimit);
+                  const firstRow = (auditPage - 1) * auditLimit + 1;
+                  const lastRow = Math.min(auditPage * auditLimit, auditTotal);
+                  return (
+                    <Card>
+                      <CardContent className="py-3 flex flex-col sm:flex-row items-center justify-between gap-3">
+                        <div className="flex items-center gap-3 order-2 sm:order-1">
+                          <p className="text-xs text-gray-500">
+                            Showing <span className="font-medium text-gray-700">{firstRow.toLocaleString()}–{lastRow.toLocaleString()}</span> of <span className="font-medium text-gray-700">{auditTotal.toLocaleString()}</span>
+                          </p>
+                          <Select
+                            value={String(auditLimit)}
+                            onValueChange={(v) => {
+                              const n = Number.parseInt(v, 10);
+                              setAuditLimit(n);
+                              void fetchAuditLogs(1, n);
+                            }}
+                          >
+                            <SelectTrigger className="h-8 w-[110px] text-xs"><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="25">25 / page</SelectItem>
+                              <SelectItem value="50">50 / page</SelectItem>
+                              <SelectItem value="100">100 / page</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="flex items-center gap-1 order-1 sm:order-2">
+                          <Button variant="outline" size="icon" className="h-8 w-8" disabled={auditPage <= 1 || auditLoading} onClick={() => void fetchAuditLogs(1)} aria-label="First page">
+                            <ChevronsLeft className="h-4 w-4" />
+                          </Button>
+                          <Button variant="outline" size="icon" className="h-8 w-8" disabled={auditPage <= 1 || auditLoading} onClick={() => void fetchAuditLogs(auditPage - 1)} aria-label="Previous page">
+                            <ChevronLeft className="h-4 w-4" />
+                          </Button>
+                          {getAuditPageItems(auditPage, totalPages).map((item) =>
+                            item.kind === "gap" ? (
+                              <span key={`gap-${item.after}`} className="px-1 text-xs text-gray-400">…</span>
+                            ) : (
+                              <Button
+                                key={`page-${item.n}`}
+                                variant={item.n === auditPage ? "default" : "outline"}
+                                size="icon"
+                                className="h-8 w-8 text-xs"
+                                disabled={auditLoading}
+                                aria-current={item.n === auditPage ? "page" : undefined}
+                                onClick={() => void fetchAuditLogs(item.n)}
+                              >
+                                {item.n}
+                              </Button>
+                            )
+                          )}
+                          <Button variant="outline" size="icon" className="h-8 w-8" disabled={auditPage >= totalPages || auditLoading} onClick={() => void fetchAuditLogs(auditPage + 1)} aria-label="Next page">
+                            <ChevronRight className="h-4 w-4" />
+                          </Button>
+                          <Button variant="outline" size="icon" className="h-8 w-8" disabled={auditPage >= totalPages || auditLoading} onClick={() => void fetchAuditLogs(totalPages)} aria-label="Last page">
+                            <ChevronsRight className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  );
+                })()
               )}
             </TabsContent>
           )}
