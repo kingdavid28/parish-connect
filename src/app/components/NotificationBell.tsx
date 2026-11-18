@@ -6,6 +6,10 @@ import { toast } from "sonner";
 import { API } from "../config";
 import { Button } from "./ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
+import {
+  Dialog, DialogContent, DialogDescription, DialogTitle,
+} from "./ui/dialog";
+import { useIsMobile } from "./ui/use-mobile";
 
 interface AppNotification {
   id: string;
@@ -32,10 +36,12 @@ function relativeTime(value: string) {
 
 export default function NotificationBell() {
   const navigate = useNavigate();
+  const isMobile = useIsMobile();
   const [data, setData] = useState<NotificationData>({ items: [], unread_count: 0 });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [mobileOpen, setMobileOpen] = useState(false);
 
   const fetchNotifications = useCallback(async (showLoading = false) => {
     if (showLoading) setLoading(true);
@@ -72,8 +78,12 @@ export default function NotificationBell() {
   }, [fetchNotifications]);
 
   const markRead = async (notification: AppNotification) => {
-    if (notification.read_at) {
+    const go = () => {
+      setMobileOpen(false);
       navigate(notification.url || "/");
+    };
+    if (notification.read_at) {
+      go();
       return;
     }
     setBusyId(notification.id);
@@ -93,7 +103,7 @@ export default function NotificationBell() {
           item.id === notification.id ? { ...item, read_at: new Date().toISOString() } : item
         ),
       }));
-      navigate(notification.url || "/");
+      go();
     } catch (cause) {
       toast.error(cause instanceof Error ? cause.message : "Unable to update notification");
     } finally {
@@ -126,95 +136,131 @@ export default function NotificationBell() {
     }
   };
 
-  return (
-    <Popover onOpenChange={(open) => { if (open) void fetchNotifications(true); }}>
-      <PopoverTrigger asChild>
+  const renderTrigger = (onClick?: () => void) => (
+    <Button
+      type="button"
+      variant="ghost"
+      size="icon"
+      className="relative h-10 w-10 rounded-full"
+      aria-label={data.unread_count
+        ? `Notifications, ${data.unread_count} unread`
+        : "Notifications"}
+      onClick={onClick}
+    >
+      <Bell className="h-5 w-5" />
+      {data.unread_count > 0 && (
+        <span className="absolute -right-0.5 -top-0.5 min-w-4 rounded-full bg-red-600 px-1 text-center text-[10px] font-bold leading-4 text-white">
+          {data.unread_count > 99 ? "99+" : data.unread_count}
+        </span>
+      )}
+    </Button>
+  );
+
+  const panelContent = (
+    <>
+      <div className="flex items-center justify-between border-b px-4 py-3 pr-12">
+        <div>
+          <h2 className="font-semibold">Notifications</h2>
+          <p className="text-xs text-muted-foreground">
+            {data.unread_count ? `${data.unread_count} unread` : "You're all caught up"}
+          </p>
+        </div>
         <Button
           type="button"
           variant="ghost"
-          size="icon"
-          className="relative h-9 w-9 rounded-full"
-          aria-label={data.unread_count
-            ? `Notifications, ${data.unread_count} unread`
-            : "Notifications"}
+          size="sm"
+          className="h-8 px-2 text-xs"
+          disabled={!data.unread_count || busyId === "all"}
+          onClick={() => { void markAllRead(); }}
         >
-          <Bell className="h-5 w-5" />
-          {data.unread_count > 0 && (
-            <span className="absolute -right-0.5 -top-0.5 min-w-4 rounded-full bg-red-600 px-1 text-center text-[10px] font-bold leading-4 text-white">
-              {data.unread_count > 99 ? "99+" : data.unread_count}
-            </span>
-          )}
+          {busyId === "all"
+            ? <Loader2 className="h-4 w-4 animate-spin" />
+            : <><CheckCheck className="mr-1 h-4 w-4" />Mark all read</>}
         </Button>
-      </PopoverTrigger>
-      <PopoverContent align="end" className="w-[min(24rem,calc(100vw-1rem))] p-0">
-        <div className="flex items-center justify-between border-b px-4 py-3">
-          <div>
-            <h2 className="font-semibold">Notifications</h2>
-            <p className="text-xs text-muted-foreground">
-              {data.unread_count ? `${data.unread_count} unread` : "You're all caught up"}
-            </p>
+      </div>
+      <div className="max-h-[min(70vh,28rem)] overflow-y-auto">
+        {loading ? (
+          <div className="flex items-center justify-center gap-2 p-8 text-sm text-muted-foreground">
+            <Loader2 className="h-4 w-4 animate-spin" /> Loading notifications…
           </div>
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="h-8 px-2 text-xs"
-            disabled={!data.unread_count || busyId === "all"}
-            onClick={() => { void markAllRead(); }}
-          >
-            {busyId === "all"
-              ? <Loader2 className="h-4 w-4 animate-spin" />
-              : <><CheckCheck className="mr-1 h-4 w-4" />Mark all read</>}
-          </Button>
-        </div>
-        <div className="max-h-[min(70vh,28rem)] overflow-y-auto">
-          {loading ? (
-            <div className="flex items-center justify-center gap-2 p-8 text-sm text-muted-foreground">
-              <Loader2 className="h-4 w-4 animate-spin" /> Loading notifications…
-            </div>
-          ) : error ? (
-            <div className="space-y-3 p-4 text-sm text-red-600">
-              <p>{error}</p>
-              <Button type="button" variant="outline" size="sm" onClick={() => { void fetchNotifications(true); }}>
-                Try again
-              </Button>
-            </div>
-          ) : data.items.length === 0 ? (
-            <p className="p-8 text-center text-sm text-muted-foreground">No notifications yet.</p>
-          ) : (
-            <ul>
-              {data.items.map((notification) => (
-                <li key={notification.id} className="border-b last:border-b-0">
-                  <button
-                    type="button"
-                    className={`w-full px-4 py-3 text-left transition-colors hover:bg-muted/60 ${
-                      notification.read_at ? "" : "bg-blue-50/70"
-                    }`}
-                    disabled={busyId === notification.id}
-                    onClick={() => { void markRead(notification); }}
-                  >
-                    <span className="flex items-start gap-2">
-                      {!notification.read_at && (
-                        <span aria-label="Unread" className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-blue-600" />
-                      )}
-                      <span className="min-w-0 flex-1">
-                        <span className="block text-sm font-medium">{notification.title}</span>
-                        {notification.body && (
-                          <span className="mt-0.5 block whitespace-pre-wrap break-words text-xs text-muted-foreground">
-                            {notification.body}
-                          </span>
-                        )}
-                        <span className="mt-1 block text-[11px] text-muted-foreground">
-                          {relativeTime(notification.created_at)}
+        ) : error ? (
+          <div className="space-y-3 p-4 text-sm text-red-600">
+            <p>{error}</p>
+            <Button type="button" variant="outline" size="sm" onClick={() => { void fetchNotifications(true); }}>
+              Try again
+            </Button>
+          </div>
+        ) : data.items.length === 0 ? (
+          <p className="p-8 text-center text-sm text-muted-foreground">No notifications yet.</p>
+        ) : (
+          <ul>
+            {data.items.map((notification) => (
+              <li key={notification.id} className="border-b last:border-b-0">
+                <button
+                  type="button"
+                  className={`w-full px-4 py-3 text-left transition-colors hover:bg-muted/60 ${
+                    notification.read_at ? "" : "bg-blue-50/70"
+                  }`}
+                  disabled={busyId === notification.id}
+                  onClick={() => { void markRead(notification); }}
+                >
+                  <span className="flex items-start gap-2">
+                    {!notification.read_at && (
+                      <span aria-label="Unread" className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-blue-600" />
+                    )}
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-sm font-medium">{notification.title}</span>
+                      {notification.body && (
+                        <span className="mt-0.5 block whitespace-pre-wrap break-words text-xs text-muted-foreground">
+                          {notification.body}
                         </span>
+                      )}
+                      <span className="mt-1 block text-[11px] text-muted-foreground">
+                        {relativeTime(notification.created_at)}
                       </span>
                     </span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </>
+  );
+
+  const openMobile = () => {
+    setMobileOpen(true);
+    void fetchNotifications(true);
+  };
+
+  // Mobile: modal bottom sheet — reliable tap targets and no popover
+  // positioning issues on small screens/touch devices.
+  if (isMobile) {
+    return (
+      <>
+        {renderTrigger(openMobile)}
+        <Dialog open={mobileOpen} onOpenChange={setMobileOpen}>
+          <DialogContent className="top-auto bottom-0 left-0 right-0 flex max-h-[85dvh] w-full max-w-none translate-x-0 translate-y-0 flex-col gap-0 rounded-b-none rounded-t-2xl p-0 pb-[env(safe-area-inset-bottom)] sm:max-w-none">
+            <DialogTitle className="sr-only">Notifications</DialogTitle>
+            <DialogDescription className="sr-only">
+              Your parish notifications. Select a notification to open it.
+            </DialogDescription>
+            {panelContent}
+          </DialogContent>
+        </Dialog>
+      </>
+    );
+  }
+
+  // Desktop: anchored popover dropdown.
+  return (
+    <Popover onOpenChange={(open) => { if (open) void fetchNotifications(true); }}>
+      <PopoverTrigger asChild>
+        {renderTrigger()}
+      </PopoverTrigger>
+      <PopoverContent align="end" className="w-[min(24rem,calc(100vw-1rem))] p-0">
+        {panelContent}
       </PopoverContent>
     </Popover>
   );
