@@ -730,8 +730,9 @@ async function donorMatchWarnings(client, donorId, payment) {
     if (submitter[0]?.name) submitterName = `"${submitter[0].name}"`;
   }
   if (donor.user_id && payment.submitted_by && donor.user_id !== payment.submitted_by) {
+    const linkedLabel = donor.linked_user_name ? ` (${donor.linked_user_name})` : "";
     warnings.push(
-      `Donor "${donor.name}" is linked to a different account${donor.linked_user_name ? ` (${donor.linked_user_name})` : ""} — not ${submitterName}.`
+      `Donor "${donor.name}" is linked to a different account${linkedLabel} — not ${submitterName}.`
     );
   }
   if (payment.donor_id && payment.donor_id !== donorId) {
