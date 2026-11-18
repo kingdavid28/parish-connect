@@ -165,16 +165,9 @@ router.put("/:id", authenticate, async (req, res) => {
     return res.status(403).json({ success: false, message: "Insufficient permissions" });
   }
 
-  let newRole = req.body?.role || null;
-  const newName = req.body?.name != null ? String(req.body.name).trim() : null;
-  const bioProvided = typeof req.body?.bio === "string";
-  const newBio = bioProvided ? req.body.bio.trim() || null : null;
-  if (newRole && !isSuperAdmin) newRole = null;
-  if (newBio && newBio.length > 500) {
-    return res.status(400).json({ success: false, message: "Bio must be 500 characters or fewer" });
-  }
-  if (!newRole && !newName && !bioProvided) {
-    return res.status(400).json({ success: false, message: "Nothing to update" });
+  const input = parseUserUpdate(req.body, isSuperAdmin);
+  if (input.error) {
+    return res.status(400).json({ success: false, message: input.error });
   }
 
   try {
@@ -187,39 +180,13 @@ router.put("/:id", authenticate, async (req, res) => {
       return res.status(404).json({ success: false, message: "User not found" });
     }
 
-    if (isSelf && newRole) {
-      return res.status(400).json({ success: false, message: "You cannot change your own role" });
+    const denied = await userUpdateDenied(req.user, target, input.newRole, isSelf);
+    if (denied) {
+      return res.status(denied.status).json({ success: false, message: denied.message });
     }
 
-    const isParent = await isParentSuperAdmin(req.user);
-    const { rows: parentRows } = await pool.query(
-      "SELECT id FROM users WHERE role = 'superadmin' AND is_active = 1 ORDER BY created_at ASC LIMIT 1"
-    );
-    const targetIsParent = !!parentRows[0] && target.id === parentRows[0].id;
-    if (targetIsParent && !isParent) {
-      return res.status(403).json({ success: false, message: "Cannot modify the parent super admin" });
-    }
-    if (target.role === "superadmin" && !isParent) {
-      return res.status(403).json({ success: false, message: "Only the parent super admin can modify super admin accounts" });
-    }
-
-    if (newRole) {
-      if (!["admin", "parishioner", "superadmin"].includes(newRole)) {
-        return res.status(400).json({ success: false, message: "Invalid role" });
-      }
-      if (newRole === "superadmin" && !isParent) {
-        return res.status(403).json({ success: false, message: "Only the parent super admin can assign super admin role" });
-      }
-    }
-
-    const updates = [];
-    const params = [];
-    if (newName) { params.push(newName); updates.push(`name = $${params.length}`); }
-    if (bioProvided) { params.push(newBio); updates.push(`bio = $${params.length}`); }
-    if (newRole) { params.push(newRole); updates.push(`role = $${params.length}`); }
-    params.push(id);
-    await pool.query(`UPDATE users SET ${updates.join(", ")}, updated_at = NOW() WHERE id = $${params.length}`, params);
-
+    const { sql, params } = buildUserUpdateSql(id, input);
+    await pool.query(sql, params);
     await auditLog(req.user.id, "update_user", "user", id, getClientIp(req));
     res.json({ success: true, message: "User updated successfully" });
   } catch (err) {
@@ -227,6 +194,60 @@ router.put("/:id", authenticate, async (req, res) => {
     res.status(500).json({ success: false, message: "Internal server error" });
   }
 });
+
+// Parse + normalize a PUT /users/:id body. Returns { error } or the update fields.
+function parseUserUpdate(body, isSuperAdmin) {
+  let newRole = body?.role || null;
+  const newName = body?.name != null ? String(body.name).trim() : null;
+  const bioProvided = typeof body?.bio === "string";
+  const newBio = bioProvided ? body.bio.trim() || null : null;
+  if (newRole && !isSuperAdmin) newRole = null;
+  if (newBio && newBio.length > 500) {
+    return { error: "Bio must be 500 characters or fewer" };
+  }
+  if (!newRole && !newName && !bioProvided) {
+    return { error: "Nothing to update" };
+  }
+  return { newRole, newName, bioProvided, newBio };
+}
+
+// Hierarchy + role-change permission checks. Returns { status, message } or null.
+async function userUpdateDenied(user, target, newRole, isSelf) {
+  if (isSelf && newRole) {
+    return { status: 400, message: "You cannot change your own role" };
+  }
+  const isParent = await isParentSuperAdmin(user);
+  const { rows: parentRows } = await pool.query(
+    "SELECT id FROM users WHERE role = 'superadmin' AND is_active = 1 ORDER BY created_at ASC LIMIT 1"
+  );
+  const targetIsParent = !!parentRows[0] && target.id === parentRows[0].id;
+  if (targetIsParent && !isParent) {
+    return { status: 403, message: "Cannot modify the parent super admin" };
+  }
+  if (target.role === "superadmin" && !isParent) {
+    return { status: 403, message: "Only the parent super admin can modify super admin accounts" };
+  }
+  if (newRole && !["admin", "parishioner", "superadmin"].includes(newRole)) {
+    return { status: 400, message: "Invalid role" };
+  }
+  if (newRole === "superadmin" && !isParent) {
+    return { status: 403, message: "Only the parent super admin can assign super admin role" };
+  }
+  return null;
+}
+
+function buildUserUpdateSql(id, { newName, bioProvided, newBio, newRole }) {
+  const updates = [];
+  const params = [];
+  if (newName) { params.push(newName); updates.push(`name = $${params.length}`); }
+  if (bioProvided) { params.push(newBio); updates.push(`bio = $${params.length}`); }
+  if (newRole) { params.push(newRole); updates.push(`role = $${params.length}`); }
+  params.push(id);
+  return {
+    sql: `UPDATE users SET ${updates.join(", ")}, updated_at = NOW() WHERE id = $${params.length}`,
+    params,
+  };
+}
 
 // DELETE /api/users/:id — soft delete with superadmin hierarchy rules
 router.delete("/:id", authenticate, requireRole("admin", "superadmin"), async (req, res) => {
