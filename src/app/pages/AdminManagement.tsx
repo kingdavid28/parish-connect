@@ -223,7 +223,6 @@ export default function AdminManagement() {
   const [auditLoading, setAuditLoading] = useState(false);
   const [auditTotal, setAuditTotal] = useState(0);
   const [auditPage, setAuditPage] = useState(1);
-  const [auditHasMore, setAuditHasMore] = useState(false);
   const [auditLimit, setAuditLimit] = useState(50);
   const [auditActions, setAuditActions] = useState<string[]>([]);
   const [auditFilterAction, setAuditFilterAction] = useState("");
@@ -245,7 +244,6 @@ export default function AdminManagement() {
         setAuditLogs(data.data.logs);
         setAuditTotal(data.data.total);
         setAuditPage(data.data.page);
-        setAuditHasMore(data.data.hasMore);
         if (data.data.actions?.length) setAuditActions(data.data.actions);
       }
     } catch { toast.error('Failed to load audit logs'); }
