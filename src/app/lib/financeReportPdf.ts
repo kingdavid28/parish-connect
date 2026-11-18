@@ -9,6 +9,12 @@ const MONTHS_FULL = [
 const peso = (n: number) =>
   `PHP ${Number(n || 0).toLocaleString("en-PH", { minimumFractionDigits: 2 })}`;
 
+function monthStatusLabel(status: "unpaid" | "partial" | "paid") {
+  if (status === "paid") return "Complete";
+  if (status === "partial") return "Partial";
+  return "Not yet";
+}
+
 export interface AdminReportData {
   year: number;
   month?: number | null;
@@ -287,7 +293,7 @@ export function buildMemberStatementPdf(ledger: UserLedgerData, parishName: stri
       m.expected > 0 ? peso(m.expected) : "—",
       m.paid_total > 0 ? peso(m.paid_total) : "—",
       m.balance > 0 ? peso(m.balance) : "—",
-      m.status === "paid" ? "Complete" : m.status === "partial" ? "Partial" : "Not yet",
+      monthStatusLabel(m.status),
     ]),
     theme: "striped",
     styles: { fontSize: 8.5 },

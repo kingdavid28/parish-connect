@@ -518,29 +518,9 @@ router.get("/my/ledger", authenticate, async (req, res) => {
 // against the donor record linked to their account; admin approves.
 router.post("/my/contributions", authenticate, upload.single("receipt"), async (req, res) => {
   if (!financeEnabled(res)) return;
-  const body = req.body || {};
-  const now = new Date();
-  const year = Number.parseInt(body.year || now.getFullYear(), 10);
-  const month = Number.parseInt(body.month || now.getMonth() + 1, 10);
-  const amount = Number.parseFloat(body.amount);
-  const method = VALID_METHODS.has(String(body.method)) ? String(body.method) : "gcash";
-  const reference = String(body.gcash_ref || body.reference || "").trim() || null;
-  const gcashSender = String(body.gcash_sender || "").trim() || null;
-
-  if (!validYear(year)) return badRequest(res, "year is required");
-  if (!validMonth(month)) return badRequest(res, "month must be 1-12");
-  if (!Number.isFinite(amount) || amount <= 0 || amount >= 1000000) {
-    return badRequest(res, "amount must be between 0 and 1,000,000");
-  }
-  if (method === "gcash" && (!reference || !gcashSender)) {
-    return badRequest(res, "GCash reference number and sender name are required");
-  }
-  if (reference && reference.length > 120) {
-    return badRequest(res, "reference must be 120 characters or fewer");
-  }
-  if (gcashSender && gcashSender.length > 100) {
-    return badRequest(res, "GCash sender name must be 100 characters or fewer");
-  }
+  const parsed = parseContributionInput(req.body);
+  if (parsed.error) return badRequest(res, parsed.error);
+  const { year, month, amount, method, reference, gcashSender } = parsed;
 
   let receiptUrl = null;
   if (req.file) {
@@ -558,54 +538,13 @@ router.post("/my/contributions", authenticate, upload.single("receipt"), async (
     );
     // Unlinked members can still report — admin matches a donor on approve
     const id = uuid();
-    let reviewerIds = [];
-    await withTransaction(async (client) => {
-      if (method === "gcash" && !(await claimGcashReference(client, reference, "contribution", id))) {
-        const error = new Error("This GCash reference number has already been submitted");
-        error.code = "23505";
-        throw error;
-      }
-      await client.query(
-        `INSERT INTO contribution_payments (id, donor_id, year, month, amount, method, reference, gcash_sender, receipt_url, status, submitted_by)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'pending',$10)`,
-        [id, rows[0]?.id || null, year, month, amount, method, reference, gcashSender, receiptUrl, req.user.id]
-      );
-      const { rows: admins } = await client.query(
-        "SELECT id FROM users WHERE role IN ('admin', 'superadmin') AND is_active = 1"
-      );
-      reviewerIds = admins.map((admin) => admin.id);
-      const adminNotification = {
-        category: "finance",
-        title: "Contribution awaiting verification",
-        body: `${req.user.name} submitted a ${method} contribution of ₱${amount.toFixed(2)}.`,
-        url: `${config.appBasePath}/admin`,
-      };
-      for (const adminId of reviewerIds) {
-        await createInAppNotification(adminId, adminNotification, client);
-      }
-      await createInAppNotification(req.user.id, {
-        category: "finance",
-        title: "Contribution submitted",
-        body: "Your contribution is pending admin verification. GBless is only awarded after approval.",
-        url: `${config.appBasePath}/dues`,
-      }, client);
-      await auditLog(req.user.id, "report_contribution", "contribution_payment", id, getClientIp(req), client);
-    });
-    const adminPush = {
-      category: "finance",
-      title: "Contribution awaiting verification",
-      body: `${req.user.name} submitted a ${method} contribution of ₱${amount.toFixed(2)}.`,
-      tag: `contribution-pending-${id}`,
-      url: `${config.appBasePath}/admin`,
-    };
-    await Promise.all(reviewerIds.map((adminId) => sendWebPushToUser(adminId, adminPush)));
-    await sendWebPushToUser(req.user.id, {
-      category: "finance",
-      title: "Contribution submitted",
-      body: "Your contribution is pending admin verification. GBless is only awarded after approval.",
-      tag: `contribution-submitted-${id}`,
-      url: `${config.appBasePath}/dues`,
-    });
+    const reviewerIds = await withTransaction((client) =>
+      insertPendingContribution(client, {
+        id, donorId: rows[0]?.id || null, year, month, amount, method,
+        reference, gcashSender, receiptUrl, user: req.user, ip: getClientIp(req),
+      })
+    );
+    await pushContributionSubmitted(reviewerIds, req.user, method, amount, id);
     res.status(201).json({ success: true, message: "Contribution reported — pending admin approval", data: { id } });
   } catch (err) {
     if (String(err.code) === "23505") {
@@ -614,6 +553,92 @@ router.post("/my/contributions", authenticate, upload.single("receipt"), async (
     serverError(res, "Contribution report error", err);
   }
 });
+
+// Parse + validate the member contribution form. Returns { error } on failure.
+function parseContributionInput(body = {}) {
+  const now = new Date();
+  const parsed = {
+    year: Number.parseInt(body.year || now.getFullYear(), 10),
+    month: Number.parseInt(body.month || now.getMonth() + 1, 10),
+    amount: Number.parseFloat(body.amount),
+    method: VALID_METHODS.has(String(body.method)) ? String(body.method) : "gcash",
+    reference: String(body.gcash_ref || body.reference || "").trim() || null,
+    gcashSender: String(body.gcash_sender || "").trim() || null,
+  };
+  if (!validYear(parsed.year)) return { error: "year is required" };
+  if (!validMonth(parsed.month)) return { error: "month must be 1-12" };
+  if (!Number.isFinite(parsed.amount) || parsed.amount <= 0 || parsed.amount >= 1000000) {
+    return { error: "amount must be between 0 and 1,000,000" };
+  }
+  if (parsed.method === "gcash" && (!parsed.reference || !parsed.gcashSender)) {
+    return { error: "GCash reference number and sender name are required" };
+  }
+  if (parsed.reference && parsed.reference.length > 120) {
+    return { error: "reference must be 120 characters or fewer" };
+  }
+  if (parsed.gcashSender && parsed.gcashSender.length > 100) {
+    return { error: "GCash sender name must be 100 characters or fewer" };
+  }
+  return parsed;
+}
+
+// Insert the pending payment + in-app notifications in one transaction.
+// Returns the admin user ids that were notified.
+async function insertPendingContribution(client, c) {
+  if (c.method === "gcash" && !(await claimGcashReference(client, c.reference, "contribution", c.id))) {
+    const error = new Error("This GCash reference number has already been submitted");
+    error.code = "23505";
+    throw error;
+  }
+  await client.query(
+    `INSERT INTO contribution_payments (id, donor_id, year, month, amount, method, reference, gcash_sender, receipt_url, status, submitted_by)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'pending',$10)`,
+    [c.id, c.donorId, c.year, c.month, c.amount, c.method, c.reference, c.gcashSender, c.receiptUrl, c.user.id]
+  );
+  const { rows: admins } = await client.query(
+    "SELECT id FROM users WHERE role IN ('admin', 'superadmin') AND is_active = 1"
+  );
+  const reviewerIds = admins.map((admin) => admin.id);
+  const adminNotification = {
+    category: "finance",
+    title: "Contribution awaiting verification",
+    body: `${c.user.name} submitted a ${c.method} contribution of ₱${c.amount.toFixed(2)}.`,
+    url: `${config.appBasePath}/admin`,
+  };
+  const memberNotification = {
+    category: "finance",
+    title: "Contribution submitted",
+    body: "Your contribution is pending admin verification. GBless is only awarded after approval.",
+    url: `${config.appBasePath}/dues`,
+  };
+  await Promise.all([
+    ...reviewerIds.map((adminId) => createInAppNotification(adminId, adminNotification, client)),
+    createInAppNotification(c.user.id, memberNotification, client),
+    auditLog(c.user.id, "report_contribution", "contribution_payment", c.id, c.ip, client),
+  ]);
+  return reviewerIds;
+}
+
+// Best-effort push fan-out after the pending contribution commits.
+async function pushContributionSubmitted(reviewerIds, user, method, amount, id) {
+  const adminPush = {
+    category: "finance",
+    title: "Contribution awaiting verification",
+    body: `${user.name} submitted a ${method} contribution of ₱${amount.toFixed(2)}.`,
+    tag: `contribution-pending-${id}`,
+    url: `${config.appBasePath}/admin`,
+  };
+  await Promise.all([
+    ...reviewerIds.map((adminId) => sendWebPushToUser(adminId, adminPush)),
+    sendWebPushToUser(user.id, {
+      category: "finance",
+      title: "Contribution submitted",
+      body: "Your contribution is pending admin verification. GBless is only awarded after approval.",
+      tag: `contribution-submitted-${id}`,
+      url: `${config.appBasePath}/dues`,
+    }),
+  ]);
+}
 
 // ─── Payments ────────────────────────────────────────────────────────────────
 
@@ -643,102 +668,20 @@ router.get("/contributions/pending", ...adminOnly, async (req, res) => {
 router.post("/payments/:id/approve", ...adminOnly, async (req, res) => {
   if (!financeEnabled(res)) return;
   try {
-    const newDonorName = String(req.body?.new_donor_name || "").trim();
-    let payment;
-    let donorId;
-    let missingDonor = false;
-    let verificationRequired = false;
-    let selfReview = false;
+    const { outcome, payment, donorId } = await withTransaction((client) =>
+      approvePaymentTx(client, req)
+    );
 
-    await withTransaction(async (client) => {
-      const { rows } = await client.query(
-        "SELECT id, donor_id, submitted_by, year, method FROM contribution_payments WHERE id = $1 AND status = 'pending' FOR UPDATE",
-        [req.params.id]
-      );
-      payment = rows[0];
-      if (!payment) return;
-      if (payment.submitted_by === req.user.id) {
-        selfReview = true;
-        return;
-      }
-      if (payment.method === "gcash" && req.body?.gcash_verified !== true) {
-        verificationRequired = true;
-        return;
-      }
-
-      // Resolve which donor this payment belongs to while holding its row lock.
-      donorId = payment.donor_id || String(req.body?.donor_id || "").trim() || null;
-      if (!donorId && !newDonorName) {
-        missingDonor = true;
-        return;
-      }
-
-      if (!donorId && newDonorName) {
-        donorId = uuid();
-        await client.query(
-          `INSERT INTO donors (id, name, user_id, is_active, created_by) VALUES ($1,$2,$3,1,$4)`,
-          [donorId, newDonorName, payment.submitted_by, req.user.id]
-        );
-        await auditLog(req.user.id, "create_donor", "donor", donorId, getClientIp(req), client, {
-          name: newDonorName, user_id: payment.submitted_by, created_by: req.user.id,
-        });
-      }
-
-      await client.query(
-        `UPDATE contribution_payments SET donor_id=$2, status='confirmed', recorded_by=$3, updated_at=NOW()
-         WHERE id=$1`,
-        [req.params.id, donorId, req.user.id]
-      );
-      if (payment.submitted_by && payment.method === "gcash") {
-        await creditPoints(
-          payment.submitted_by,
-          CONTRIBUTION_REWARD_POINTS,
-          "contribution_approved",
-          req.params.id,
-          client
-        );
-      }
-      if (payment.submitted_by) {
-        await createInAppNotification(payment.submitted_by, {
-          category: "finance",
-          title: payment.method === "gcash" ? "Contribution verified — 10 GBless awarded" : "Contribution approved",
-          body: payment.method === "gcash"
-            ? "Your GCash contribution was verified and recorded. 10 GBless has been added to your wallet."
-            : "Your contribution report was approved and recorded.",
-          url: `${config.appBasePath}${payment.method === "gcash" ? "/wallet" : "/dues"}`,
-        }, client);
-      }
-      let receiptNo = null;
-      try {
-        receiptNo = await ensureReceiptNo(client, {
-          id: req.params.id, year: payment.year,
-          status: "confirmed", receipt_no: null,
-        });
-      } catch (err) {
-        console.error("ensureReceiptNo error (non-fatal):", err.message);
-      }
-      await auditLog(req.user.id, "approve_payment", "contribution_payment", req.params.id, getClientIp(req), client, {
-        before: { status: "pending", donor_id: payment.donor_id },
-        after: {
-          status: "confirmed",
-          donor_id: donorId,
-          recorded_by: req.user.id,
-          gcash_verified: payment.method === "gcash",
-          receipt_no: receiptNo,
-        },
-      });
-    });
-
-    if (!payment) {
+    if (outcome === "not_found") {
       return res.status(404).json({ success: false, message: "Pending payment not found" });
     }
-    if (missingDonor) {
+    if (outcome === "missing_donor") {
       return badRequest(res, "Select a donor for this report (donor_id or new_donor_name)");
     }
-    if (selfReview) {
+    if (outcome === "self_review") {
       return res.status(403).json({ success: false, message: "You cannot approve your own contribution report" });
     }
-    if (verificationRequired) {
+    if (outcome === "verification_required") {
       return badRequest(res, "Verify the GCash transfer before approving this contribution");
     }
     if (payment.submitted_by && payment.method === "gcash") {
@@ -746,13 +689,9 @@ router.post("/payments/:id/approve", ...adminOnly, async (req, res) => {
     }
     if (payment.submitted_by) {
       await sendWebPushToUser(payment.submitted_by, {
+        ...approvalContent(payment),
         category: "finance",
-        title: payment.method === "gcash" ? "Contribution verified — 10 GBless awarded" : "Contribution approved",
-        body: payment.method === "gcash"
-          ? "Your GCash contribution was verified and recorded. 10 GBless has been added to your wallet."
-          : "Your contribution report was approved and recorded.",
         tag: `contribution-approved-${req.params.id}`,
-        url: `${config.appBasePath}${payment.method === "gcash" ? "/wallet" : "/dues"}`,
       });
     }
     res.json({ success: true, message: "Contribution approved", data: { donor_id: donorId } });
@@ -760,6 +699,89 @@ router.post("/payments/:id/approve", ...adminOnly, async (req, res) => {
     serverError(res, "Payment approve error", err);
   }
 });
+
+// Shared title/body/url for approval notifications (in-app + push).
+function approvalContent(payment) {
+  const gcash = payment.method === "gcash";
+  return {
+    title: gcash ? "Contribution verified — 10 GBless awarded" : "Contribution approved",
+    body: gcash
+      ? "Your GCash contribution was verified and recorded. 10 GBless has been added to your wallet."
+      : "Your contribution report was approved and recorded.",
+    url: `${config.appBasePath}${gcash ? "/wallet" : "/dues"}`,
+  };
+}
+
+// Approve a pending payment inside a transaction. Returns
+// { outcome, payment, donorId } where outcome is a short status string.
+async function approvePaymentTx(client, req) {
+  const { rows } = await client.query(
+    "SELECT id, donor_id, submitted_by, year, method FROM contribution_payments WHERE id = $1 AND status = 'pending' FOR UPDATE",
+    [req.params.id]
+  );
+  const payment = rows[0];
+  if (!payment) return { outcome: "not_found", payment: null, donorId: null };
+  if (payment.submitted_by === req.user.id) return { outcome: "self_review", payment, donorId: null };
+  if (payment.method === "gcash" && req.body?.gcash_verified !== true) {
+    return { outcome: "verification_required", payment, donorId: null };
+  }
+
+  // Resolve which donor this payment belongs to while holding its row lock.
+  const newDonorName = String(req.body?.new_donor_name || "").trim();
+  let donorId = payment.donor_id || String(req.body?.donor_id || "").trim() || null;
+  if (!donorId && !newDonorName) return { outcome: "missing_donor", payment, donorId: null };
+  if (!donorId) {
+    donorId = uuid();
+    await client.query(
+      `INSERT INTO donors (id, name, user_id, is_active, created_by) VALUES ($1,$2,$3,1,$4)`,
+      [donorId, newDonorName, payment.submitted_by, req.user.id]
+    );
+    await auditLog(req.user.id, "create_donor", "donor", donorId, getClientIp(req), client, {
+      name: newDonorName, user_id: payment.submitted_by, created_by: req.user.id,
+    });
+  }
+
+  await client.query(
+    `UPDATE contribution_payments SET donor_id=$2, status='confirmed', recorded_by=$3, updated_at=NOW()
+     WHERE id=$1`,
+    [req.params.id, donorId, req.user.id]
+  );
+  if (payment.submitted_by && payment.method === "gcash") {
+    await creditPoints(
+      payment.submitted_by,
+      CONTRIBUTION_REWARD_POINTS,
+      "contribution_approved",
+      req.params.id,
+      client
+    );
+  }
+  if (payment.submitted_by) {
+    await createInAppNotification(payment.submitted_by, {
+      ...approvalContent(payment),
+      category: "finance",
+    }, client);
+  }
+  let receiptNo = null;
+  try {
+    receiptNo = await ensureReceiptNo(client, {
+      id: req.params.id, year: payment.year,
+      status: "confirmed", receipt_no: null,
+    });
+  } catch (err) {
+    console.error("ensureReceiptNo error (non-fatal):", err.message);
+  }
+  await auditLog(req.user.id, "approve_payment", "contribution_payment", req.params.id, getClientIp(req), client, {
+    before: { status: "pending", donor_id: payment.donor_id },
+    after: {
+      status: "confirmed",
+      donor_id: donorId,
+      recorded_by: req.user.id,
+      gcash_verified: payment.method === "gcash",
+      receipt_no: receiptNo,
+    },
+  });
+  return { outcome: "approved", payment, donorId };
+}
 
 // POST /api/finance/payments/:id/reject — reject a member-reported payment (admin)
 router.post("/payments/:id/reject", ...adminOnly, async (req, res) => {
