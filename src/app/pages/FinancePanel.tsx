@@ -691,6 +691,10 @@ export default function FinancePanel() {
 
   const saveDonor = async () => {
     if (!dForm.name.trim()) { toast.error("Name is required"); return; }
+    if (!dForm.userId && userSearch.trim()) {
+      toast.error("Pick the user from the search results to link them, or clear the field");
+      return;
+    }
     setSavingDonor(true);
     try {
       const res = await fetch(editingDonor ? `${API}/finance/donors/${editingDonor.id}` : `${API}/finance/donors`, {
