@@ -258,7 +258,8 @@ function registerTypedRoutes(key, cfg) {
       const params = [config.parish.id];
       if (!canSeeAll) {
         params.push(req.user.id);
-        where.push(`(${cfg.selfCols.map((c) => `t.${c} = $${params.length}`).join(" OR ")})`);
+        const selfWhere = cfg.selfCols.map((c) => `t.${c} = $${params.length}`).join(" OR ");
+        where.push(`(${selfWhere})`);
       } else if (search) {
         const like = `%${search}%`;
         const ors = cfg.searchCols.map((c) => {
