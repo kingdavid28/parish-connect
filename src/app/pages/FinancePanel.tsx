@@ -659,7 +659,9 @@ export default function FinancePanel() {
   // ── Donor actions ─────────────────────────────────────────
   const openDonorDialog = (donor: Donor | null) => {
     setEditingDonor(donor);
-    setUserSearch(donor?.linked_user_name || "");
+    // Prefill with the linked name, or the donor's own name so likely matches
+    // surface automatically — the admin just clicks the suggestion.
+    setUserSearch(donor?.linked_user_name || donor?.name || "");
     setDForm(donor ? {
       name: donor.name, address: donor.address || "", becId: donor.bec_id || "",
       gcash: donor.gcash_number || "", expected: donor.expected_amount != null ? String(donor.expected_amount) : "",
@@ -670,9 +672,8 @@ export default function FinancePanel() {
 
   const saveDonor = async () => {
     if (!dForm.name.trim()) { toast.error("Name is required"); return; }
-    if (!dForm.userId && userSearch.trim()) {
-      toast.error("Pick the user from the search results to link them, or clear the field");
-      return;
+    if (!dForm.userId && userSearch.trim() && userSearch.trim() !== dForm.name.trim()) {
+      toast.warning(`"${userSearch.trim()}" was typed but no account was picked — saving donor without a linked account`);
     }
     setSavingDonor(true);
     try {

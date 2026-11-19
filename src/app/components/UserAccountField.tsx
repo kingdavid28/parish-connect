@@ -71,7 +71,7 @@ export default function UserAccountField({ label = "Linked Account", inputId, va
           />
           {searching && <p className="text-xs text-gray-400">Searching…</p>}
           {!searching && name.trim().length >= 2 && results.length === 0 && (
-            <p className="text-xs text-gray-400">No users found.</p>
+            <p className="text-xs text-gray-400">No active accounts found — the member's account may be deactivated or not registered yet.</p>
           )}
           {results.length > 0 && (
             <div className="border rounded-md max-h-32 overflow-y-auto">
