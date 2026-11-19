@@ -25,26 +25,33 @@ router.get("/search", authenticate, async (req, res) => {
   const all = req.query.all === "1";
   // ?include_self=1 — contexts like donor linking where the searcher's own
   // account is a valid result (default excludes self, e.g. messaging).
-  const selfClause = req.query.include_self === "1" ? "" : "AND u.id != $1";
+  // Build params dynamically — with include_self the self clause (and its $1)
+  // is omitted, so passing req.user.id as an unused param makes CockroachDB
+  // error with "could not determine data type of placeholder $1".
+  const includeSelf = req.query.include_self === "1";
+  const params = includeSelf ? [] : [req.user.id];
+  const selfClause = includeSelf ? "" : `AND u.id != $${params.length}`;
   // Email matching is admin-only — members shouldn't be able to fish for
   // account emails through the search endpoint.
   const isAdmin = ["admin", "superadmin"].includes(req.user.role);
-  const matchClause = isAdmin ? "(u.name ILIKE $2 OR u.email ILIKE $2)" : "u.name ILIKE $2";
+  const matchParam = `$${params.length + 1}`;
+  const matchClause = isAdmin ? `(u.name ILIKE ${matchParam} OR u.email ILIKE ${matchParam})` : `u.name ILIKE ${matchParam}`;
   try {
     let rows;
     if (all || q.length === 0) {
       ({ rows } = await pool.query(
         `SELECT u.id, u.name, u.avatar, u.role, u.email, u.created_at, u.member_since
          FROM users u WHERE u.is_active = 1 ${selfClause} ORDER BY u.name ASC LIMIT 200`,
-        [req.user.id]
+        params
       ));
     } else {
       if (q.length < 2) return res.json({ success: true, data: [] });
+      params.push(`%${q}%`);
       ({ rows } = await pool.query(
         `SELECT u.id, u.name, u.avatar, u.role FROM users u
          WHERE u.is_active = 1 ${selfClause} AND ${matchClause}
          ORDER BY u.name ASC LIMIT 10`,
-        [req.user.id, `%${q}%`]
+        params
       ));
     }
     res.json({ success: true, data: rows });
