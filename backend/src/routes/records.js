@@ -1,7 +1,7 @@
 const express = require("express");
 const pool = require("../db/pool");
 const { authenticate, requireRole } = require("../middleware/auth");
-const { uuid, getClientIp, auditLog } = require("../lib/helpers");
+const { uuid, getClientIp, auditLog, activeUserExists } = require("../lib/helpers");
 const config = require("../config");
 
 const router = express.Router();
@@ -14,31 +14,42 @@ router.get("/baptism", authenticate, async (req, res) => {
   const limit = Math.min(50, Math.max(1, Number.parseInt(req.query.limit || 20, 10)));
   const offset = (page - 1) * limit;
 
+  const canSeeAll = ["admin", "superadmin"].includes(req.user.role);
+
   try {
-    const where = ["parish_id = $1"];
+    const where = ["b.parish_id = $1"];
     const params = [config.parish.id];
 
-    if (search) {
+    if (!canSeeAll) {
+      // Members see records linked to their account, falling back to the
+      // legacy exact-name match while records are still unlinked.
+      params.push(req.user.id, req.user.name);
+      where.push(
+        `(b.user_id = $${params.length - 1} OR (b.user_id IS NULL AND LOWER(b.full_name) = LOWER($${params.length})))`
+      );
+    } else if (search) {
       const like = `%${search}%`;
       params.push(like, like, like, like);
-      where.push(`(full_name ILIKE $${params.length - 3} OR father_name ILIKE $${params.length - 2} OR mother_name ILIKE $${params.length - 1} OR record_number ILIKE $${params.length})`);
+      where.push(`(b.full_name ILIKE $${params.length - 3} OR b.father_name ILIKE $${params.length - 2} OR b.mother_name ILIKE $${params.length - 1} OR b.record_number ILIKE $${params.length})`);
     }
     if (year > 0) {
       params.push(year);
-      where.push(`EXTRACT(YEAR FROM baptism_date) = $${params.length}`);
+      where.push(`EXTRACT(YEAR FROM b.baptism_date) = $${params.length}`);
     }
 
     const whereSql = "WHERE " + where.join(" AND ");
 
     const { rows: countRows } = await pool.query(
-      `SELECT COUNT(*) AS total FROM baptism_records ${whereSql}`,
+      `SELECT COUNT(*) AS total FROM baptism_records b ${whereSql}`,
       params
     );
     const total = Number.parseInt(countRows[0].total, 10);
 
     params.push(limit, offset);
     const { rows: items } = await pool.query(
-      `SELECT * FROM baptism_records ${whereSql} ORDER BY baptism_date DESC LIMIT $${params.length - 1} OFFSET $${params.length}`,
+      `SELECT b.*, u.name AS linked_user_name
+       FROM baptism_records b LEFT JOIN users u ON u.id = b.user_id
+       ${whereSql} ORDER BY b.baptism_date DESC LIMIT $${params.length - 1} OFFSET $${params.length}`,
       params
     );
 
@@ -71,17 +82,21 @@ router.post("/baptism", authenticate, requireRole("admin", "superadmin"), async 
       return res.status(409).json({ success: false, message: "Record number already exists" });
     }
 
+    const userId = String(body.user_id || "").trim() || null;
+    if (userId && !(await activeUserExists(userId))) {
+      return res.status(400).json({ success: false, message: "user_id does not match an active user account" });
+    }
     const id = uuid();
     await pool.query(
       `INSERT INTO baptism_records
        (id, full_name, baptism_date, birth_date, father_name, mother_name,
-        godfather_name, godmother_name, priest, location, record_number, parish_id, created_by)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
+        godfather_name, godmother_name, priest, location, record_number, user_id, parish_id, created_by)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
       [
         id, body.fullName, body.baptismDate, body.birthDate, body.fatherName,
         body.motherName, body.godfatherName, body.godmotherName || null,
         body.priest, body.location || config.parish.name, body.recordNumber,
-        config.parish.id, req.user.id,
+        userId, config.parish.id, req.user.id,
       ]
     );
 
@@ -89,6 +104,44 @@ router.post("/baptism", authenticate, requireRole("admin", "superadmin"), async 
     res.status(201).json({ success: true, message: "Record created", data: { id } });
   } catch (err) {
     console.error("Create record error:", err.message);
+    res.status(500).json({ success: false, message: "Internal server error" });
+  }
+});
+
+// GET /api/records/my — the member's own linked records across all registries
+router.get("/my", authenticate, async (req, res) => {
+  try {
+    const uid = req.user.id;
+    const parish = config.parish.id;
+    const [baptism, sacraments, marriage, death] = await Promise.all([
+      pool.query(
+        "SELECT * FROM baptism_records WHERE user_id = $1 AND parish_id = $2 ORDER BY baptism_date DESC",
+        [uid, parish]
+      ),
+      pool.query(
+        "SELECT * FROM sacramental_records WHERE user_id = $1 ORDER BY name",
+        [uid]
+      ),
+      pool.query(
+        "SELECT * FROM marriage_records WHERE (user_id = $1 OR spouse_user_id = $1) AND parish_id = $2 ORDER BY marriage_date DESC",
+        [uid, parish]
+      ),
+      pool.query(
+        "SELECT * FROM death_records WHERE user_id = $1 AND parish_id = $2 ORDER BY death_date DESC",
+        [uid, parish]
+      ),
+    ]);
+    res.json({
+      success: true,
+      data: {
+        baptism: baptism.rows,
+        sacraments: sacraments.rows,
+        marriage: marriage.rows,
+        death: death.rows,
+      },
+    });
+  } catch (err) {
+    console.error("My records error:", err.message);
     res.status(500).json({ success: false, message: "Internal server error" });
   }
 });
@@ -115,7 +168,10 @@ const TYPED_REGISTRIES = {
       { col: "record_number", req: true, max: 50 },
       { col: "contract_no", max: 100 },
       { col: "notes", max: 2000 },
+      { col: "user_id", max: 36, user: true },
+      { col: "spouse_user_id", max: 36, user: true },
     ],
+    selfCols: ["user_id", "spouse_user_id"],
   },
   death: {
     table: "death_records",
@@ -134,7 +190,9 @@ const TYPED_REGISTRIES = {
       { col: "priest", max: 200 },
       { col: "record_number", req: true, max: 50 },
       { col: "notes", max: 2000 },
+      { col: "user_id", max: 36, user: true },
     ],
+    selfCols: ["user_id"],
   },
 };
 
@@ -170,41 +228,59 @@ function sanitizeTypedRecord(cfg, raw) {
   return { values };
 }
 
+// Verify every linked-account field references an active user.
+async function linkedUserError(cfg, values) {
+  for (const f of cfg.fields) {
+    if (f.user && values[f.col] && !(await activeUserExists(values[f.col]))) {
+      return `${f.col} does not match an active user account`;
+    }
+  }
+  return null;
+}
+
 function registerTypedRoutes(key, cfg) {
   const cols = cfg.fields.map((f) => f.col);
   const placeholders = cols.map((_, i) => `$${i + 1}`).join(", ");
   const setClause = cols.map((c, i) => `${c} = $${i + 1}`).join(", ");
 
   // GET /api/records/:type?search=&year=&page=&limit=
+  // Non-admins see only records linked to their account.
   router.get(`/${key}`, authenticate, async (req, res) => {
     const search = String(req.query.search || "").trim();
     const year = Number.parseInt(req.query.year || 0, 10);
     const page = Math.max(1, Number.parseInt(req.query.page || 1, 10));
     const limit = Math.min(50, Math.max(1, Number.parseInt(req.query.limit || 20, 10)));
     const offset = (page - 1) * limit;
+    const canSeeAll = ["admin", "superadmin"].includes(req.user.role);
 
     try {
-      const where = ["parish_id = $1"];
+      const where = ["t.parish_id = $1"];
       const params = [config.parish.id];
-      if (search) {
+      if (!canSeeAll) {
+        params.push(req.user.id);
+        where.push(`(${cfg.selfCols.map((c) => `t.${c} = $${params.length}`).join(" OR ")})`);
+      } else if (search) {
         const like = `%${search}%`;
         const ors = cfg.searchCols.map((c) => {
           params.push(like);
-          return `${c} ILIKE $${params.length}`;
+          return `t.${c} ILIKE $${params.length}`;
         });
         where.push(`(${ors.join(" OR ")})`);
       }
       if (year > 0) {
         params.push(year);
-        where.push(`EXTRACT(YEAR FROM ${cfg.dateCol}) = $${params.length}`);
+        where.push(`EXTRACT(YEAR FROM t.${cfg.dateCol}) = $${params.length}`);
       }
       const whereSql = "WHERE " + where.join(" AND ");
+      const joinSql = cfg.selfCols.map((c, i) => `LEFT JOIN users u${i} ON u${i}.id = t.${c}`).join(" ");
+      const linkCols = cfg.selfCols.map((c, i) => `u${i}.name AS linked_${c.replace(/_id$/, "")}_name`).join(", ");
       const { rows: countRows } = await pool.query(
-        `SELECT COUNT(*) AS total FROM ${cfg.table} ${whereSql}`, params);
+        `SELECT COUNT(*) AS total FROM ${cfg.table} t ${whereSql}`, params);
       const total = Number.parseInt(countRows[0].total, 10);
       params.push(limit, offset);
       const { rows: items } = await pool.query(
-        `SELECT * FROM ${cfg.table} ${whereSql} ORDER BY ${cfg.dateCol} DESC LIMIT $${params.length - 1} OFFSET $${params.length}`,
+        `SELECT t.*, ${linkCols} FROM ${cfg.table} t ${joinSql}
+         ${whereSql} ORDER BY t.${cfg.dateCol} DESC LIMIT $${params.length - 1} OFFSET $${params.length}`,
         params);
       res.json({ success: true, data: { items, total, page, pageSize: limit, hasMore: offset + items.length < total } });
     } catch (err) {
@@ -217,6 +293,8 @@ function registerTypedRoutes(key, cfg) {
   router.post(`/${key}`, authenticate, requireRole("admin", "superadmin"), async (req, res) => {
     const { values, error } = sanitizeTypedRecord(cfg, req.body || {});
     if (error) return res.status(400).json({ success: false, message: error });
+    const linkError = await linkedUserError(cfg, values);
+    if (linkError) return res.status(400).json({ success: false, message: linkError });
     try {
       const { rows: dup } = await pool.query(
         `SELECT id FROM ${cfg.table} WHERE record_number = $1 LIMIT 1`, [values.record_number]);
@@ -238,6 +316,8 @@ function registerTypedRoutes(key, cfg) {
   router.put(`/${key}/:id`, authenticate, requireRole("admin", "superadmin"), async (req, res) => {
     const { values, error } = sanitizeTypedRecord(cfg, req.body || {});
     if (error) return res.status(400).json({ success: false, message: error });
+    const linkError = await linkedUserError(cfg, values);
+    if (linkError) return res.status(400).json({ success: false, message: linkError });
     try {
       const { rows: dup } = await pool.query(
         `SELECT id FROM ${cfg.table} WHERE record_number = $1 AND id <> $2 LIMIT 1`,

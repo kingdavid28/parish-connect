@@ -80,5 +80,13 @@ async function withTransaction(fn) {
   }
 }
 
-module.exports = { uuid, getClientIp, strimwidth, isValidEmail, auditLog, esc, numFormat, withTransaction };
+/** True when id is falsy or points to an active user account. */
+async function activeUserExists(id) {
+  if (!id) return true;
+  const { rows } = await pool.query(
+    "SELECT 1 FROM users WHERE id = $1 AND is_active = 1 LIMIT 1", [id]);
+  return rows.length > 0;
+}
+
+module.exports = { uuid, getClientIp, strimwidth, isValidEmail, auditLog, esc, numFormat, withTransaction, activeUserExists };
 

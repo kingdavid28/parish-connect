@@ -19,6 +19,7 @@ import { Label } from "../components/ui/label";
 import { Textarea } from "../components/ui/textarea";
 import { parseRecordsCsv, RECORDS_CSV_TEMPLATE, type ParsedCsvRow } from "../lib/parseCsv";
 import RegistryPanel, { MARRIAGE_PANEL, DEATH_PANEL, CONFIRMATION_PANEL } from "../components/RegistryPanel";
+import UserAccountField from "../components/UserAccountField";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import { useParishConfig } from "../context/ParishConfigContext";
@@ -36,6 +37,8 @@ interface SacramentRecord {
   confirmbook_no: string;
   confirmed_date: string;
   confirm_sponsor: string;
+  user_id?: string | null;
+  linked_user_name?: string | null;
 }
 
 import { API } from "../config";
@@ -202,7 +205,7 @@ function useRecordsImport(onImported: () => void) {
 const EMPTY_FORM = {
   name: "", birthday: "", parents_name: "", baptized_by: "", canonical_book: "",
   baptismal_date: "", godparents_name: "", confirmed_by: "", confirmbook_no: "",
-  confirmed_date: "", confirm_sponsor: "",
+  confirmed_date: "", confirm_sponsor: "", user_id: "",
 };
 
 export default function ParishRecords() {
@@ -221,6 +224,7 @@ export default function ParishRecords() {
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [editingRecord, setEditingRecord] = useState<SacramentRecord | null>(null);
   const [form, setForm] = useState(EMPTY_FORM);
+  const [linkName, setLinkName] = useState("");
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
@@ -232,6 +236,7 @@ export default function ParishRecords() {
   const openAddDialog = () => {
     setEditingRecord(null);
     setForm(EMPTY_FORM);
+    setLinkName("");
     setFormErrors({});
     setEditDialogOpen(true);
   };
@@ -245,8 +250,9 @@ export default function ParishRecords() {
       canonical_book: record.canonical_book || "", baptismal_date: record.baptismal_date || "",
       godparents_name: record.godparents_name || "", confirmed_by: record.confirmed_by || "",
       confirmbook_no: record.confirmbook_no || "", confirmed_date: record.confirmed_date || "",
-      confirm_sponsor: record.confirm_sponsor || "",
+      confirm_sponsor: record.confirm_sponsor || "", user_id: record.user_id || "",
     });
+    setLinkName(record.linked_user_name || "");
     setEditDialogOpen(true);
   };
 
@@ -533,7 +539,12 @@ export default function ParishRecords() {
                     <TableBody>
                       {records.map((record) => (
                         <TableRow key={record.id}>
-                          <TableCell className="font-medium">{record.name}</TableCell>
+                          <TableCell className="font-medium">
+                            {record.name}
+                            {record.linked_user_name && (
+                              <span className="ml-2 text-xs text-blue-600">linked: {record.linked_user_name}</span>
+                            )}
+                          </TableCell>
                           <TableCell>{safeDate(record.birthday)}</TableCell>
                           <TableCell>{safeDate(record.baptismal_date)}</TableCell>
                           <TableCell className="text-sm text-gray-600">{record.parents_name || 'N/A'}</TableCell>
@@ -685,6 +696,13 @@ export default function ParishRecords() {
                 {field("name", "Full Name", { required: true, autoFocus: true, placeholder: "Juan Miguel Dela Cruz" })}
                 {dateField("birthday", "Birthday", { required: true, hint: "Used to verify members at signup" })}
                 {field("parents_name", "Parents' Names", { placeholder: "Pedro Dela Cruz & Maria Reyes", hint: "Father & Mother" })}
+                <UserAccountField
+                  label="Linked Account (optional)"
+                  inputId="rec-user_id"
+                  value={form.user_id}
+                  name={linkName}
+                  onChange={(v, n) => { setForm((f) => ({ ...f, user_id: v })); setLinkName(n); }}
+                />
               </div>
             </div>
             <div>

@@ -486,3 +486,16 @@ CREATE TABLE IF NOT EXISTS ministry_members (
 );
 CREATE INDEX IF NOT EXISTS idx_mm_ministry ON ministry_members(ministry_id);
 CREATE INDEX IF NOT EXISTS idx_mm_user     ON ministry_members(user_id);
+
+-- Link sacramental records to the member's user account so members can see
+-- their own registries and admins can match reports without name guessing.
+ALTER TABLE baptism_records     ADD COLUMN IF NOT EXISTS user_id        VARCHAR(36) NULL REFERENCES users(id) ON DELETE SET NULL;
+ALTER TABLE sacramental_records ADD COLUMN IF NOT EXISTS user_id        VARCHAR(36) NULL REFERENCES users(id) ON DELETE SET NULL;
+ALTER TABLE marriage_records    ADD COLUMN IF NOT EXISTS user_id        VARCHAR(36) NULL REFERENCES users(id) ON DELETE SET NULL;
+ALTER TABLE marriage_records    ADD COLUMN IF NOT EXISTS spouse_user_id VARCHAR(36) NULL REFERENCES users(id) ON DELETE SET NULL;
+ALTER TABLE death_records       ADD COLUMN IF NOT EXISTS user_id        VARCHAR(36) NULL REFERENCES users(id) ON DELETE SET NULL;
+CREATE INDEX IF NOT EXISTS idx_baptism_records_user     ON baptism_records(user_id);
+CREATE INDEX IF NOT EXISTS idx_sacramental_records_user ON sacramental_records(user_id);
+CREATE INDEX IF NOT EXISTS idx_marriage_user            ON marriage_records(user_id);
+CREATE INDEX IF NOT EXISTS idx_marriage_spouse_user     ON marriage_records(spouse_user_id);
+CREATE INDEX IF NOT EXISTS idx_death_user               ON death_records(user_id);

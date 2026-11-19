@@ -15,6 +15,7 @@ import { toast } from "sonner";
 import { format } from "date-fns";
 import { API } from "../config";
 import { useAuth } from "../context/AuthContext";
+import UserAccountField from "./UserAccountField";
 import {
   parseMarriageCsv, parseDeathCsv,
   MARRIAGE_CSV_TEMPLATE, DEATH_CSV_TEMPLATE,
@@ -26,9 +27,11 @@ const getToken = () => localStorage.getItem("parish_token") || sessionStorage.ge
 export interface RegistryField {
   key: string;
   label: string;
-  type?: "text" | "date" | "number" | "textarea";
+  type?: "text" | "date" | "number" | "textarea" | "user";
   required?: boolean;
   placeholder?: string;
+  /** For type "user": record column carrying the linked account's display name. */
+  userLabelKey?: string;
 }
 
 export interface RegistryPanelProps {
@@ -66,6 +69,7 @@ export default function RegistryPanel(props: Readonly<RegistryPanelProps>) {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<RegistryRow | null>(null);
   const [form, setForm] = useState<Record<string, string>>({});
+  const [userNames, setUserNames] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
 
   const [importOpen, setImportOpen] = useState(false);
@@ -103,12 +107,15 @@ export default function RegistryPanel(props: Readonly<RegistryPanelProps>) {
   const openForm = (row: RegistryRow | null) => {
     setEditing(row);
     const next: Record<string, string> = {};
+    const names: Record<string, string> = {};
     for (const f of fields) {
       const v = row?.[f.key];
       if (v == null) next[f.key] = "";
       else next[f.key] = f.type === "date" ? String(v).slice(0, 10) : String(v);
+      if (f.type === "user") names[f.key] = String(row?.[f.userLabelKey || "linked_user_name"] || "");
     }
     setForm(next);
+    setUserNames(names);
     setDialogOpen(true);
   };
 
@@ -354,7 +361,18 @@ export default function RegistryPanel(props: Readonly<RegistryPanelProps>) {
               return (
                 <div key={f.key} className={f.type === "textarea" ? "sm:col-span-2" : ""}>
                   <Label htmlFor={`reg-${f.key}`}>{f.label}{f.required ? " *" : ""}</Label>
-                  {f.type === "textarea" ? (
+                  {f.type === "user" ? (
+                    <UserAccountField
+                      label=""
+                      inputId={`reg-${f.key}`}
+                      value={form[f.key] || ""}
+                      name={userNames[f.key] || ""}
+                      onChange={(v, n) => {
+                        setForm({ ...form, [f.key]: v });
+                        setUserNames({ ...userNames, [f.key]: n });
+                      }}
+                    />
+                  ) : f.type === "textarea" ? (
                     <Textarea id={`reg-${f.key}`} value={form[f.key] || ""} onChange={(e) => setForm({ ...form, [f.key]: e.target.value })} placeholder={f.placeholder} rows={2} />
                   ) : (
                     <Input
@@ -390,7 +408,11 @@ export default function RegistryPanel(props: Readonly<RegistryPanelProps>) {
               {fields.map((f) => (
                 <div key={f.key} className={f.type === "textarea" ? "sm:col-span-2" : ""}>
                   <span className="text-gray-600">{f.label}:</span>
-                  <p className="font-medium whitespace-pre-wrap">{fmt(viewRow[f.key], f.type === "date")}</p>
+                  <p className="font-medium whitespace-pre-wrap">
+                    {f.type === "user"
+                      ? String(viewRow[f.userLabelKey || "linked_user_name"] || "—")
+                      : fmt(viewRow[f.key], f.type === "date")}
+                  </p>
                 </div>
               ))}
             </div>
@@ -504,6 +526,7 @@ export const MARRIAGE_PANEL: RegistryPanelProps = {
     { key: "priest", label: "Priest" },
     { key: "record_number", label: "Registry No." },
     { key: "contract_no", label: "Contract No." },
+    { key: "linked_user_name", label: "Linked" },
   ],
   fields: [
     { key: "groom_name", label: "Groom's full name", required: true },
@@ -518,6 +541,8 @@ export const MARRIAGE_PANEL: RegistryPanelProps = {
     { key: "bride_father_name", label: "Bride's father" },
     { key: "bride_mother_name", label: "Bride's mother" },
     { key: "sponsors_names", label: "Sponsors / witnesses", placeholder: "Comma-separated" },
+    { key: "user_id", label: "Linked account — groom or bride", type: "user", userLabelKey: "linked_user_name" },
+    { key: "spouse_user_id", label: "Linked account — other spouse", type: "user", userLabelKey: "linked_spouse_user_name" },
     { key: "notes", label: "Notes", type: "textarea" },
   ],
   csvTemplate: MARRIAGE_CSV_TEMPLATE,
@@ -535,6 +560,7 @@ export const DEATH_PANEL: RegistryPanelProps = {
     { key: "cemetery", label: "Cemetery" },
     { key: "priest", label: "Priest" },
     { key: "record_number", label: "Registry No." },
+    { key: "linked_user_name", label: "Linked" },
   ],
   fields: [
     { key: "full_name", label: "Deceased's full name", required: true },
@@ -548,6 +574,7 @@ export const DEATH_PANEL: RegistryPanelProps = {
     { key: "cause_of_death", label: "Cause of death" },
     { key: "cemetery", label: "Cemetery / place of burial" },
     { key: "priest", label: "Officiating priest / minister" },
+    { key: "user_id", label: "Linked account", type: "user", userLabelKey: "linked_user_name" },
     { key: "notes", label: "Notes", type: "textarea" },
   ],
   csvTemplate: DEATH_CSV_TEMPLATE,

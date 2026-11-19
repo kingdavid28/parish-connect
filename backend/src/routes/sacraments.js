@@ -2,7 +2,7 @@ const express = require("express");
 const pool = require("../db/pool");
 const config = require("../config");
 const { authenticate, requireRole } = require("../middleware/auth");
-const { uuid, getClientIp, auditLog } = require("../lib/helpers");
+const { uuid, getClientIp, auditLog, activeUserExists } = require("../lib/helpers");
 
 const router = express.Router();
 
@@ -15,8 +15,6 @@ const RECORD_FIELDS = [
 // $1..$N placeholders for the record fields, plus id and created_by.
 const PARAMS_PER_ROW = RECORD_FIELDS.length + 2;
 const FIELD_PLACEHOLDERS = RECORD_FIELDS.map((_, i) => `$${i + 1}`).join(", ");
-const ID_PLACEHOLDER = `$${RECORD_FIELDS.length + 1}`;
-const CREATOR_PLACEHOLDER = `$${RECORD_FIELDS.length + 2}`;
 
 /** Expand a yyyy-MM-dd birthday into the text formats used in legacy records. */
 function birthdayVariants(birthday) {
@@ -55,18 +53,22 @@ router.get("/", authenticate, async (req, res) => {
     const params = [];
 
     if (!canSeeAll) {
-      params.push(req.user.name);
-      where.push(`LOWER(name) = LOWER($${params.length})`);
+      // Members see records explicitly linked to their account, falling back
+      // to the legacy exact-name match for records an admin hasn't linked yet.
+      params.push(req.user.id, req.user.name);
+      where.push(
+        `(sr.user_id = $${params.length - 1} OR (sr.user_id IS NULL AND LOWER(sr.name) = LOWER($${params.length})))`
+      );
     } else {
       if (search) {
         params.push(`%${search}%`);
-        where.push(`name ILIKE $${params.length}`);
+        where.push(`sr.name ILIKE $${params.length}`);
       }
       if (birthday) {
         const variants = birthdayVariants(birthday);
         if (variants) {
           params.push(variants[0], variants[1], variants[2]);
-          where.push(`(birthday = $${params.length - 2} OR birthday = $${params.length - 1} OR birthday = $${params.length})`);
+          where.push(`(sr.birthday = $${params.length - 2} OR sr.birthday = $${params.length - 1} OR sr.birthday = $${params.length})`);
         }
       }
     }
@@ -74,25 +76,28 @@ router.get("/", authenticate, async (req, res) => {
     // confirmed=1 → only records with confirmation data filled in
     if (String(req.query.confirmed || "") === "1") {
       where.push(
-        `((confirmed_by IS NOT NULL AND confirmed_by <> '') OR (confirmed_date IS NOT NULL AND confirmed_date <> '') OR (confirm_sponsor IS NOT NULL AND confirm_sponsor <> ''))`
+        `((sr.confirmed_by IS NOT NULL AND sr.confirmed_by <> '') OR (sr.confirmed_date IS NOT NULL AND sr.confirmed_date <> '') OR (sr.confirm_sponsor IS NOT NULL AND sr.confirm_sponsor <> ''))`
       );
     }
 
     const whereSql = where.length ? "WHERE " + where.join(" AND ") : "";
 
     const { rows: countRows } = await pool.query(
-      `SELECT COUNT(*) AS total FROM sacramental_records ${whereSql}`,
+      `SELECT COUNT(*) AS total FROM sacramental_records sr ${whereSql}`,
       params
     );
     const total = Number.parseInt(countRows[0].total, 10);
 
     params.push(limit, offset);
     const { rows: items } = await pool.query(
-      `SELECT id, name, birthday, parents_name, baptized_by, canonical_book,
-              baptismal_date, godparents_name, confirmed_by, confirmbook_no,
-              confirmed_date, confirm_sponsor
-       FROM sacramental_records ${whereSql}
-       ORDER BY name ASC LIMIT $${params.length - 1} OFFSET $${params.length}`,
+      `SELECT sr.id, sr.name, sr.birthday, sr.parents_name, sr.baptized_by, sr.canonical_book,
+              sr.baptismal_date, sr.godparents_name, sr.confirmed_by, sr.confirmbook_no,
+              sr.confirmed_date, sr.confirm_sponsor, sr.user_id,
+              u.name AS linked_user_name
+       FROM sacramental_records sr
+       LEFT JOIN users u ON u.id = sr.user_id
+       ${whereSql}
+       ORDER BY sr.name ASC LIMIT $${params.length - 1} OFFSET $${params.length}`,
       params
     );
 
@@ -117,7 +122,9 @@ router.get("/:id", authenticate, async (req, res) => {
     }
 
     if (!["admin", "superadmin"].includes(req.user.role)) {
-      if ((record.name || "").toLowerCase() !== req.user.name.toLowerCase()) {
+      const linked = record.user_id === req.user.id;
+      const nameMatch = (record.name || "").toLowerCase() === req.user.name.toLowerCase();
+      if (!linked && !nameMatch) {
         return res.status(403).json({ success: false, message: "Forbidden" });
       }
     }
@@ -136,13 +143,18 @@ router.post("/", authenticate, requireRole("admin", "superadmin"), async (req, r
   if (!String(body.name || "").trim()) {
     return res.status(400).json({ success: false, message: "name is required" });
   }
+  const userId = String(body.user_id || "").trim() || null;
   try {
+    if (userId && !(await activeUserExists(userId))) {
+      return res.status(400).json({ success: false, message: "user_id does not match an active user account" });
+    }
     const id = uuid();
     const values = RECORD_FIELDS.map((f) => (body[f] != null && String(body[f]).trim() !== "" ? String(body[f]).trim() : null));
+    const n = RECORD_FIELDS.length;
     await pool.query(
-      `INSERT INTO sacramental_records (${RECORD_FIELDS.join(", ")}, id, created_by)
-       VALUES (${FIELD_PLACEHOLDERS}, ${ID_PLACEHOLDER}, ${CREATOR_PLACEHOLDER})`,
-      [...values, id, req.user.id]
+      `INSERT INTO sacramental_records (${RECORD_FIELDS.join(", ")}, user_id, id, created_by)
+       VALUES (${FIELD_PLACEHOLDERS}, $${n + 1}, $${n + 2}, $${n + 3})`,
+      [...values, userId, id, req.user.id]
     );
     await auditLog(req.user.id, "create_sacrament_record", "sacramental_record", id, getClientIp(req));
     res.status(201).json({ success: true, message: "Record created", data: { id } });
@@ -250,6 +262,14 @@ router.put("/:id", authenticate, requireRole("admin", "superadmin"), async (req,
       params.push(String(body[f]).trim() || null);
       sets.push(`${f} = $${params.length}`);
     }
+  }
+  if (body.user_id !== undefined) {
+    const userId = String(body.user_id || "").trim() || null;
+    if (userId && !(await activeUserExists(userId))) {
+      return res.status(400).json({ success: false, message: "user_id does not match an active user account" });
+    }
+    params.push(userId);
+    sets.push(`user_id = $${params.length}`);
   }
   if (!sets.length) {
     return res.status(400).json({ success: false, message: "Nothing to update" });
