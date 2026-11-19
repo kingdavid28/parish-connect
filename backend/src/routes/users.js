@@ -26,6 +26,10 @@ router.get("/search", authenticate, async (req, res) => {
   // ?include_self=1 — contexts like donor linking where the searcher's own
   // account is a valid result (default excludes self, e.g. messaging).
   const selfClause = req.query.include_self === "1" ? "" : "AND id != $1";
+  // Email matching is admin-only — members shouldn't be able to fish for
+  // account emails through the search endpoint.
+  const isAdmin = ["admin", "superadmin"].includes(req.user.role);
+  const matchClause = isAdmin ? "(name ILIKE $2 OR email ILIKE $2)" : "name ILIKE $2";
   try {
     let rows;
     if (all || q.length === 0) {
@@ -38,7 +42,7 @@ router.get("/search", authenticate, async (req, res) => {
       if (q.length < 2) return res.json({ success: true, data: [] });
       ({ rows } = await pool.query(
         `SELECT id, name, avatar, role FROM users
-         WHERE is_active = 1 ${selfClause} AND name ILIKE $2
+         WHERE is_active = 1 ${selfClause} AND ${matchClause}
          ORDER BY name ASC LIMIT 10`,
         [req.user.id, `%${q}%`]
       ));
