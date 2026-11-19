@@ -104,6 +104,40 @@ export default function RegistryPanel(props: Readonly<RegistryPanelProps>) {
 
   useEffect(() => { void fetchItems(1, "", ""); }, [fetchItems]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const renderField = (f: RegistryField) => {
+    if (f.type === "user") {
+      return (
+        <UserAccountField
+          label=""
+          inputId={`reg-${f.key}`}
+          value={form[f.key] || ""}
+          name={userNames[f.key] || ""}
+          onChange={(v, n) => {
+            setForm({ ...form, [f.key]: v });
+            setUserNames({ ...userNames, [f.key]: n });
+          }}
+        />
+      );
+    }
+    if (f.type === "textarea") {
+      return (
+        <Textarea id={`reg-${f.key}`} value={form[f.key] || ""} onChange={(e) => setForm({ ...form, [f.key]: e.target.value })} placeholder={f.placeholder} rows={2} />
+      );
+    }
+    const inputType = f.type === "date" || f.type === "number" ? f.type : "text";
+    return (
+      <Input
+        id={`reg-${f.key}`}
+        type={inputType}
+        min={f.type === "number" ? 0 : undefined}
+        value={form[f.key] || ""}
+        onChange={(e) => setForm({ ...form, [f.key]: e.target.value })}
+        placeholder={f.placeholder}
+        required={f.required}
+      />
+    );
+  };
+
   const openForm = (row: RegistryRow | null) => {
     setEditing(row);
     const next: Record<string, string> = {};
@@ -356,38 +390,12 @@ export default function RegistryPanel(props: Readonly<RegistryPanelProps>) {
             <DialogDescription>Fields marked * are required.</DialogDescription>
           </DialogHeader>
           <form onSubmit={save} className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            {fields.map((f) => {
-              const inputType = f.type === "date" || f.type === "number" ? f.type : "text";
-              return (
-                <div key={f.key} className={f.type === "textarea" ? "sm:col-span-2" : ""}>
-                  <Label htmlFor={`reg-${f.key}`}>{f.label}{f.required ? " *" : ""}</Label>
-                  {f.type === "user" ? (
-                    <UserAccountField
-                      label=""
-                      inputId={`reg-${f.key}`}
-                      value={form[f.key] || ""}
-                      name={userNames[f.key] || ""}
-                      onChange={(v, n) => {
-                        setForm({ ...form, [f.key]: v });
-                        setUserNames({ ...userNames, [f.key]: n });
-                      }}
-                    />
-                  ) : f.type === "textarea" ? (
-                    <Textarea id={`reg-${f.key}`} value={form[f.key] || ""} onChange={(e) => setForm({ ...form, [f.key]: e.target.value })} placeholder={f.placeholder} rows={2} />
-                  ) : (
-                    <Input
-                      id={`reg-${f.key}`}
-                      type={inputType}
-                      min={f.type === "number" ? 0 : undefined}
-                      value={form[f.key] || ""}
-                      onChange={(e) => setForm({ ...form, [f.key]: e.target.value })}
-                      placeholder={f.placeholder}
-                      required={f.required}
-                    />
-                  )}
-                </div>
-              );
-            })}
+            {fields.map((f) => (
+              <div key={f.key} className={f.type === "textarea" ? "sm:col-span-2" : ""}>
+                <Label htmlFor={`reg-${f.key}`}>{f.label}{f.required ? " *" : ""}</Label>
+                {renderField(f)}
+              </div>
+            ))}
             <div className="flex justify-end gap-2 sm:col-span-2">
               <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>Cancel</Button>
               <Button type="submit" disabled={saving}>{saving ? "Saving…" : "Save"}</Button>
