@@ -58,7 +58,7 @@ function fmtDate(v: string | null | undefined): string {
   return d.toLocaleDateString("en-PH", { year: "numeric", month: "long", day: "numeric" });
 }
 
-function value(v: unknown): string {
+function value(v: string | number | null | undefined): string {
   const s = v == null ? "" : String(v).trim();
   return s === "" ? "_______________" : s;
 }
@@ -126,13 +126,11 @@ function issuedBlock(doc: jsPDF, y: number, parish: ParishBranding, recordNo?: s
   const today = new Date();
   const day = today.toLocaleDateString("en-PH", { day: "numeric" });
   const monthYear = today.toLocaleDateString("en-PH", { month: "long", year: "numeric" });
+  const place = parish.location ? `, ${parish.location}` : "";
   doc.setFont("times", "italic");
   doc.setFontSize(12);
   doc.setTextColor(31, 41, 55);
-  doc.text(
-    `Given this ${day} day of ${monthYear} at ${parish.name}${parish.location ? `, ${parish.location}` : ""}.`,
-    CX, y, { align: "center", maxWidth: 160 }
-  );
+  doc.text(`Given this ${day} day of ${monthYear} at ${parish.name}${place}.`, CX, y, { align: "center", maxWidth: 160 });
   if (recordNo) {
     doc.setFont("times", "normal");
     doc.setFontSize(10);
@@ -167,90 +165,145 @@ function joinNames(...names: Array<string | null | undefined>): string {
   return names.map((n) => (n || "").trim()).filter(Boolean).join(" and ");
 }
 
+interface CertSection {
+  subject: string;
+  title: string;
+  /** Names rendered on the ruled line(s); "and" is printed between entries. */
+  names: string[];
+  /** Y where the narrative body starts. */
+  bodyY: number;
+  lines: string[];
+  registryNo: string | null;
+  priest: string | null;
+}
+
+function baptismSection(r: CertificateRecord, parish: ParishBranding): CertSection {
+  const person = value(r.name || r.full_name);
+  const parents = r.parents_name || joinNames(r.father_name, r.mother_name);
+  const sponsors = r.godparents_name || joinNames(r.godfather_name, r.godmother_name);
+  return {
+    subject: person,
+    title: "Certificate of Baptism",
+    names: [person],
+    bodyY: 108,
+    lines: [
+      `born on the ${fmtDate(r.birthday || r.birth_date)}`,
+      `child of ${value(parents)}`,
+      "was solemnly baptized according to the rites of the Roman Catholic Church",
+      `on the ${fmtDate(r.baptismal_date || r.baptism_date)}`,
+      `at ${value(r.location || parish.name)}`,
+      `by ${value(r.baptized_by || r.priest)}`,
+      `with sponsors ${value(sponsors)}`,
+      `as recorded in ${value(r.canonical_book)} of this parish.`,
+    ],
+    registryNo: r.record_number || null,
+    priest: r.baptized_by || r.priest || null,
+  };
+}
+
+function confirmationSection(r: CertificateRecord, parish: ParishBranding): CertSection {
+  const person = value(r.name);
+  return {
+    subject: person,
+    title: "Certificate of Confirmation",
+    names: [person],
+    bodyY: 108,
+    lines: [
+      `child of ${value(r.parents_name)}`,
+      "was confirmed according to the rites of the Roman Catholic Church",
+      `on the ${fmtDate(r.confirmed_date)}`,
+      `at ${parish.name}`,
+      `by ${value(r.confirmed_by)}`,
+      `with sponsor ${value(r.confirm_sponsor)}`,
+      `as recorded in Confirmation Book ${value(r.confirmbook_no)} of this parish.`,
+    ],
+    registryNo: r.confirmbook_no || null,
+    priest: r.confirmed_by || null,
+  };
+}
+
+function marriageSection(r: CertificateRecord, parish: ParishBranding): CertSection {
+  const contract = r.contract_no ? ` under Marriage Contract No. ${r.contract_no}` : "";
+  return {
+    subject: `${value(r.groom_name)} & ${value(r.bride_name)}`,
+    title: "Certificate of Marriage",
+    names: [value(r.groom_name), value(r.bride_name)],
+    bodyY: 126,
+    lines: [
+      "were joined together in the Sacrament of Holy Matrimony",
+      `on the ${fmtDate(r.marriage_date)}`,
+      `at ${value(r.location || parish.name)}`,
+      `solemnized by ${value(r.priest)}`,
+      `in the presence of witnesses ${value(r.sponsors_names)}`,
+      `as recorded in Registry No. ${value(r.record_number)}${contract} of this parish.`,
+    ],
+    registryNo: r.record_number || null,
+    priest: r.priest || null,
+  };
+}
+
+function deathSection(r: CertificateRecord): CertSection {
+  const person = value(r.full_name || r.name);
+  const details = [
+    r.birth_date ? `born on the ${fmtDate(r.birth_date)}` : null,
+    r.age ? `aged ${r.age}` : null,
+    r.residence ? `of ${r.residence}` : null,
+    r.spouse_name ? `survived by spouse ${r.spouse_name}` : null,
+  ].filter((s): s is string => Boolean(s));
+  const lines = [
+    details.join(", "),
+    `died on the ${fmtDate(r.death_date)}`,
+    r.cause_of_death ? `of ${r.cause_of_death}` : null,
+    `and was laid to rest at ${value(r.cemetery)}`,
+    `as recorded in Registry No. ${value(r.record_number)} of this parish.`,
+    r.informant_name ? `As reported by ${r.informant_name}.` : null,
+  ].filter((s): s is string => Boolean(s));
+  return {
+    subject: person,
+    title: "Certificate of Death",
+    names: [person],
+    bodyY: 108,
+    lines,
+    registryNo: r.record_number || null,
+    priest: r.priest || null,
+  };
+}
+
+const SECTIONS: Record<CertificateType, (r: CertificateRecord, p: ParishBranding) => CertSection> = {
+  baptism: baptismSection,
+  confirmation: confirmationSection,
+  marriage: marriageSection,
+  death: (r) => deathSection(r),
+};
+
 /** Renders a single-page A4 certificate PDF and triggers a download. */
 export function buildCertificatePdf(
   type: CertificateType,
   record: CertificateRecord,
   parish: ParishBranding
 ) {
+  const s = SECTIONS[type](record, parish);
   const doc = new jsPDF({ unit: "mm", format: "a4" });
   border(doc);
   letterhead(doc, parish);
-  let subject = "";
+  certTitle(doc, s.title);
 
-  if (type === "baptism") {
-    const person = value(record.name || record.full_name);
-    subject = person;
-    certTitle(doc, "Certificate of Baptism");
-    nameLine(doc, person, 92);
-    body(doc, [
-      `born on the ${fmtDate(record.birthday || record.birth_date)}`,
-      `child of ${joinNames(record.parents_name || record.father_name, record.parents_name ? null : record.mother_name) || "_______________"}`,
-      `was solemnly baptized according to the rites of the Roman Catholic Church`,
-      `on the ${fmtDate(record.baptismal_date || record.baptism_date)}`,
-      `at ${value(record.location || parish.name)}`,
-      `by ${value(record.baptized_by || record.priest)}`,
-      `with sponsors ${joinNames(record.godparents_name || record.godfather_name, record.godparents_name ? null : record.godmother_name) || "_______________"}`,
-      `as recorded in ${value(record.canonical_book)} of this parish.`,
-    ], 108);
-  } else if (type === "confirmation") {
-    const person = value(record.name);
-    subject = person;
-    certTitle(doc, "Certificate of Confirmation");
-    nameLine(doc, person, 92);
-    body(doc, [
-      `child of ${value(record.parents_name)}`,
-      `was confirmed according to the rites of the Roman Catholic Church`,
-      `on the ${fmtDate(record.confirmed_date)}`,
-      `at ${parish.name}`,
-      `by ${value(record.confirmed_by)}`,
-      `with sponsor ${value(record.confirm_sponsor)}`,
-      `as recorded in Confirmation Book ${value(record.confirmbook_no)} of this parish.`,
-    ], 108);
-  } else if (type === "marriage") {
-    subject = `${value(record.groom_name)} & ${value(record.bride_name)}`;
-    certTitle(doc, "Certificate of Marriage");
-    nameLine(doc, value(record.groom_name), 92);
-    doc.setFont("times", "italic");
-    doc.setFontSize(14);
-    doc.setTextColor(75, 85, 99);
-    doc.text("and", CX, 102, { align: "center" });
-    nameLine(doc, value(record.bride_name), 112);
-    body(doc, [
-      `were joined together in the Sacrament of Holy Matrimony`,
-      `on the ${fmtDate(record.marriage_date)}`,
-      `at ${value(record.location || parish.name)}`,
-      `solemnized by ${value(record.priest)}`,
-      `in the presence of witnesses ${value(record.sponsors_names)}`,
-      `as recorded in Registry No. ${value(record.record_number)}` +
-        (record.contract_no ? ` under Marriage Contract No. ${record.contract_no}` : "") +
-        ` of this parish.`,
-    ], 126);
-  } else {
-    const person = value(record.full_name || record.name);
-    subject = person;
-    certTitle(doc, "Certificate of Death");
-    nameLine(doc, person, 92);
-    const details = [
-      record.birth_date ? `born on the ${fmtDate(record.birth_date)}` : null,
-      record.age ? `aged ${record.age}` : null,
-      record.residence ? `of ${record.residence}` : null,
-      record.spouse_name ? `survived by spouse ${record.spouse_name}` : null,
-    ].filter(Boolean) as string[];
-    body(doc, [
-      details.length ? details.join(", ") : "",
-      `died on the ${fmtDate(record.death_date)}`,
-      record.cause_of_death ? `of ${record.cause_of_death}` : "",
-      `and was laid to rest at ${value(record.cemetery)}`,
-      `as recorded in Registry No. ${value(record.record_number)} of this parish.`,
-      record.informant_name ? `As reported by ${record.informant_name}.` : "",
-    ].filter(Boolean), 108);
-  }
+  s.names.forEach((name, i) => {
+    const y = 92 + i * 20;
+    nameLine(doc, name, y);
+    if (i < s.names.length - 1) {
+      doc.setFont("times", "italic");
+      doc.setFontSize(14);
+      doc.setTextColor(75, 85, 99);
+      doc.text("and", CX, y + 10, { align: "center" });
+    }
+  });
+  body(doc, s.lines, s.bodyY);
 
-  issuedBlock(doc, 226, parish, type === "baptism" ? record.record_number : type === "confirmation" ? record.confirmbook_no : record.record_number);
-  signature(doc, record.priest || record.baptized_by || record.confirmed_by);
+  issuedBlock(doc, 226, parish, s.registryNo);
+  signature(doc, s.priest);
   sealNote(doc);
 
-  const fileSafe = subject.replace(/[^a-z0-9]+/gi, "-").replace(/^-+|-+$/g, "").toLowerCase() || "record";
+  const fileSafe = s.subject.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "") || "record";
   doc.save(`${type}-certificate-${fileSafe}.pdf`);
 }
