@@ -124,21 +124,28 @@ function letterhead(doc: jsPDF, parish: ParishBranding, s: TStyle, logo: HTMLIma
   }
   const hasLogo = logo !== null;
   const nameY = hasLogo ? 48 : 32;
+  if (s.band) {
+    // Logo sits at the left edge of the band so it can't overlap the
+    // centered parish name/tagline text.
+    if (hasLogo) {
+      doc.addImage(logo, "PNG", 21, 21, 22, 22);
+    }
+    doc.setFont(s.font, "bold");
+    doc.setFontSize(20);
+    doc.setTextColor(255, 255, 255);
+    doc.text(parish.name, CX + (hasLogo ? 8 : 0), 30, { align: "center", maxWidth: 140 });
+    doc.setFont(s.font, "normal");
+    doc.setFontSize(10);
+    const sub = [parish.address || parish.location, parish.tagline].filter(Boolean).join(" · ");
+    if (sub) doc.text(sub, CX + (hasLogo ? 8 : 0), 38, { align: "center", maxWidth: 140 });
+    return;
+  }
   if (hasLogo) {
     const size = 18;
     doc.addImage(logo, "PNG", CX - size / 2, 20, size, size);
   }
   doc.setFont(s.font, "bold");
   doc.setFontSize(20);
-  if (s.band) {
-    doc.setTextColor(255, 255, 255);
-    doc.text(parish.name, CX, 30, { align: "center" });
-    doc.setFont(s.font, "normal");
-    doc.setFontSize(10);
-    const sub = [parish.address || parish.location, parish.tagline].filter(Boolean).join(" · ");
-    if (sub) doc.text(sub, CX, 38, { align: "center" });
-    return;
-  }
   doc.setTextColor(...s.accent);
   doc.text(parish.name, CX, nameY, { align: "center" });
   doc.setFont(s.font, "normal");
