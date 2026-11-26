@@ -4,6 +4,9 @@ import { proxyImageUrl } from "./imageProxy";
 
 export type CertificateType = "baptism" | "confirmation" | "marriage" | "death";
 
+type FieldValue = string | number | null;
+type MaybeField = FieldValue | undefined;
+
 export type CertificateTemplate = "classic" | "elegant" | "minimal" | "traditional" | "modern";
 
 export const CERTIFICATE_TEMPLATES: Readonly<{ id: CertificateTemplate; name: string; blurb: string }[]> = [
@@ -44,60 +47,60 @@ function styles(parish: ParishBranding): Record<CertificateTemplate, TStyle> {
 export interface CertificateRecord {
   id?: string;
   // sacramental_records / baptism
-  name?: string | number | null;
-  birthday?: string | number | null;
-  parents_name?: string | number | null;
-  baptized_by?: string | number | null;
-  canonical_book?: string | number | null;
-  baptismal_date?: string | number | null;
-  godparents_name?: string | number | null;
-  confirmed_by?: string | number | null;
-  confirmbook_no?: string | number | null;
-  confirmed_date?: string | number | null;
-  confirm_sponsor?: string | number | null;
+  name?: FieldValue;
+  birthday?: FieldValue;
+  parents_name?: FieldValue;
+  baptized_by?: FieldValue;
+  canonical_book?: FieldValue;
+  baptismal_date?: FieldValue;
+  godparents_name?: FieldValue;
+  confirmed_by?: FieldValue;
+  confirmbook_no?: FieldValue;
+  confirmed_date?: FieldValue;
+  confirm_sponsor?: FieldValue;
   // baptism_records
-  full_name?: string | number | null;
-  baptism_date?: string | number | null;
-  birth_date?: string | number | null;
-  father_name?: string | number | null;
-  mother_name?: string | number | null;
-  godfather_name?: string | number | null;
-  godmother_name?: string | number | null;
+  full_name?: FieldValue;
+  baptism_date?: FieldValue;
+  birth_date?: FieldValue;
+  father_name?: FieldValue;
+  mother_name?: FieldValue;
+  godfather_name?: FieldValue;
+  godmother_name?: FieldValue;
   // marriage_records
-  groom_name?: string | number | null;
-  bride_name?: string | number | null;
-  marriage_date?: string | number | null;
-  groom_father_name?: string | number | null;
-  groom_mother_name?: string | number | null;
-  bride_father_name?: string | number | null;
-  bride_mother_name?: string | number | null;
-  sponsors_names?: string | number | null;
-  contract_no?: string | number | null;
+  groom_name?: FieldValue;
+  bride_name?: FieldValue;
+  marriage_date?: FieldValue;
+  groom_father_name?: FieldValue;
+  groom_mother_name?: FieldValue;
+  bride_father_name?: FieldValue;
+  bride_mother_name?: FieldValue;
+  sponsors_names?: FieldValue;
+  contract_no?: FieldValue;
   // death_records
-  death_date?: string | number | null;
+  death_date?: FieldValue;
   age?: number | string | null;
-  residence?: string | number | null;
-  spouse_name?: string | number | null;
-  informant_name?: string | number | null;
-  cause_of_death?: string | number | null;
-  cemetery?: string | number | null;
+  residence?: FieldValue;
+  spouse_name?: FieldValue;
+  informant_name?: FieldValue;
+  cause_of_death?: FieldValue;
+  cemetery?: FieldValue;
   // shared
-  priest?: string | number | null;
-  location?: string | number | null;
-  record_number?: string | number | null;
+  priest?: FieldValue;
+  location?: FieldValue;
+  record_number?: FieldValue;
 }
 
 const PW = 210; // A4 width mm
 const CX = PW / 2;
 
-function fmtDate(v: string | number | null | undefined): string {
+function fmtDate(v: MaybeField): string {
   if (!v) return "_______________";
   const d = new Date(String(v).includes("T") ? v : String(v).replace(/ /, "T"));
   if (Number.isNaN(d.getTime())) return String(v);
   return d.toLocaleDateString("en-PH", { year: "numeric", month: "long", day: "numeric" });
 }
 
-function value(v: string | number | null | undefined): string {
+function value(v: MaybeField): string {
   const s = v == null ? "" : String(v).trim();
   return s === "" ? "_______________" : s;
 }
@@ -187,7 +190,7 @@ function body(doc: jsPDF, lines: string[], startY: number, s: TStyle): number {
   return y;
 }
 
-function issuedBlock(doc: jsPDF, y: number, parish: ParishBranding, s: TStyle, recordNo?: string | number | null) {
+function issuedBlock(doc: jsPDF, y: number, parish: ParishBranding, s: TStyle, recordNo?: FieldValue) {
   const today = new Date();
   const day = today.toLocaleDateString("en-PH", { day: "numeric" });
   const monthYear = today.toLocaleDateString("en-PH", { month: "long", year: "numeric" });
@@ -204,7 +207,7 @@ function issuedBlock(doc: jsPDF, y: number, parish: ParishBranding, s: TStyle, r
   }
 }
 
-function signature(doc: jsPDF, priestName: string | number | null | undefined, s: TStyle, label = "Parish Priest") {
+function signature(doc: jsPDF, priestName: MaybeField, s: TStyle, label = "Parish Priest") {
   const sigY = 258;
   doc.setLineWidth(0.4);
   doc.setDrawColor(31, 41, 55);
@@ -226,7 +229,7 @@ function sealNote(doc: jsPDF) {
   doc.text("Not valid without the parish seal.", CX, 275, { align: "center" });
 }
 
-function joinNames(...names: Array<string | number | null | undefined>): string {
+function joinNames(...names: MaybeField[]): string {
   return names.map((n) => (n == null ? "" : String(n)).trim()).filter(Boolean).join(" and ");
 }
 
@@ -238,8 +241,8 @@ interface CertSection {
   /** Y where the narrative body starts. */
   bodyY: number;
   lines: string[];
-  registryNo: string | number | null;
-  priest: string | number | null;
+  registryNo: FieldValue;
+  priest: FieldValue;
 }
 
 function baptismSection(r: CertificateRecord, parish: ParishBranding): CertSection {
