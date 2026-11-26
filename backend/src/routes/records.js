@@ -108,6 +108,24 @@ router.post("/baptism", authenticate, requireRole("admin", "superadmin"), async 
   }
 });
 
+// POST /api/records/certificates — admin audit-logs a certificate issuance.
+// The PDF itself is generated client-side; this endpoint only records the event.
+const CERT_TYPES = new Set(["baptism", "confirmation", "marriage", "death"]);
+router.post("/certificates", authenticate, requireRole("admin", "superadmin"), async (req, res) => {
+  const type = String(req.body?.type || "").trim();
+  const recordId = String(req.body?.record_id || "").trim();
+  if (!CERT_TYPES.has(type) || !recordId) {
+    return res.status(400).json({ success: false, message: "type and record_id are required" });
+  }
+  try {
+    await auditLog(req.user.id, `issue_${type}_certificate`, `${type}_record`, recordId, getClientIp(req));
+    res.json({ success: true, message: "Issuance logged" });
+  } catch (err) {
+    console.error("Certificate log error:", err.message);
+    res.status(500).json({ success: false, message: "Internal server error" });
+  }
+});
+
 // GET /api/records/my — the member's own linked records across all registries
 router.get("/my", authenticate, async (req, res) => {
   try {

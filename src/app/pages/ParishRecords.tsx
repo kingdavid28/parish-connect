@@ -13,7 +13,7 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from "../components/ui/popover";
 import { Calendar as CalendarPicker } from "../components/ui/calendar";
 import {
-  Search, Download, Eye, Lock, BookOpen, User, Shield, Loader, CalendarIcon, X, Plus, Pencil, Trash2, Upload,
+  Search, Download, Eye, Lock, BookOpen, User, Shield, Loader, CalendarIcon, X, Plus, Pencil, Trash2, Upload, Printer,
 } from "lucide-react";
 import { Label } from "../components/ui/label";
 import { Textarea } from "../components/ui/textarea";
@@ -23,6 +23,7 @@ import UserAccountField from "../components/UserAccountField";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import { useParishConfig } from "../context/ParishConfigContext";
+import { buildCertificatePdf } from "../lib/certificatePdf";
 
 interface SacramentRecord {
   id: string;
@@ -210,7 +211,7 @@ const EMPTY_FORM = {
 
 export default function ParishRecords() {
   const { isAdmin } = useAuth();
-  const { features } = useParishConfig();
+  const { features, parish } = useParishConfig();
   const recordsEnabled = features.records !== "off";
   const [records, setRecords] = useState<SacramentRecord[]>([]);
   const [loading, setLoading] = useState(true);
@@ -310,6 +311,16 @@ export default function ParishRecords() {
     } finally {
       setSaving(false);
     }
+  };
+
+  const printCertificate = (record: SacramentRecord) => {
+    buildCertificatePdf("baptism", record, parish);
+    // Audit the issuance — fire-and-forget; a failed log must not block printing.
+    void fetch(`${API}/records/certificates`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${getToken()}` },
+      body: JSON.stringify({ type: "baptism", record_id: record.id }),
+    }).catch(() => {});
   };
 
   const deleteRecord = async (record: SacramentRecord) => {
@@ -557,6 +568,9 @@ export default function ParishRecords() {
                                   </Button>
                                   <Button variant="ghost" size="sm" onClick={() => deleteRecord(record)}>
                                     <Trash2 className="h-4 w-4 text-red-500" />
+                                  </Button>
+                                  <Button variant="ghost" size="sm" title="Print baptism certificate" onClick={() => printCertificate(record)}>
+                                    <Printer className="h-4 w-4" />
                                   </Button>
                                 </>
                               )}
