@@ -156,11 +156,11 @@ function certTitle(doc: jsPDF, title: string, s: TStyle) {
   doc.setFont(s.font, "bold");
   doc.setFontSize(24);
   doc.setTextColor(17, 24, 39);
-  doc.text(title.toUpperCase(), CX, 74, { align: "center" });
+  doc.text(title.toUpperCase(), CX, 80, { align: "center" });
   doc.setFont(s.font, "italic");
   doc.setFontSize(12);
   doc.setTextColor(75, 85, 99);
-  doc.text("This is to certify that", CX, 90, { align: "center" });
+  doc.text("This is to certify that", CX, 96, { align: "center" });
 }
 
 function nameLine(doc: jsPDF, name: string, y: number, s: TStyle) {
@@ -253,7 +253,7 @@ function baptismSection(r: CertificateRecord, parish: ParishBranding): CertSecti
     subject: person,
     title: "Certificate of Baptism",
     names: [person],
-    bodyY: 116,
+    bodyY: 122,
     lines: [
       `born on the ${fmtDate(r.birthday || r.birth_date)}`,
       `child of ${value(parents)}`,
@@ -275,7 +275,7 @@ function confirmationSection(r: CertificateRecord, parish: ParishBranding): Cert
     subject: person,
     title: "Certificate of Confirmation",
     names: [person],
-    bodyY: 116,
+    bodyY: 122,
     lines: [
       `child of ${value(r.parents_name)}`,
       "was confirmed according to the rites of the Roman Catholic Church",
@@ -296,7 +296,7 @@ function marriageSection(r: CertificateRecord, parish: ParishBranding): CertSect
     subject: `${value(r.groom_name)} & ${value(r.bride_name)}`,
     title: "Certificate of Marriage",
     names: [value(r.groom_name), value(r.bride_name)],
-    bodyY: 134,
+    bodyY: 142,
     lines: [
       "were joined together in the Sacrament of Holy Matrimony",
       `on the ${fmtDate(r.marriage_date)}`,
@@ -330,7 +330,7 @@ function deathSection(r: CertificateRecord): CertSection {
     subject: person,
     title: "Certificate of Death",
     names: [person],
-    bodyY: 116,
+    bodyY: 122,
     lines,
     registryNo: r.record_number || null,
     priest: r.priest || null,
@@ -374,7 +374,7 @@ export async function buildCertificatePdf(
   certTitle(doc, s.title, style);
 
   s.names.forEach((name, i) => {
-    const y = 104 + i * 20;
+    const y = 110 + i * 20;
     nameLine(doc, name, y, style);
     if (i < s.names.length - 1) {
       doc.setFont(style.font, "italic");
