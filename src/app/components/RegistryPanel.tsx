@@ -10,14 +10,14 @@ import {
 import {
   Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle,
 } from "./ui/dialog";
-import { Search, Plus, Pencil, Trash2, Upload, Download, Loader, Eye, BookOpen, Shield, Printer } from "lucide-react";
+import { Search, Plus, Pencil, Trash2, Upload, Download, Loader, Eye, BookOpen, Shield } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { API } from "../config";
 import { useAuth } from "../context/AuthContext";
 import UserAccountField from "./UserAccountField";
-import { useParishConfig } from "../context/ParishConfigContext";
-import { buildCertificatePdf, type CertificateType, type CertificateRecord } from "../lib/certificatePdf";
+import CertificatePrintButton from "./CertificatePrintButton";
+import type { CertificateType } from "../lib/certificatePdf";
 import {
   parseMarriageCsv, parseDeathCsv,
   MARRIAGE_CSV_TEMPLATE, DEATH_CSV_TEMPLATE,
@@ -60,7 +60,6 @@ type RegistryRow = Record<string, string | number | null> & { id: string };
 export default function RegistryPanel(props: Readonly<RegistryPanelProps>) {
   const { title, apiPath, fields, columns, fixedParams, readOnly = false, showYearFilter = true, csvTemplate, csvFileName, parseCsv, certificateType } = props;
   const { isAdmin } = useAuth();
-  const { parish } = useParishConfig();
   const canWrite = isAdmin && !readOnly;
 
   const [items, setItems] = useState<RegistryRow[]>([]);
@@ -177,17 +176,6 @@ export default function RegistryPanel(props: Readonly<RegistryPanelProps>) {
     } finally {
       setSaving(false);
     }
-  };
-
-  const printCertificate = (row: RegistryRow) => {
-    if (!certificateType) return;
-    buildCertificatePdf(certificateType, row as CertificateRecord, parish);
-    // Audit the issuance — fire-and-forget; a failed log must not block printing.
-    void fetch(`${API}/records/certificates`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${getToken()}` },
-      body: JSON.stringify({ type: certificateType, record_id: row.id }),
-    }).catch(() => {});
   };
 
   const remove = async (row: RegistryRow) => {
@@ -320,9 +308,7 @@ export default function RegistryPanel(props: Readonly<RegistryPanelProps>) {
                       </>
                     )}
                     {certificateType && isAdmin && (
-                      <Button variant="ghost" size="sm" title={`Print ${certificateType} certificate`} onClick={() => printCertificate(row)}>
-                        <Printer className="h-4 w-4 mr-2" />Cert
-                      </Button>
+                      <CertificatePrintButton type={certificateType} record={row} label="Cert" />
                     )}
                     <Button variant="ghost" size="sm" onClick={() => setViewRow(row)}>
                       <Eye className="h-4 w-4 mr-2" />View
