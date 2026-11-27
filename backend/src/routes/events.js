@@ -54,6 +54,21 @@ function parseEventBody(req, res) {
 
 const dayMs = 24 * 60 * 60 * 1000;
 const iso = (d) => d.toISOString().slice(0, 10);
+/**
+ * Normalize a DATE column value to "YYYY-MM-DD". The pg driver returns DATE
+ * as a Date object at LOCAL midnight — using local getters recovers the
+ * stored calendar day regardless of server timezone.
+ */
+const dateOnly = (v) => {
+  if (v == null) return null;
+  if (v instanceof Date) {
+    const y = v.getFullYear();
+    const m = String(v.getMonth() + 1).padStart(2, "0");
+    const d = String(v.getDate()).padStart(2, "0");
+    return `${y}-${m}-${d}`;
+  }
+  return String(v).slice(0, 10);
+};
 const MAX_OCCURRENCES = 370;
 const day = (s) => new Date(`${s}T00:00:00Z`);
 
@@ -106,8 +121,8 @@ const EXPANDERS = {
  * Occurrences keep the parent id so edits apply to the whole series.
  */
 function expandOccurrences(ev, from, to) {
-  const start = String(ev.event_date).slice(0, 10);
-  const end = ev.recurrence_end ? String(ev.recurrence_end).slice(0, 10) : null;
+  const start = dateOnly(ev.event_date);
+  const end = dateOnly(ev.recurrence_end);
   const anchor = day(start);
   const lo = new Date(Math.max(anchor, day(from)));
   const hi = new Date(Math.min(end ? day(end) : day(to), day(to)));
@@ -135,9 +150,10 @@ router.get("/", async (req, res) => {
        ORDER BY e.event_date ASC, e.start_time ASC NULLS FIRST`,
       [config.parish.id, from, to]
     );
-    const expanded = rows.flatMap((ev) =>
-      ev.recurrence === "none" ? [ev] : expandOccurrences(ev, from, to)
-    );
+    const expanded = rows.flatMap((ev) => {
+      const normalized = { ...ev, event_date: dateOnly(ev.event_date), recurrence_end: dateOnly(ev.recurrence_end) };
+      return ev.recurrence === "none" ? [normalized] : expandOccurrences(normalized, from, to);
+    });
     expanded.sort((a, b) =>
       String(a.event_date).localeCompare(String(b.event_date))
       || String(a.start_time || "").localeCompare(String(b.start_time || ""))
