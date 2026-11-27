@@ -54,6 +54,51 @@ function parseEventBody(req, res) {
 
 const dayMs = 24 * 60 * 60 * 1000;
 const iso = (d) => d.toISOString().slice(0, 10);
+const MAX_OCCURRENCES = 370;
+const day = (s) => new Date(`${s}T00:00:00Z`);
+
+function expandDaily(anchor, lo, hi, out) {
+  for (const d = new Date(lo); d <= hi && out.length < MAX_OCCURRENCES; d.setTime(d.getTime() + dayMs)) {
+    out.push(iso(d));
+  }
+}
+
+function expandWeekly(anchor, lo, hi, out) {
+  const first = new Date(lo);
+  first.setTime(first.getTime() + ((anchor.getUTCDay() - first.getUTCDay() + 7) % 7) * dayMs);
+  for (const d = first; d <= hi && out.length < MAX_OCCURRENCES; d.setTime(d.getTime() + 7 * dayMs)) {
+    out.push(iso(d));
+  }
+}
+
+function expandMonthly(anchor, lo, hi, out) {
+  const dom = anchor.getUTCDate();
+  for (const d = new Date(lo); d <= hi && out.length < MAX_OCCURRENCES; d.setUTCMonth(d.getUTCMonth() + 1, 1)) {
+    const occ = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), dom));
+    // Skip months lacking the day (e.g. the 31st in February) and the pre-anchor range.
+    if (occ.getUTCMonth() === d.getUTCMonth() && occ >= lo && occ <= hi && occ >= anchor) {
+      out.push(iso(occ));
+    }
+  }
+}
+
+function expandYearly(anchor, lo, hi, out) {
+  const m = anchor.getUTCMonth();
+  const dom = anchor.getUTCDate();
+  for (const d = new Date(lo); d <= hi && out.length < MAX_OCCURRENCES; d.setUTCFullYear(d.getUTCFullYear() + 1, 0, 1)) {
+    const occ = new Date(Date.UTC(d.getUTCFullYear(), m, dom));
+    if (occ.getUTCMonth() === m && occ >= lo && occ <= hi && occ >= anchor) {
+      out.push(iso(occ));
+    }
+  }
+}
+
+const EXPANDERS = {
+  daily: expandDaily,
+  weekly: expandWeekly,
+  monthly: expandMonthly,
+  yearly: expandYearly,
+};
 
 /**
  * Expand a recurring event into concrete occurrences within [from, to].
@@ -63,38 +108,14 @@ const iso = (d) => d.toISOString().slice(0, 10);
 function expandOccurrences(ev, from, to) {
   const start = String(ev.event_date).slice(0, 10);
   const end = ev.recurrence_end ? String(ev.recurrence_end).slice(0, 10) : null;
-  const lo = start > from ? start : from;
-  const hi = end && end < to ? end : to;
+  const anchor = day(start);
+  const lo = new Date(Math.max(anchor, day(from)));
+  const hi = new Date(Math.min(end ? day(end) : day(to), day(to)));
   if (hi < lo) return [];
-
-  const anchor = new Date(`${start}T00:00:00Z`);
-  const cur = new Date(`${lo}T00:00:00Z`);
-  const stop = new Date(`${hi}T00:00:00Z`);
   const out = [];
-  const MAX = 370;
-  const push = (d) => out.push({ ...ev, event_date: iso(d) });
-
-  if (ev.recurrence === "daily") {
-    while (cur <= stop && out.length < MAX) { push(cur); cur.setUTCDate(cur.getUTCDate() + 1); }
-  } else if (ev.recurrence === "weekly") {
-    // snap forward to the anchor weekday
-    cur.setUTCDate(cur.getUTCDate() + ((anchor.getUTCDay() - cur.getUTCDay() + 7) % 7));
-    while (cur <= stop && out.length < MAX) { push(cur); cur.setUTCDate(cur.getUTCDate() + 7); }
-  } else if (ev.recurrence === "monthly") {
-    const dom = anchor.getUTCDate();
-    while (cur <= stop && out.length < MAX) {
-      if (cur.getUTCDate() === dom && cur >= new Date(`${start}T00:00:00Z`)) push(cur);
-      cur.setUTCDate(cur.getUTCDate() + 1);
-    }
-  } else if (ev.recurrence === "yearly") {
-    const m = anchor.getUTCMonth();
-    const dom = anchor.getUTCDate();
-    while (cur <= stop && out.length < MAX) {
-      if (cur.getUTCMonth() === m && cur.getUTCDate() === dom && cur >= anchor) push(cur);
-      cur.setUTCDate(cur.getUTCDate() + 1);
-    }
-  }
-  return out;
+  const expander = EXPANDERS[ev.recurrence];
+  if (expander) expander(anchor, lo, hi, out);
+  return out.map((date) => ({ ...ev, event_date: date }));
 }
 
 // GET /api/events?from=YYYY-MM-DD&to=YYYY-MM-DD — parish events for all members
