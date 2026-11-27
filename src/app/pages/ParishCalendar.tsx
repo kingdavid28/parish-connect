@@ -10,7 +10,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "../components/ui/select";
 import {
-  CalendarDays, ChevronLeft, ChevronRight, Plus, Pencil, Trash2, MapPin, Clock, Loader, Repeat,
+  CalendarDays, ChevronLeft, ChevronRight, Plus, Pencil, Trash2, MapPin, Clock, Loader, Repeat, Sparkles,
 } from "lucide-react";
 import { toast } from "sonner";
 import { API } from "../config";
@@ -115,6 +115,8 @@ export default function ParishCalendar() {
   const [editing, setEditing] = useState<ParishEvent | null>(null);
   const [form, setForm] = useState<EventForm>(emptyForm(dateKey(today)));
   const [saving, setSaving] = useState(false);
+  const [seeding, setSeeding] = useState(false);
+  const [refresh, setRefresh] = useState(0);
 
   const year = cursor.getFullYear();
   const month = cursor.getMonth();
@@ -144,7 +146,7 @@ export default function ParishCalendar() {
       }
     };
     void load();
-  }, [range]);
+  }, [range, refresh]);
 
   const byDay = useMemo(() => {
     const map = new Map<string, ParishEvent[]>();
@@ -218,6 +220,29 @@ export default function ParishCalendar() {
       toast.error("Save failed");
     } finally {
       setSaving(false);
+    }
+  };
+
+  const seedDefaults = async () => {
+    setSeeding(true);
+    try {
+      const res = await fetch(`${API}/events/seed-defaults`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${getToken()}` },
+      });
+      const data = await res.json();
+      if (!data.success) { toast.error(data.message || "Failed to load schedule"); return; }
+      const { inserted, skipped } = data.data;
+      toast.success(
+        inserted > 0
+          ? `Loaded ${inserted} default event${inserted > 1 ? "s" : ""}${skipped ? ` (${skipped} already existed)` : ""}`
+          : "Default schedule already loaded"
+      );
+      setRefresh((r) => r + 1);
+    } catch {
+      toast.error("Failed to load schedule");
+    } finally {
+      setSeeding(false);
     }
   };
 
@@ -376,9 +401,15 @@ export default function ParishCalendar() {
           <CalendarDays className="h-6 w-6 text-blue-600" /> Parish Calendar
         </h1>
         {isAdmin && (
-          <Button size="sm" onClick={() => openForm(null)}>
-            <Plus className="h-4 w-4 mr-1" /> Add Event
-          </Button>
+          <div className="flex gap-2">
+            <Button size="sm" variant="outline" onClick={() => void seedDefaults()} disabled={seeding}>
+              {seeding ? <Loader className="h-4 w-4 mr-1 animate-spin" /> : <Sparkles className="h-4 w-4 mr-1" />}
+              Default Schedule
+            </Button>
+            <Button size="sm" onClick={() => openForm(null)}>
+              <Plus className="h-4 w-4 mr-1" /> Add Event
+            </Button>
+          </div>
         )}
       </div>
 

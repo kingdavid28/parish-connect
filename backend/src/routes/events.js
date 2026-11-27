@@ -128,6 +128,50 @@ router.get("/", async (req, res) => {
   }
 });
 
+/**
+ * POST /api/events/seed-defaults — admin only.
+ * Inserts the parish's regular liturgical schedule as real recurring events
+ * (fully editable afterwards). Idempotent: a seed is skipped if an event
+ * with the same title already exists for this parish.
+ */
+const DEFAULT_SCHEDULE = [
+  { title: "Daily Mass", event_type: "mass", event_date: "2026-01-01", start_time: "06:00", is_all_day: false, recurrence: "daily", location: "Main Church", description: "Regular weekday Eucharistic celebration." },
+  { title: "Holy Rosary", event_type: "celebration", event_date: "2026-01-01", start_time: "17:30", is_all_day: false, recurrence: "daily", location: "Main Church", description: "Community praying of the Holy Rosary." },
+  { title: "Sunday Mass", event_type: "mass", event_date: "2026-01-04", start_time: "08:00", is_all_day: false, recurrence: "weekly", location: "Main Church", description: "Main Sunday Eucharistic celebration." },
+  { title: "Sunday Afternoon Mass", event_type: "mass", event_date: "2026-01-04", start_time: "16:00", is_all_day: false, recurrence: "weekly", location: "Main Church" },
+  { title: "Confession", event_type: "celebration", event_date: "2026-01-03", start_time: "16:00", is_all_day: false, recurrence: "weekly", location: "Confessional", description: "Sacrament of Reconciliation." },
+  { title: "First Friday Devotion", event_type: "celebration", event_date: "2026-01-02", is_all_day: true, recurrence: "monthly", description: "Devotion to the Sacred Heart, first Friday of each month." },
+  { title: "BEC Monthly Meeting", event_type: "meeting", event_date: "2026-01-15", start_time: "18:00", is_all_day: false, recurrence: "monthly", location: "Parish Hall" },
+  { title: "Parish Fiesta — St. Raphael the Archangel", event_type: "fiesta", event_date: "2026-10-24", is_all_day: true, recurrence: "yearly", description: "Annual feast of our patron, St. Raphael the Archangel." },
+  { title: "Christmas Mass", event_type: "mass", event_date: "2026-12-25", start_time: "08:00", is_all_day: false, recurrence: "yearly", location: "Main Church" },
+  { title: "Holy Week Services", event_type: "fiesta", event_date: "2027-04-01", is_all_day: true, recurrence: "yearly", description: "Triduum liturgies during Holy Week." },
+];
+
+router.post("/seed-defaults", requireRole("admin", "superadmin"), async (req, res) => {
+  try {
+    const { rows: existing } = await pool.query(
+      "SELECT title FROM parish_events WHERE parish_id = $1",
+      [config.parish.id]
+    );
+    const have = new Set(existing.map((r) => r.title));
+    const toAdd = DEFAULT_SCHEDULE.filter((e) => !have.has(e.title));
+    for (const e of toAdd) {
+      await pool.query(
+        `INSERT INTO parish_events
+           (id, parish_id, title, description, event_type, event_date, start_time, end_time, location, is_all_day, recurrence, recurrence_end, created_by)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,NULL,$8,$9,$10,NULL,$11)`,
+        [uuid(), config.parish.id, e.title, e.description || null, e.event_type, e.event_date,
+         e.start_time || null, e.location || null, e.is_all_day, e.recurrence, req.user.id]
+      );
+    }
+    await auditLog(req.user.id, "seed_default_events", "parish_event", null, getClientIp(req));
+    res.json({ success: true, data: { inserted: toAdd.length, skipped: DEFAULT_SCHEDULE.length - toAdd.length } });
+  } catch (err) {
+    console.error("Seed events error:", err.message);
+    res.status(500).json({ success: false, message: "Internal server error" });
+  }
+});
+
 // POST /api/events — admin only
 router.post("/", requireRole("admin", "superadmin"), async (req, res) => {
   const v = parseEventBody(req, res);
