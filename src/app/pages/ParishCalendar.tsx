@@ -54,9 +54,17 @@ const eventDay = (e: ParishEvent) => String(e.event_date).slice(0, 10);
 
 const typeStyle = (t: string) => EVENT_TYPES.find((x) => x.value === t) || EVENT_TYPES[5];
 
+/** "06:00" -> "6:00 AM", "17:30" -> "5:30 PM" */
+const to12h = (t: string) => {
+  const [h, m] = t.split(":").map(Number);
+  const suffix = h >= 12 ? "PM" : "AM";
+  const h12 = h % 12 === 0 ? 12 : h % 12;
+  return `${h12}:${String(m).padStart(2, "0")} ${suffix}`;
+};
+
 const fmtTime = (e: ParishEvent) => {
   if (e.is_all_day || !e.start_time) return "All day";
-  return e.end_time ? `${e.start_time} – ${e.end_time}` : e.start_time;
+  return e.end_time ? `${to12h(e.start_time)} – ${to12h(e.end_time)}` : to12h(e.start_time);
 };
 
 interface EventForm {
@@ -258,7 +266,7 @@ export default function ParishCalendar() {
   };
 
   const eventChip = (e: ParishEvent, compact = false) => {
-    const timePrefix = e.is_all_day ? "" : `${e.start_time || ""} `;
+    const timePrefix = e.is_all_day || !e.start_time ? "" : `${to12h(e.start_time)} `;
     const loc = e.location ? ` — ${e.location}` : "";
     return (
       <div key={e.id} className={`rounded border px-1.5 py-0.5 text-[11px] leading-tight truncate ${typeStyle(e.event_type).color}`}
