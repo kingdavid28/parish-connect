@@ -499,3 +499,20 @@ CREATE INDEX IF NOT EXISTS idx_sacramental_records_user ON sacramental_records(u
 CREATE INDEX IF NOT EXISTS idx_marriage_user            ON marriage_records(user_id);
 CREATE INDEX IF NOT EXISTS idx_marriage_spouse_user     ON marriage_records(spouse_user_id);
 CREATE INDEX IF NOT EXISTS idx_death_user               ON death_records(user_id);
+
+CREATE TABLE IF NOT EXISTS parish_events (
+  id          VARCHAR(36) PRIMARY KEY,
+  parish_id   VARCHAR(64) NOT NULL,
+  title       VARCHAR(200) NOT NULL,
+  description TEXT,
+  event_type  VARCHAR(32) NOT NULL DEFAULT 'other',
+  event_date  DATE NOT NULL,
+  start_time  VARCHAR(8),
+  end_time    VARCHAR(8),
+  location    VARCHAR(200),
+  is_all_day  BOOLEAN NOT NULL DEFAULT TRUE,
+  created_by  VARCHAR(36) REFERENCES users(id) ON DELETE SET NULL,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_parish_events_date ON parish_events (parish_id, event_date);

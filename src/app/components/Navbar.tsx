@@ -46,6 +46,7 @@ export default function Navbar() {
     { path: "/", label: "Feed", icon: Home, showFor: "all" },
     { path: "/messages", label: "Messages", icon: MessageCircle, showFor: "all" },
     { path: "/records", label: "Records", icon: BookOpen, showFor: "all" },
+    { path: "/calendar", label: "Calendar", icon: CalendarDays, showFor: "all" },
     { path: "/rewards", label: "Rewards", icon: Trophy, showFor: "all" },
     { path: "/wallet", label: "Wallet", icon: WalletIcon, showFor: "all" },
     { path: user?.id ? `/profile/${user.id}` : "/", label: "Profile", icon: UserCircle, showFor: "all", isProfile: true },

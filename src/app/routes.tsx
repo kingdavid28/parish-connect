@@ -21,6 +21,7 @@ const NotFound = lazy(() => import("./pages/NotFound"));
 const Rewards = lazy(() => import("./pages/Rewards"));
 const Wallet = lazy(() => import("./pages/Wallet"));
 const MyDues = lazy(() => import("./pages/MyDues"));
+const ParishCalendar = lazy(() => import("./pages/ParishCalendar"));
 
 // Wrap lazy pages in Suspense
 const withSuspense = (Component: React.ComponentType) => (
@@ -45,6 +46,7 @@ export const router = createBrowserRouter([
       { path: "profile/:id", element: withSuspense(Profile) },
       { path: "messages", element: withSuspense(Messages) },
       { path: "records", element: withSuspense(ParishRecords) },
+      { path: "calendar", element: withSuspense(ParishCalendar) },
       { path: "qrcode", element: withSuspense(QRCodePage) },
       { path: "membership", element: withSuspense(Membership) },
       { path: "settings", element: withSuspense(Settings) },

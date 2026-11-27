@@ -62,6 +62,7 @@ app.use("/api/wallet", require("./routes/wallet"));
 app.use("/api/sacraments", require("./routes/sacraments"));
 app.use("/api/finance", require("./routes/finance"));
 app.use("/api/records", require("./routes/records"));
+app.use("/api/events", require("./routes/events"));
 app.use("/api/audit", require("./routes/audit"));
 app.use("/api/cron", require("./routes/cron"));
 
