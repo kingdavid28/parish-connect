@@ -10,7 +10,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "../components/ui/select";
 import {
-  CalendarDays, ChevronLeft, ChevronRight, Plus, Pencil, Trash2, MapPin, Clock, Loader,
+  CalendarDays, ChevronLeft, ChevronRight, Plus, Pencil, Trash2, MapPin, Clock, Loader, Repeat,
 } from "lucide-react";
 import { toast } from "sonner";
 import { API } from "../config";
@@ -28,6 +28,8 @@ interface ParishEvent {
   end_time: string | null;
   location: string | null;
   is_all_day: boolean;
+  recurrence?: string;
+  recurrence_end?: string | null;
   created_by_name?: string | null;
 }
 
@@ -64,12 +66,32 @@ interface EventForm {
   end_time: string;
   location: string;
   is_all_day: boolean;
+  recurrence: string;
+  recurrence_end: string;
 }
 
 const emptyForm = (date: string): EventForm => ({
   title: "", description: "", event_type: "mass", event_date: date,
   start_time: "", end_time: "", location: "", is_all_day: true,
+  recurrence: "none", recurrence_end: "",
 });
+
+const RECURRENCES = [
+  { value: "none", label: "Does not repeat" },
+  { value: "daily", label: "Daily" },
+  { value: "weekly", label: "Weekly" },
+  { value: "monthly", label: "Monthly" },
+  { value: "yearly", label: "Yearly" },
+];
+
+/** Quick-add presets for regular parish activities & liturgical celebrations. */
+const EVENT_PRESETS: { label: string; patch: Partial<EventForm> }[] = [
+  { label: "Daily Mass", patch: { title: "Daily Mass", event_type: "mass", recurrence: "daily", is_all_day: false, start_time: "06:00" } },
+  { label: "Sunday Mass", patch: { title: "Sunday Mass", event_type: "mass", recurrence: "weekly", is_all_day: false, start_time: "08:00" } },
+  { label: "First Friday", patch: { title: "First Friday Devotion", event_type: "mass", recurrence: "monthly", is_all_day: true } },
+  { label: "Parish Fiesta", patch: { title: "Parish Fiesta", event_type: "fiesta", recurrence: "yearly", is_all_day: true } },
+  { label: "BEC Meeting", patch: { title: "BEC Meeting", event_type: "meeting", recurrence: "monthly", is_all_day: false, start_time: "18:00" } },
+];
 
 export default function ParishCalendar() {
   const { isAdmin } = useAuth();
@@ -159,6 +181,8 @@ export default function ParishCalendar() {
           title: ev.title, description: ev.description || "", event_type: ev.event_type,
           event_date: eventDay(ev), start_time: ev.start_time || "", end_time: ev.end_time || "",
           location: ev.location || "", is_all_day: ev.is_all_day,
+          recurrence: ev.recurrence || "none",
+          recurrence_end: ev.recurrence_end ? String(ev.recurrence_end).slice(0, 10) : "",
         }
       : emptyForm(date || selectedDay));
     setFormOpen(true);
@@ -203,7 +227,10 @@ export default function ParishCalendar() {
   const eventChip = (e: ParishEvent, compact = false) => (
     <div key={e.id} className={`rounded border px-1.5 py-0.5 text-[11px] leading-tight truncate ${typeStyle(e.event_type).color}`}
       title={`${e.title}${e.location ? ` — ${e.location}` : ""}`}>
-      {compact ? e.title : `${e.is_all_day ? "" : `${e.start_time || ""} `}${e.title}`}
+      <span className="inline-flex items-center gap-0.5 min-w-0">
+        {e.recurrence && e.recurrence !== "none" && <Repeat className="h-2.5 w-2.5 shrink-0" />}
+        <span className="truncate">{compact ? e.title : `${e.is_all_day ? "" : `${e.start_time || ""} `}${e.title}`}</span>
+      </span>
     </div>
   );
 
@@ -363,6 +390,23 @@ export default function ParishCalendar() {
             <DialogDescription>{editing ? "Update this parish event." : "Schedule a new parish event."}</DialogDescription>
           </DialogHeader>
           <div className="space-y-3">
+            {!editing && (
+              <div className="space-y-1">
+                <Label>Quick add</Label>
+                <div className="flex flex-wrap gap-1.5">
+                  {EVENT_PRESETS.map((p) => (
+                    <button
+                      key={p.label}
+                      type="button"
+                      onClick={() => setForm({ ...form, ...p.patch })}
+                      className="rounded-full border px-2.5 py-1 text-xs text-gray-600 hover:bg-blue-50 hover:border-blue-300"
+                    >
+                      {p.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
             <div className="space-y-1">
               <Label htmlFor="ev-title">Title *</Label>
               <Input id="ev-title" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} maxLength={200} />
@@ -382,6 +426,29 @@ export default function ParishCalendar() {
                 </Select>
               </div>
             </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label>Repeats</Label>
+                <Select value={form.recurrence} onValueChange={(v) => setForm({ ...form, recurrence: v })}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {RECURRENCES.map((r) => <SelectItem key={r.value} value={r.value}>{r.label}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+              {form.recurrence !== "none" && (
+                <div className="space-y-1">
+                  <Label htmlFor="ev-until">Until (optional)</Label>
+                  <Input id="ev-until" type="date" min={form.event_date} value={form.recurrence_end} onChange={(e) => setForm({ ...form, recurrence_end: e.target.value })} />
+                </div>
+              )}
+            </div>
+            {form.recurrence !== "none" && (
+              <p className="text-xs text-gray-500">
+                Repeats {form.recurrence} starting {form.event_date || "the chosen date"}.
+                Editing a recurring event updates the whole series.
+              </p>
+            )}
             <label className="flex items-center gap-2 text-sm">
               <input
                 type="checkbox"

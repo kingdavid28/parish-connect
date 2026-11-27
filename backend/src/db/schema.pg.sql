@@ -516,3 +516,6 @@ CREATE TABLE IF NOT EXISTS parish_events (
   updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_parish_events_date ON parish_events (parish_id, event_date);
+
+ALTER TABLE parish_events ADD COLUMN IF NOT EXISTS recurrence VARCHAR(16) NOT NULL DEFAULT 'none';
+ALTER TABLE parish_events ADD COLUMN IF NOT EXISTS recurrence_end DATE;
