@@ -18,7 +18,7 @@ import {
 import {
   Home, BookOpen, Users, Settings as SettingsIcon, LogOut, Shield, Crown,
   UserCircle, ChevronDown, MessageCircle, QrCode, Trophy, Wallet as WalletIcon,
-  PhilippinePeso, MapPin, Mail, Phone, Globe, CalendarDays,
+  PhilippinePeso, MapPin, Mail, Phone, Globe, CalendarDays, Church,
 } from "lucide-react";
 import { toast } from "sonner";
 import NotificationBell from "./NotificationBell";
@@ -47,6 +47,7 @@ export default function Navbar() {
     { path: "/messages", label: "Messages", icon: MessageCircle, showFor: "all" },
     { path: "/records", label: "Records", icon: BookOpen, showFor: "all" },
     { path: "/calendar", label: "Calendar", icon: CalendarDays, showFor: "all" },
+    { path: "/services", label: "Services", icon: Church, showFor: "all" },
     { path: "/rewards", label: "Rewards", icon: Trophy, showFor: "all" },
     { path: "/wallet", label: "Wallet", icon: WalletIcon, showFor: "all" },
     { path: user?.id ? `/profile/${user.id}` : "/", label: "Profile", icon: UserCircle, showFor: "all", isProfile: true },

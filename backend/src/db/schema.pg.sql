@@ -519,3 +519,25 @@ CREATE INDEX IF NOT EXISTS idx_parish_events_date ON parish_events (parish_id, e
 
 ALTER TABLE parish_events ADD COLUMN IF NOT EXISTS recurrence VARCHAR(16) NOT NULL DEFAULT 'none';
 ALTER TABLE parish_events ADD COLUMN IF NOT EXISTS recurrence_end DATE;
+
+CREATE TABLE IF NOT EXISTS service_requests (
+  id                 VARCHAR(36) PRIMARY KEY,
+  parish_id          VARCHAR(64) NOT NULL,
+  user_id            VARCHAR(36) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  type               VARCHAR(32) NOT NULL,
+  status             VARCHAR(16) NOT NULL DEFAULT 'pending',
+  intention_category VARCHAR(32),
+  person_name        VARCHAR(200),
+  intention_text     TEXT,
+  preferred_date     DATE,
+  preferred_time     VARCHAR(8),
+  contact_phone      VARCHAR(32),
+  notes              TEXT,
+  admin_notes        TEXT,
+  reviewed_by        VARCHAR(36) REFERENCES users(id) ON DELETE SET NULL,
+  reviewed_at        TIMESTAMPTZ,
+  created_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at         TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_service_requests_parish_status ON service_requests (parish_id, status, created_at);
+CREATE INDEX IF NOT EXISTS idx_service_requests_user ON service_requests (user_id, created_at);
