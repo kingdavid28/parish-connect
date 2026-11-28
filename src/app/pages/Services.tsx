@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Button } from "../components/ui/button";
-import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import {
   Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle,
@@ -10,28 +9,12 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "../components/ui/select";
 import { ClipboardList, Plus, Loader, X, Church, Copy, Check } from "lucide-react";
+import ServiceRequestDialog, { SERVICE_TYPES as TYPES, INTENTION_CATEGORIES } from "../components/ServiceRequestDialog";
 import { toast } from "sonner";
 import { API } from "../config";
 import { useAuth } from "../context/AuthContext";
 
 const getToken = () => localStorage.getItem("parish_token") || sessionStorage.getItem("parish_token");
-
-const TYPES = [
-  { value: "mass_intention", label: "Mass Intention" },
-  { value: "baptism", label: "Baptism" },
-  { value: "confirmation", label: "Confirmation" },
-  { value: "marriage", label: "Marriage" },
-  { value: "funeral", label: "Funeral Service" },
-  { value: "blessing", label: "Blessing" },
-  { value: "other", label: "Other Service" },
-];
-
-const INTENTION_CATEGORIES = [
-  { value: "thanksgiving", label: "Thanksgiving" },
-  { value: "deceased", label: "For the Deceased" },
-  { value: "healing", label: "Healing" },
-  { value: "special", label: "Special Intention" },
-];
 
 const STATUS_STYLES: Record<string, string> = {
   pending: "bg-amber-100 text-amber-800",
@@ -73,22 +56,6 @@ const to12h = (t: string) => {
   const suffix = h >= 12 ? "PM" : "AM";
   const h12 = h % 12 === 0 ? 12 : h % 12;
   return `${h12}:${String(m).padStart(2, "0")} ${suffix}`;
-};
-
-interface FormState {
-  type: string;
-  intention_category: string;
-  person_name: string;
-  intention_text: string;
-  preferred_date: string;
-  preferred_time: string;
-  contact_phone: string;
-  notes: string;
-}
-
-const emptyForm: FormState = {
-  type: "mass_intention", intention_category: "thanksgiving", person_name: "",
-  intention_text: "", preferred_date: "", preferred_time: "", contact_phone: "", notes: "",
 };
 
 function StatusBadge({ status }: Readonly<{ status: string }>) {
@@ -152,8 +119,6 @@ export default function Services() {
   const [queue, setQueue] = useState<ServiceRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [formOpen, setFormOpen] = useState(false);
-  const [form, setForm] = useState<FormState>(emptyForm);
-  const [saving, setSaving] = useState(false);
   const [reviewRow, setReviewRow] = useState<ServiceRequest | null>(null);
   const [reviewStatus, setReviewStatus] = useState("approved");
   const [reviewNote, setReviewNote] = useState("");
@@ -186,37 +151,18 @@ export default function Services() {
     void load();
   }, [isAdmin, refresh]);
 
-  const submit = async () => {
-    if (!form.person_name.trim()) { toast.error("Enter who this is for"); return; }
-    if (!form.preferred_date) { toast.error("Pick a preferred date"); return; }
-    setSaving(true);
+  const handleSubmitted = async () => {
+    reload();
+    // Offer the customary mass stipend / donation via the parish GCash QR.
     try {
-      const res = await fetch(`${API}/services`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${getToken()}` },
-        body: JSON.stringify(form),
-      });
-      const data = await res.json();
-      if (!data.success) { toast.error(data.message || "Submission failed"); return; }
-      toast.success("Request submitted — the parish office will review it");
-      setFormOpen(false);
-      setForm(emptyForm);
-      reload();
-      // Offer the customary mass stipend / donation via the parish GCash QR.
-      try {
-        const gres = await fetch(`${API}/wallet/gcash-info`, { headers: { Authorization: `Bearer ${getToken()}` } });
-        const gdata = await gres.json();
-        if (gdata.success && (gdata.data.gcash_qr_url || gdata.data.gcash_number)) {
-          setGcash(gdata.data);
-          setDonationOpen(true);
-        }
-      } catch {
-        // Donation prompt is optional — never block the flow.
+      const gres = await fetch(`${API}/wallet/gcash-info`, { headers: { Authorization: `Bearer ${getToken()}` } });
+      const gdata = await gres.json();
+      if (gdata.success && (gdata.data.gcash_qr_url || gdata.data.gcash_number)) {
+        setGcash(gdata.data);
+        setDonationOpen(true);
       }
     } catch {
-      toast.error("Submission failed");
-    } finally {
-      setSaving(false);
+      // Donation prompt is optional — never block the flow.
     }
   };
 
@@ -271,6 +217,37 @@ export default function Services() {
 
   const pendingCount = queue.filter((q) => q.status === "pending").length;
 
+  const renderListContent = () => {
+    if (loading) {
+      return <div className="flex justify-center py-12"><Loader className="h-6 w-6 animate-spin text-gray-400" /></div>;
+    }
+    if (tab === "review") {
+      return (
+        <div className="space-y-2">
+          {queue.length === 0 ? (
+            <p className="py-10 text-center text-sm text-gray-500">No requests yet.</p>
+          ) : queue.map((r) => (
+            <RequestCard key={r.id} r={r} isAdmin onReview={openReview} />
+          ))}
+        </div>
+      );
+    }
+    return (
+      <div className="space-y-2">
+        {mine.length === 0 ? (
+          <div className="py-10 text-center space-y-2">
+            <p className="text-sm text-gray-500">You have no requests yet.</p>
+            <Button size="sm" variant="outline" onClick={() => setFormOpen(true)}>
+              <Plus className="h-4 w-4 mr-1" /> Submit your first request
+            </Button>
+          </div>
+        ) : mine.map((r) => (
+          <RequestCard key={r.id} r={r} isAdmin={false} onCancel={(row) => void cancel(row)} />
+        ))}
+      </div>
+    );
+  };
+
   return (
     <div className="container mx-auto px-3 sm:px-4 py-6 max-w-4xl space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -309,124 +286,12 @@ export default function Services() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          {loading ? (
-            <div className="flex justify-center py-12"><Loader className="h-6 w-6 animate-spin text-gray-400" /></div>
-          ) : tab === "review" ? (
-            <div className="space-y-2">
-              {queue.length === 0 ? (
-                <p className="py-10 text-center text-sm text-gray-500">No requests yet.</p>
-              ) : queue.map((r) => (
-                <RequestCard key={r.id} r={r} isAdmin onReview={openReview} />
-              ))}
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {mine.length === 0 ? (
-                <div className="py-10 text-center space-y-2">
-                  <p className="text-sm text-gray-500">You have no requests yet.</p>
-                  <Button size="sm" variant="outline" onClick={() => setFormOpen(true)}>
-                    <Plus className="h-4 w-4 mr-1" /> Submit your first request
-                  </Button>
-                </div>
-              ) : mine.map((r) => (
-                <RequestCard key={r.id} r={r} isAdmin={false} onCancel={(row) => void cancel(row)} />
-              ))}
-            </div>
-          )}
+          {renderListContent()}
         </CardContent>
       </Card>
 
-      {/* New request dialog */}
-      <Dialog open={formOpen} onOpenChange={setFormOpen}>
-        <DialogContent className="max-w-md max-h-[85dvh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>New Request</DialogTitle>
-            <DialogDescription>Submit a mass intention or request a parish service.</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-3">
-            <div className="space-y-1">
-              <Label>Type</Label>
-              <Select value={form.type} onValueChange={(v) => setForm({ ...form, type: v })}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {TYPES.map((t) => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-            {form.type === "mass_intention" && (
-              <div className="space-y-1">
-                <Label>Intention</Label>
-                <Select value={form.intention_category} onValueChange={(v) => setForm({ ...form, intention_category: v })}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {INTENTION_CATEGORIES.map((c) => <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-            <div className="space-y-1">
-              <Label htmlFor="sv-person">
-                {form.type === "mass_intention" ? "Offered for *" : "Person / subject *"}
-              </Label>
-              <Input
-                id="sv-person"
-                value={form.person_name}
-                onChange={(e) => setForm({ ...form, person_name: e.target.value })}
-                maxLength={200}
-                placeholder={form.type === "mass_intention" ? "e.g. Juan Dela Cruz" : form.type === "marriage" ? "Groom & Bride names" : "Full name"}
-              />
-            </div>
-            {form.type === "mass_intention" && (
-              <div className="space-y-1">
-                <Label htmlFor="sv-intent">Intention details (optional)</Label>
-                <textarea
-                  id="sv-intent"
-                  value={form.intention_text}
-                  onChange={(e) => setForm({ ...form, intention_text: e.target.value })}
-                  maxLength={1000}
-                  rows={2}
-                  className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
-                  placeholder="e.g. For the eternal repose of…"
-                />
-              </div>
-            )}
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <Label htmlFor="sv-date">Preferred date *</Label>
-                <Input id="sv-date" type="date" value={form.preferred_date} onChange={(e) => setForm({ ...form, preferred_date: e.target.value })} />
-              </div>
-              <div className="space-y-1">
-                <Label htmlFor="sv-time">Preferred time</Label>
-                <Input id="sv-time" type="time" value={form.preferred_time} onChange={(e) => setForm({ ...form, preferred_time: e.target.value })} />
-              </div>
-            </div>
-            <div className="space-y-1">
-              <Label htmlFor="sv-phone">Contact phone</Label>
-              <Input id="sv-phone" value={form.contact_phone} onChange={(e) => setForm({ ...form, contact_phone: e.target.value })} maxLength={32} placeholder="09xx xxx xxxx" />
-            </div>
-            <div className="space-y-1">
-              <Label htmlFor="sv-notes">Notes</Label>
-              <textarea
-                id="sv-notes"
-                value={form.notes}
-                onChange={(e) => setForm({ ...form, notes: e.target.value })}
-                maxLength={1000}
-                rows={2}
-                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
-                placeholder="Anything the parish office should know"
-              />
-            </div>
-            <p className="text-xs text-gray-500">The parish office will review your request and respond here. Final scheduling is confirmed by the office.</p>
-          </div>
-          <div className="flex justify-end gap-2 pt-2">
-            <Button variant="outline" onClick={() => setFormOpen(false)} disabled={saving}>Cancel</Button>
-            <Button onClick={() => void submit()} disabled={saving}>
-              {saving && <Loader className="h-4 w-4 mr-2 animate-spin" />}
-              Submit Request
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
+      <ServiceRequestDialog open={formOpen} onOpenChange={setFormOpen} onSubmitted={handleSubmitted} />
+
 
       {/* Donation QR dialog — shown after a successful submission */}
       <Dialog open={donationOpen} onOpenChange={setDonationOpen}>
