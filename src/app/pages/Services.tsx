@@ -9,7 +9,7 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "../components/ui/select";
-import { ClipboardList, Plus, Loader, X, Church } from "lucide-react";
+import { ClipboardList, Plus, Loader, X, Church, Copy, Check } from "lucide-react";
 import { toast } from "sonner";
 import { API } from "../config";
 import { useAuth } from "../context/AuthContext";
@@ -159,6 +159,9 @@ export default function Services() {
   const [reviewNote, setReviewNote] = useState("");
   const [reviewing, setReviewing] = useState(false);
   const [refresh, setRefresh] = useState(0);
+  const [donationOpen, setDonationOpen] = useState(false);
+  const [gcash, setGcash] = useState<{ gcash_number: string; gcash_name: string; gcash_qr_url: string } | null>(null);
+  const [copiedNumber, setCopiedNumber] = useState(false);
 
   const reload = () => setRefresh((r) => r + 1);
 
@@ -199,6 +202,17 @@ export default function Services() {
       setFormOpen(false);
       setForm(emptyForm);
       reload();
+      // Offer the customary mass stipend / donation via the parish GCash QR.
+      try {
+        const gres = await fetch(`${API}/wallet/gcash-info`, { headers: { Authorization: `Bearer ${getToken()}` } });
+        const gdata = await gres.json();
+        if (gdata.success && (gdata.data.gcash_qr_url || gdata.data.gcash_number)) {
+          setGcash(gdata.data);
+          setDonationOpen(true);
+        }
+      } catch {
+        // Donation prompt is optional — never block the flow.
+      }
     } catch {
       toast.error("Submission failed");
     } finally {
@@ -242,6 +256,17 @@ export default function Services() {
     setReviewRow(r);
     setReviewStatus(r.status === "approved" ? "scheduled" : "approved");
     setReviewNote(r.admin_notes || "");
+  };
+
+  const copyGcashNumber = async () => {
+    if (!gcash?.gcash_number) return;
+    try {
+      await navigator.clipboard.writeText(gcash.gcash_number);
+      setCopiedNumber(true);
+      setTimeout(() => setCopiedNumber(false), 2000);
+    } catch {
+      toast.error("Copy failed");
+    }
   };
 
   const pendingCount = queue.filter((q) => q.status === "pending").length;
@@ -399,6 +424,45 @@ export default function Services() {
               {saving && <Loader className="h-4 w-4 mr-2 animate-spin" />}
               Submit Request
             </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Donation QR dialog — shown after a successful submission */}
+      <Dialog open={donationOpen} onOpenChange={setDonationOpen}>
+        <DialogContent className="max-w-sm text-center">
+          <DialogHeader>
+            <DialogTitle>Request submitted</DialogTitle>
+            <DialogDescription>
+              Thank you! If you wish to give the customary mass stipend or a love offering, you may scan the parish GCash QR below. Offerings are voluntary.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            {gcash?.gcash_qr_url && (
+              <div className="mx-auto w-fit rounded-xl border bg-white p-3 shadow-sm">
+                <img src={gcash.gcash_qr_url} alt="Parish GCash QR code" className="h-56 w-56 object-contain" />
+              </div>
+            )}
+            {gcash?.gcash_number && (
+              <div className="space-y-1">
+                <div className="text-sm text-gray-600">GCash {gcash.gcash_name ? `· ${gcash.gcash_name}` : ""}</div>
+                <button
+                  type="button"
+                  onClick={() => void copyGcashNumber()}
+                  className="mx-auto flex items-center gap-2 rounded-lg border px-3 py-1.5 font-mono text-lg tracking-wide hover:bg-gray-50"
+                  title="Copy number"
+                >
+                  {gcash.gcash_number}
+                  {copiedNumber ? <Check className="h-4 w-4 text-emerald-600" /> : <Copy className="h-4 w-4 text-gray-400" />}
+                </button>
+              </div>
+            )}
+            <p className="text-xs text-gray-500">
+              Use your name and request type as the GCash reference (e.g. &ldquo;Juan Dela Cruz — Mass Intention&rdquo;) so the office can match your offering.
+            </p>
+          </div>
+          <div className="flex justify-center pt-2">
+            <Button onClick={() => setDonationOpen(false)}>Done</Button>
           </div>
         </DialogContent>
       </Dialog>
