@@ -10,6 +10,7 @@ import {
 } from "../components/ui/select";
 import { ClipboardList, Plus, Loader, X, Church, Copy, Check } from "lucide-react";
 import ServiceRequestDialog, { SERVICE_TYPES as TYPES, INTENTION_CATEGORIES } from "../components/ServiceRequestDialog";
+import ImageLightbox from "../components/ImageLightbox";
 import { toast } from "sonner";
 import { API } from "../config";
 import { useAuth } from "../context/AuthContext";
@@ -127,6 +128,7 @@ export default function Services() {
   const [donationOpen, setDonationOpen] = useState(false);
   const [gcash, setGcash] = useState<{ gcash_number: string; gcash_name: string; gcash_qr_url: string } | null>(null);
   const [copiedNumber, setCopiedNumber] = useState(false);
+  const [qrZoom, setQrZoom] = useState(false);
 
   const reload = () => setRefresh((r) => r + 1);
 
@@ -304,9 +306,15 @@ export default function Services() {
           </DialogHeader>
           <div className="space-y-3">
             {gcash?.gcash_qr_url && (
-              <div className="mx-auto w-fit rounded-xl border bg-white p-3 shadow-sm">
-                <img src={gcash.gcash_qr_url} alt="Parish GCash QR code" className="h-56 w-56 object-contain" />
-              </div>
+              <button
+                type="button"
+                onClick={() => setQrZoom(true)}
+                className="mx-auto block w-fit rounded-xl border bg-white p-3 shadow-sm transition-transform hover:scale-[1.02] cursor-zoom-in"
+                title="Tap to enlarge for scanning"
+              >
+                <img src={gcash.gcash_qr_url} alt="Parish GCash QR code — tap to enlarge" className="h-56 w-56 object-contain" />
+                <span className="mt-1 block text-[11px] text-gray-400">Tap to enlarge</span>
+              </button>
             )}
             {gcash?.gcash_number && (
               <div className="space-y-1">
@@ -331,6 +339,8 @@ export default function Services() {
           </div>
         </DialogContent>
       </Dialog>
+
+      <ImageLightbox src={qrZoom ? gcash?.gcash_qr_url || null : null} alt="Parish GCash QR code" onClose={() => setQrZoom(false)} />
 
       {/* Admin review dialog */}
       <Dialog open={reviewRow !== null} onOpenChange={(o) => { if (!o) setReviewRow(null); }}>
